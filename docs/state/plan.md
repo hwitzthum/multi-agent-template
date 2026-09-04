@@ -23,3 +23,5 @@ erweitert. Jede Ausbauphase wird einzeln geprüft und übergeben.
 ## Änderungsverlauf
 
 - 2026-09-04: Stabiles Ledger und erweitertes Task-Schema für Phase 02 angelegt.
+- 2026-09-04: Deterministischen Router und begrenzte Modus-Eskalation für Phase
+  03 ergänzt.

@@ -7,6 +7,8 @@ status: todo
 class: patterned      # mechanical | patterned | open — siehe Test unten
 orchestration: auto   # auto | single | verified | managed | managed-fresh
 fresh_perspective: auto # auto | required | off
+touches: []           # optionale Pfade/Komponenten für deterministisches Risiko-Routing
+risk_flags: []        # cross-component | high-risk-domain | repeated-failure | conflicting-ledger
 attempts: 0
 max_attempts: 3
 last_verification: never # never | green | red
@@ -25,7 +27,9 @@ Zulässige Statusübergänge: `todo -> in_progress`; von `in_progress` nach
 `done`, `review`, `todo` oder `blocked`; von `review` nach `done`, `todo` oder
 `blocked`. `done` setzt einen passenden grünen Prüfbericht voraus. Das Feld
 `orchestration` ist eine ausdrückliche Vorgabe; `auto` überlässt die Wahl dem
-späteren Router.
+Router. `touches` nennt betroffene Pfade oder Komponenten. `risk_flags` wird nur
+für bereits kuratierte Signale verwendet, die sich nicht zuverlässig aus dem
+Umfang ableiten lassen; freie oder unbekannte Werte sind ungültig.
 
 # Kontext
 <2–4 Zeilen: was und warum, mit relevanten Entscheidungen aus decisions.md/handoff.md>

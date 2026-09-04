@@ -7,10 +7,12 @@ project_dir=$(CDPATH= cd -- "$script_dir/.." && pwd) || exit 1
 . "$script_dir/agent/ledger.sh"
 
 only_task=''
+current_run_override=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --project-dir) project_dir=$2; shift 2 ;;
     --task-file) only_task=$2; shift 2 ;;
+    --current-run-file) current_run_override=$2; shift 2 ;;
     *) echo "validate-ledger: unbekannte Option $1" >&2; exit 2 ;;
   esac
 done
@@ -63,6 +65,21 @@ validate_task() {
   required_list "$file" depends_on || true
   required_list "$file" features || true
   required_list "$file" acceptance || true
+  if ledger_frontmatter_keys "$file" | grep -Fxq touches; then
+    ledger_list "$file" touches >/dev/null 2>&1 || problem "$label: touches muss eine einfache Liste sein"
+  fi
+  if ledger_frontmatter_keys "$file" | grep -Fxq risk_flags; then
+    if flags=$(ledger_list "$file" risk_flags 2>/dev/null); then
+      while IFS= read -r flag; do
+        [ -n "$flag" ] || continue
+        one_of "$flag" cross-component high-risk-domain repeated-failure conflicting-ledger || problem "$label: unbekanntes risk_flag '$flag'"
+      done <<EOF
+$flags
+EOF
+    else
+      problem "$label: risk_flags muss eine einfache Liste sein"
+    fi
+  fi
 
   case "$id" in ''|*[!0-9]*) problem "$label: id muss nur aus Ziffern bestehen" ;; esac
   [ -n "$title" ] || problem "$label: title darf nicht leer sein"
@@ -193,12 +210,12 @@ validate_ledger_files() {
     fi
   fi
 
-  run_file="$state_dir/current-run.md"
+  run_file="${current_run_override:-$state_dir/current-run.md}"
   if [ -f "$run_file" ]; then
     ledger_validate_frontmatter_shape "$run_file" >/dev/null 2>&1 || problem "current-run.md: unzulaessiges Frontmatter"
     while IFS= read -r key; do
       case "$key" in
-        run_id|task_id|mode|phase|iteration|attempt|last_progress_fingerprint|started_at) ;;
+        run_id|task_id|mode|phase|iteration|attempt|last_progress_fingerprint|started_at|route_rule_version|route_reason_code|route_human_gate|route_signals) ;;
         *) problem "current-run.md: unbekanntes Feld '$key'" ;;
       esac
     done <<EOF
@@ -215,7 +232,11 @@ EOF
     attempt=$(ledger_scalar "$run_file" attempt 2>/dev/null) || { problem "current-run.md: Pflichtfeld attempt fehlt"; attempt=''; }
     fingerprint=$(ledger_scalar "$run_file" last_progress_fingerprint 2>/dev/null) || { problem "current-run.md: Pflichtfeld last_progress_fingerprint fehlt"; fingerprint=''; }
     started_at=$(ledger_scalar "$run_file" started_at 2>/dev/null) || { problem "current-run.md: Pflichtfeld started_at fehlt"; started_at=''; }
-    one_of "$mode" auto single verified managed managed-fresh || problem "current-run.md: unbekannter mode '$mode'"
+    route_version=$(ledger_scalar "$run_file" route_rule_version 2>/dev/null) || { problem "current-run.md: Pflichtfeld route_rule_version fehlt"; route_version=''; }
+    route_reason=$(ledger_scalar "$run_file" route_reason_code 2>/dev/null) || { problem "current-run.md: Pflichtfeld route_reason_code fehlt"; route_reason=''; }
+    route_gate=$(ledger_scalar "$run_file" route_human_gate 2>/dev/null) || { problem "current-run.md: Pflichtfeld route_human_gate fehlt"; route_gate=''; }
+    route_signals=$(ledger_list "$run_file" route_signals 2>/dev/null) || { problem "current-run.md: Pflichtliste route_signals fehlt"; route_signals=''; }
+    one_of "$mode" auto single verified managed managed-fresh blocked || problem "current-run.md: unbekannter mode '$mode'"
     one_of "$phase" plan brainstorm work verify finalize finished || problem "current-run.md: unbekannte phase '$phase'"
     case "$iteration:$attempt" in *[!0-9:]*) problem "current-run.md: iteration und attempt muessen nichtnegative ganze Zahlen sein" ;; esac
     case "$run_id" in none|[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z-T[0-9][0-9][0-9]) ;; *) problem "current-run.md: run_id hat nicht das erwartete Format" ;; esac
@@ -225,6 +246,20 @@ EOF
       [ "${#fingerprint}" -eq 64 ] || problem "current-run.md: Fortschrittsfingerprint muss 64 Zeichen lang sein"
     fi
     case "$started_at" in never|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;; *) problem "current-run.md: started_at muss eine UTC-Zeit oder never sein" ;; esac
+    case "$route_version" in ''|*[!0-9]*) problem "current-run.md: route_rule_version muss numerisch sein" ;; esac
+    one_of "$route_reason" none EXPLICIT_OVERRIDE MECHANICAL_LOCAL PATTERNED_LOCAL OPEN_DECISION CROSS_COMPONENT HIGH_RISK_DOMAIN FAILED_ATTEMPTS CONFLICTING_LEDGER REPEATED_FAILURE FRESH_REQUIRED ROUTER_DISABLED ESCALATED_AFTER_FAILURE MODE_EXHAUSTED ATTEMPT_LIMIT || problem "current-run.md: unbekannter route_reason_code '$route_reason'"
+    one_of "$route_gate" true false || problem "current-run.md: route_human_gate muss true oder false sein"
+    while IFS= read -r route_signal; do
+      [ -n "$route_signal" ] || continue
+      one_of "$route_signal" CLI_OVERRIDE TASK_OVERRIDE ROUTER_DISABLED OPEN_CLASS MULTIPLE_FAILURES CROSS_COMPONENT HIGH_RISK_DOMAIN CONFLICTING_LEDGER REPEATED_FAILURE FRESH_REQUIRED FAILURE_RECORDED MODE_EXHAUSTED ATTEMPT_LIMIT || problem "current-run.md: unbekanntes route_signal '$route_signal'"
+    done <<EOF
+$route_signals
+EOF
+    if [ "$route_reason" = none ]; then
+      [ -z "$route_signals" ] || problem "current-run.md: ohne Routing duerfen route_signals nicht gesetzt sein"
+    else
+      [ "$mode" != auto ] || problem "current-run.md: protokolliertes Routing benoetigt einen konkreten mode"
+    fi
 
     active_ids=''
     while IFS= read -r file; do

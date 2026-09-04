@@ -61,3 +61,19 @@ Ein unterbrochener Schreibvorgang könnte außerdem eine halbe Datei hinterlasse
 **Folge für den Auftraggeber:** „Fertig“ bedeutet künftig, dass eine konkrete
 Prüfung grün war. Bei Text, Optik oder anderen menschlichen Entscheidungen bleibt
 die Aufgabe zunächst sichtbar auf `review`.
+
+## 2026-09-04 — Zusätzliche Agentenarbeit wird nach Risiko gewählt
+
+**Was:** Ein deterministischer Router wählt zwischen `single`, `verified`,
+`managed` und `managed-fresh`. Kleine mechanische Änderungen beginnen günstig;
+offene, sicherheitsrelevante, bereichsübergreifende oder wiederholt gescheiterte
+Aufgaben werden stärker begleitet. Nach einem Fehlschlag steigt der Modus genau
+eine Stufe, höchstens bis zum Versuchslimit.
+
+**Warum:** Mehr Agentenrollen erhöhen Zeit und Kosten und sind bei einfachen
+Änderungen nicht automatisch besser. Bei riskanten oder festgefahrenen Aufgaben
+ist eine unabhängige Prüfung oder frische Perspektive dagegen wertvoll.
+
+**Folge für den Auftraggeber:** Der gewählte Modus und sein Grund bleiben im
+Laufstand sichtbar. Eine bewusste Vorgabe ist möglich, kann aber Prüfungen,
+Sicherheitsminimum oder eine notwendige menschliche Freigabe nicht abschalten.

@@ -1,1 +1,1 @@
-task_id,class,model,rounds,tokens_total,outcome,date
+task_id,class,model,rounds,tokens_total,outcome,date,mode,reason_code,human_gate,rule_version,signals

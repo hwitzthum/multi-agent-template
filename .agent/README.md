@@ -1,8 +1,8 @@
 # Architektur- und Sicherheitsvertrag der Agenten-Orchestrierung
 
-Status: Phase 02 ergänzt die Leitplanken um ein validierbares Ledger und ein
-atomar schreibendes Status-Gate. Router, Rollen-Prompts und Loop folgen in
-späteren Phasen. Dieser Vertrag startet noch keinen Agenten.
+Status: Phase 03 ergänzt das validierbare Ledger um einen deterministischen
+Router mit vier Ausführungsmodi und begrenzter Eskalation. Rollen-Prompts und
+Loop folgen in späteren Phasen. Dieser Vertrag startet noch keinen Agenten.
 
 ## Verbindliche Zuständigkeiten
 
@@ -12,9 +12,11 @@ späteren Phasen. Dieser Vertrag startet noch keinen Agenten.
 | Gesamtstrategie | `docs/state/plan.md` | Manager |
 | Task-Inhalt/Zerlegung | `docs/tasks/*.md` | Manager |
 | Task-Status | `docs/tasks/*.md` | ausschließlich Status-Gate |
+| Task-Versuchszähler | `docs/tasks/*.md` | Router bei bestätigtem Fehlschlag |
 | Erkenntnisse und Fehler | `docs/state/notes.md` | Rollen über Ledger-Funktion |
 | technische Entscheidungen | `docs/state/decisions.md` | zuständiger Agent, in Alltagssprache |
 | aktueller Lauf | `docs/state/current-run.md` | Orchestrator |
+| Routing-Metrik | `docs/state/metrics.csv` | Router im Auftrag des Orchestrators |
 | Prüfurteil | `docs/verification/` | Verifier |
 | Feature-Status | `docs/state/features.md` | vorhandener Verify-Ablauf |
 | Betriebsübergabe | `docs/state/handoff.md` | Finalizer/Sitzungsabschluss |
@@ -80,6 +82,30 @@ Bericht unter `docs/verification/` auf `done` wechseln. Bei
 `human_review: true` führt der direkte Weg von `in_progress` zuerst über
 `review`. `docs/state/current-run.md` beschreibt höchstens einen aktiven Task.
 Verworfene Notizen liefert der Ledger-Leser nie als aktive Fakten aus.
+
+## Router-Vertrag
+
+`scripts/route-task.sh <task-id>` liefert maschinenlesbar genau `MODE`,
+`REASON_CODE` und `HUMAN_GATE`. Das Ausgangsmapping lautet `mechanical ->
+single`, `patterned -> verified` und `open -> managed`. Authentifizierung,
+Berechtigungen, Zahlungen, Migrationen, Secrets, Deployment, mehrere explizite
+Komponenten sowie wiederholte Fehler dürfen einen Modus nur verschärfen.
+
+Eine Task-Vorgabe über `orchestration` oder ein bewusster Einmallauf über
+`--mode` wird respektiert, kann aber weder ein Sicherheitsminimum noch ein
+menschliches Gate umgehen. `ROUTER_ENABLED=false` deaktiviert die automatische
+Klassenzuordnung; harte Sicherheitsregeln bleiben trotzdem aktiv. Ein
+Fehlschlag wird mit `--escalate-from` genau eine Stufe weitergereicht und über
+`--expected-attempts` gegen parallele oder veraltete Aufrufe geschützt.
+
+Bei `human_review: true` verlangt auch der letzte Übergang von `review` nach
+`done` ausdrücklich `status.sh --human-approved`; ein automatischer Aufruf ohne
+diese Freigabe wird abgewiesen.
+
+`--record` ist nur bei einem passenden aktiven Lauf zulässig. Es schreibt
+Regelversion, Eingabesignale und Entscheidung atomar nach `current-run.md` und
+ergänzt eine kompakte Zeile in `metrics.csv`. Der Router ändert nie den
+Task-Status und startet weder Worker noch Modelle.
 
 ## Runner-Grenze
 

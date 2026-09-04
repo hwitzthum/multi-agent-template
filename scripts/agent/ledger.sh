@@ -11,14 +11,14 @@ ledger_error() {
 
 ledger_known_scalar() {
   case "$1" in
-    id|title|status|class|orchestration|fresh_perspective|attempts|max_attempts|last_verification|human_review|blocked_reason|run_id|task_id|mode|phase|iteration|attempt|last_progress_fingerprint|started_at|result|finished_at|date|source|confidence|evidence|finding) return 0 ;;
+    id|title|status|class|orchestration|fresh_perspective|attempts|max_attempts|last_verification|human_review|blocked_reason|run_id|task_id|mode|phase|iteration|attempt|last_progress_fingerprint|started_at|route_rule_version|route_reason_code|route_human_gate|result|finished_at|date|source|confidence|evidence|finding) return 0 ;;
     *) return 1 ;;
   esac
 }
 
 ledger_known_list() {
   case "$1" in
-    depends_on|features|acceptance|tasks) return 0 ;;
+    depends_on|features|acceptance|tasks|touches|risk_flags|route_signals) return 0 ;;
     *) return 1 ;;
   esac
 }

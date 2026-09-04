@@ -6,18 +6,25 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 project_dir=$(CDPATH= cd -- "$script_dir/../.." && pwd) || exit 1
 . "$script_dir/ledger.sh"
 validator="$project_dir/scripts/validate-ledger.sh"
-
-if [ "${1:-}" = --project-dir ]; then
-  project_dir=$2
-  validator="$project_dir/scripts/validate-ledger.sh"
-  if [ ! -x "$validator" ]; then validator="$script_dir/../validate-ledger.sh"; fi
-  shift 2
-fi
+human_approved=false
 
 usage() {
-  echo "Verwendung: $0 [--project-dir PFAD] set-status TASK-ID NEU ERWARTET" >&2
+  echo "Verwendung: $0 [--project-dir PFAD] [--human-approved] set-status TASK-ID NEU ERWARTET" >&2
   exit 2
 }
+
+while [ "${1:-}" != set-status ] && [ "$#" -gt 0 ]; do
+  case "$1" in
+    --project-dir)
+      [ "$#" -ge 2 ] || usage
+      project_dir=$2
+      validator="$project_dir/scripts/validate-ledger.sh"
+      if [ ! -x "$validator" ]; then validator="$script_dir/../validate-ledger.sh"; fi
+      shift 2 ;;
+    --human-approved) human_approved=true; shift ;;
+    *) break ;;
+  esac
+done
 
 [ "${1:-}" = set-status ] && [ "$#" -eq 4 ] || usage
 task_id=$2
@@ -62,6 +69,10 @@ if [ "$new_status" = done ]; then
   human_review=$(ledger_scalar "$task_file" human_review) || exit 1
   if [ "$actual_status" = in_progress ] && [ "$human_review" = true ]; then
     echo "status-gate: Task $task_id benoetigt zuerst den Status review" >&2
+    exit 1
+  fi
+  if [ "$actual_status" = review ] && [ "$human_review" = true ] && [ "$human_approved" != true ]; then
+    echo "status-gate: Task $task_id benoetigt eine ausdrueckliche menschliche Freigabe" >&2
     exit 1
   fi
 fi

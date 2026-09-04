@@ -18,6 +18,11 @@ EOF
   printf '%s=%s ' "$wanted" "$count"
 done)
 echo "tasks: $counts"
+route_reason=$(ledger_scalar docs/state/current-run.md route_reason_code 2>/dev/null || true)
+if [ -n "$route_reason" ] && [ "$route_reason" != none ]; then
+  route_mode=$(ledger_scalar docs/state/current-run.md mode 2>/dev/null || true)
+  echo "route: $route_mode ($route_reason)"
+fi
 echo "ready:"
 ./scripts/next-tasks.sh 2>/dev/null | sed -n '1,5p'
 echo "--- handoff ---"
