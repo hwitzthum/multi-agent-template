@@ -25,4 +25,10 @@ if [ $? -ne 0 ]; then
   echo "$out" | tail -n 20 >&2
   exit 2
 fi
+ledger_out=$(./scripts/validate-ledger.sh --project-dir "$PWD" 2>&1)
+if [ $? -ne 0 ]; then
+  echo "Commit blockiert — das Datei-Ledger ist inkonsistent:" >&2
+  echo "$ledger_out" | tail -n 20 >&2
+  exit 2
+fi
 exit 0

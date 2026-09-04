@@ -56,16 +56,24 @@ case "$transition" in
   *) echo "status-gate: Uebergang $actual_status -> $new_status ist nicht erlaubt" >&2; exit 1 ;;
 esac
 
-if [ "$new_status" = done ]; then
+if [ "$new_status" = done ] || [ "$new_status" = review ]; then
   last_verification=$(ledger_scalar "$task_file" last_verification) || exit 1
   [ "$last_verification" = green ] || {
-    echo "status-gate: done benoetigt last_verification: green" >&2
+    echo "status-gate: $new_status benoetigt last_verification: green" >&2
     exit 1
   }
-  ledger_verification_is_green "$verification_dir" "$task_id" || {
-    echo "status-gate: done benoetigt einen passenden gruenen Pruefbericht" >&2
+  ledger_verification_is_green "$verification_dir" "$task_id" "$project_dir" "$task_file" || {
+    echo "status-gate: $new_status benoetigt einen passenden gruenen Pruefbericht mit aktuellen Fingerprints" >&2
+    report_candidate=$(ledger_scalar "$verification_dir/latest.md" candidate_fingerprint 2>/dev/null || echo fehlt)
+    report_verifier=$(ledger_scalar "$verification_dir/latest.md" verifier_version 2>/dev/null || echo fehlt)
+    current_candidate=$(ledger_candidate_fingerprint "$project_dir" "$task_file" 2>/dev/null || echo fehler)
+    current_verifier=$(ledger_verifier_fingerprint "$project_dir" 2>/dev/null || echo fehler)
+    echo "status-gate: Kandidat Bericht=$report_candidate aktuell=$current_candidate; Verifier Bericht=$report_verifier aktuell=$current_verifier" >&2
     exit 1
   }
+fi
+
+if [ "$new_status" = done ]; then
   human_review=$(ledger_scalar "$task_file" human_review) || exit 1
   if [ "$actual_status" = in_progress ] && [ "$human_review" = true ]; then
     echo "status-gate: Task $task_id benoetigt zuerst den Status review" >&2

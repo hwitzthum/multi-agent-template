@@ -43,6 +43,7 @@ validator="$script_dir/validate-ledger.sh"
 config_reader="$script_dir/agent/config.sh"
 router="$script_dir/route-task.sh"
 status_gate="$script_dir/agent/status.sh"
+verification_gateway="$script_dir/verify-task.sh"
 context_builder="$script_dir/agent/context.sh"
 output_tool="$script_dir/agent/output.sh"
 runner_adapter="$script_dir/agent/runner.sh"
@@ -270,55 +271,17 @@ manager_value() {
   awk -v wanted="$key" 'index($0,wanted ":") == 1 { value=substr($0,length(wanted)+2); sub(/^[[:space:]]*/,"",value); print value; exit }' "$file"
 }
 
-write_verification_report() {
-  result=$1
-  log_file=$2
-  attempt_value=$(ledger_scalar "$task_file" attempts)
-  report_temp=$(mktemp "${TMPDIR:-/tmp}/verification.XXXXXX") || return 1
-  excerpt=$(mktemp "${TMPDIR:-/tmp}/verification-excerpt.XXXXXX") || { rm -f "$report_temp"; return 1; }
-  agent_redact < "$log_file" | tail -n 30 > "$excerpt"
-  finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  {
-    echo '---'
-    echo "run_id: $run_id"
-    echo "task_id: $task_id"
-    echo "result: $result"
-    echo "attempt: $attempt_value"
-    echo "finished_at: $finished_at"
-    echo '---'
-    echo '# Verifikation'
-    echo
-    echo '## Ergebnis'
-    echo
-    printf '%s\n' "$result"
-    echo
-    echo '## Prüfungen'
-    echo
-    sed 's/^/- /' "$excerpt"
-  } > "$report_temp"
-  history="$verification_dir/history/${run_id}-$(printf '%02d' "$call_sequence").md"
-  agent_atomic_write "$history" "$report_temp" || { rm -f "$report_temp" "$excerpt"; return 1; }
-  agent_atomic_write "$verification_dir/latest.md" "$report_temp" || { rm -f "$report_temp" "$excerpt"; return 1; }
-  rm -f "$report_temp" "$excerpt"
-}
-
-set_last_verification() {
-  value=$1
-  validate_task_candidate() { "$validator" --project-dir "$project_dir" --task-file "$1" >/dev/null; }
-  ledger_atomic_replace_scalar "$task_file" last_verification "$value" validate_task_candidate
-}
-
 verify_candidate() {
   update_run_field phase verify || return 1
   call_sequence=$((call_sequence + 1))
   verify_log="$run_dir/outputs/$(printf '%02d' "$call_sequence")-verify.log"
-  if agent_run_with_timeout "$verify_timeout" "$project_dir/scripts/verify.sh" > "$verify_log" 2>&1; then
+  attempt_value=$(ledger_scalar "$task_file" attempts) || return 1
+  attempt_value=$((attempt_value + 1))
+  if "$verification_gateway" --project-dir "$project_dir" --run-id "$run_id" --attempt "$attempt_value" --timeout "$verify_timeout" "$task_id" > "$verify_log" 2>&1; then
     verification_result=green
   else
     verification_result=red
   fi
-  write_verification_report "$verification_result" "$verify_log" || return 1
-  set_last_verification "$verification_result" || return 1
   checkpoint_product || return 1
   [ "$verification_result" = green ]
 }
@@ -461,7 +424,7 @@ managed_loop() {
         run_finalizer "$reason"
         return 1 ;;
       done)
-        [ "$(ledger_scalar "$task_file" last_verification)" = green ] && ledger_verification_is_green "$verification_dir" "$task_id" || {
+        [ "$(ledger_scalar "$task_file" last_verification)" = green ] && ledger_verification_is_green "$verification_dir" "$task_id" "$project_dir" "$task_file" || {
           echo "orchestrate: Manager meldete done ohne grünen Prüfbeleg" >&2
           update_run_field phase failed || true
           return 1

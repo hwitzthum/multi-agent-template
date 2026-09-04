@@ -1,8 +1,9 @@
 # Architektur- und Sicherheitsvertrag der Agenten-Orchestrierung
 
-Status: Phase 05 ergänzt Ledger, Router und Rollenverträge um einen begrenzten,
-fortsetzbaren Manager–Worker-Loop. Kontrollflusstests verwenden ausschließlich
-einen Fake Runner; echte Aufrufe bleiben hinter dem Runner-Adapter gekapselt.
+Status: Phase 06 ergänzt den begrenzten Manager–Worker-Loop um ein
+fingerprintgebundenes Verification Gateway. Kontrollflusstests verwenden
+ausschließlich einen Fake Runner; echte Aufrufe bleiben hinter dem
+Runner-Adapter gekapselt.
 
 ## Verbindliche Zuständigkeiten
 
@@ -168,6 +169,28 @@ Rollenänderungen werden aus tatsächlichen Dateihashes ermittelt. Verbotene
 Steuerungspfade, Änderungen an geschützten Task-Feldern oder Produktpfade
 außerhalb von `touches` stoppen den Lauf. Rohoutput und Runner-Metadaten bleiben
 unter `.agent-runs/<run-id>/`; kein Agentenergebnis wird ungeprüft ausgewertet.
+
+## Verification Gateway
+
+`scripts/verify-task.sh <task-id>` führt Ledger, Syntax/Compile, Unit,
+Integration, Lint/Typecheck, Build, taskbezogene Akzeptanz und das Human Gate in
+fester Reihenfolge aus. Das globale `scripts/verify.sh` bleibt immer Pflicht.
+Alle vorgesehenen Checks laufen auch nach einem Produktfehler weiter; Timeout,
+fehlende Programme und interne Verifierfehler werden getrennt ausgewiesen.
+
+Akzeptanzbefehle werden nie als Shelltext ausgewertet. Ohne Projektprofil sind
+nur `./scripts/verify.sh`, `npm test`, `npm run`, `pytest`, `ruff`, `mypy` und
+die entsprechenden `python[3] -m`-Formen erlaubt. Eine optionale
+`.agent/verification-allowlist` ersetzt diese Präfixliste vollständig und kann
+sie damit verschärfen. `.agent/verification-runners` ergänzt benannte Runner im
+Format `name|stufe|befehl`; Tasks referenzieren sie als `runner:name`. Auch
+diese Befehle dürfen keine Shell-Metazeichen oder Pfadtraversierung enthalten.
+
+Der Bericht unter `docs/verification/latest.md` und `history/` gilt nur für den
+exakten Kandidaten- und Verifier-Fingerprint. Änderungen an Produkt, Tests,
+Task-Akzeptanz oder Prüflogik machen ihn ungültig. Der vollständige lokale Log
+liegt unter `.agent-runs/<run-id>/verify/`. Das Status-Gate lässt `review` und
+`done` nur mit dem aktuellen grünen Beleg zu.
 
 ## Produkt-Stack
 

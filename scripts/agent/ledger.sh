@@ -11,7 +11,7 @@ ledger_error() {
 
 ledger_known_scalar() {
   case "$1" in
-    id|title|status|class|orchestration|fresh_perspective|attempts|max_attempts|last_verification|human_review|blocked_reason|run_id|task_id|mode|phase|iteration|attempt|last_progress_fingerprint|started_at|route_rule_version|route_reason_code|route_human_gate|result|finished_at|date|source|confidence|evidence|finding) return 0 ;;
+    id|title|status|class|orchestration|fresh_perspective|attempts|max_attempts|last_verification|human_review|blocked_reason|run_id|task_id|mode|phase|iteration|attempt|last_progress_fingerprint|started_at|route_rule_version|route_reason_code|route_human_gate|result|finished_at|candidate_fingerprint|verifier_version|failure_kind|log_path|date|source|confidence|evidence|finding) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -177,18 +177,101 @@ EOF
   printf '%s\n' "$found"
 }
 
+ledger_candidate_fingerprint() {
+  project_dir=$1
+  task_file=$2
+  [ -d "$project_dir" ] && [ -f "$task_file" ] || return 1
+  project_dir=$(CDPATH= cd -- "$project_dir" && pwd -P) || return 1
+  case "$task_file" in
+    /*) ;;
+    *) task_file="$project_dir/$task_file" ;;
+  esac
+  task_file=$(CDPATH= cd -- "$(dirname -- "$task_file")" && printf '%s/%s\n' "$PWD" "$(basename -- "$task_file")") || return 1
+  fingerprint_task_id=$(ledger_scalar "$task_file" id 2>/dev/null) || return 1
+  (
+    cd "$project_dir" || exit 1
+    find . -type f \
+      ! -path './.git/*' \
+      ! -path './.agent-runs/*' \
+      ! -path './.venv/*' \
+      ! -path './node_modules/*' \
+      ! -path './.pytest_cache/*' \
+      ! -path './.mypy_cache/*' \
+      ! -path './.ruff_cache/*' \
+      ! -path './__pycache__/*' \
+      ! -path '*/__pycache__/*' \
+      ! -path './plans/*' \
+      ! -path './docs/state/*' \
+      ! -path './docs/verification/*' \
+      ! -path './docs/tasks/*' \
+      -print | LC_ALL=C sort | while IFS= read -r file; do
+        printf '%s  %s\n' "$(shasum -a 256 "$file" | awk '{print $1}')" "${file#./}"
+      done
+    awk '
+      BEGIN { front=0 }
+      NR == 1 && $0 == "---" { front=1; print; next }
+      front && $0 == "---" { front=0; print; next }
+      front && /^(status|attempts|last_verification|blocked_reason):/ {
+        key=$0; sub(/:.*/, "", key); print key ": <mutable>"; next
+      }
+      { print }
+    ' "$task_file" | shasum -a 256 | awk -v name="docs/tasks/$fingerprint_task_id.md" '{ print $1 "  " name }'
+  ) | shasum -a 256 | awk '{print $1}'
+}
+
+ledger_verifier_fingerprint() {
+  project_dir=$1
+  [ -d "$project_dir" ] || return 1
+  project_dir=$(CDPATH= cd -- "$project_dir" && pwd -P) || return 1
+  library_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P) || return 1
+  if [ -f "$project_dir/scripts/verify-task.sh" ]; then implementation_root=$project_dir; else implementation_root=$library_root; fi
+  {
+    for relative in scripts/verify-task.sh scripts/validate-ledger.sh scripts/agent/ledger.sh scripts/agent/status.sh scripts/agent/common.sh; do
+      [ -f "$implementation_root/$relative" ] && printf '%s\n' "$implementation_root/$relative"
+    done
+    [ -f "$project_dir/scripts/verify.sh" ] && printf '%s\n' "$project_dir/scripts/verify.sh"
+    [ -f "$project_dir/.agent/config.env" ] && printf '%s\n' "$project_dir/.agent/config.env"
+    [ -f "$project_dir/.agent/verification-allowlist" ] && printf '%s\n' "$project_dir/.agent/verification-allowlist"
+    [ -f "$project_dir/.agent/verification-runners" ] && printf '%s\n' "$project_dir/.agent/verification-runners"
+    true
+  } | LC_ALL=C sort -u | while IFS= read -r file; do
+    case "$file" in
+      "$implementation_root"/*) label="implementation/${file#"$implementation_root"/}" ;;
+      "$project_dir"/*) label="project/${file#"$project_dir"/}" ;;
+      *) label=$(basename -- "$file") ;;
+    esac
+    printf '%s  %s\n' "$(shasum -a 256 "$file" | awk '{print $1}')" "$label"
+  done | shasum -a 256 | awk '{print $1}'
+}
+
 ledger_verification_is_green() {
   verification_dir=$1
   wanted=$2
   [ -d "$verification_dir" ] || return 1
-  reports=$(find "$verification_dir" -type f -name '*.md' -print 2>/dev/null)
+  project_dir=${3:-}
+  task_file=${4:-}
+  strict=false
+  if [ -n "$project_dir" ] && [ -n "$task_file" ]; then strict=true; fi
+  if [ "$strict" = true ]; then
+    reports=$(printf '%s\n' "$verification_dir/latest.md"; find "$verification_dir/history" -type f -name '*.md' -print 2>/dev/null | LC_ALL=C sort -r)
+    current_candidate=$(ledger_candidate_fingerprint "$project_dir" "$task_file") || return 1
+    current_verifier=$(ledger_verifier_fingerprint "$project_dir") || return 1
+  else
+    reports=$(find "$verification_dir" -type f -name '*.md' -print 2>/dev/null)
+  fi
   while IFS= read -r report; do
     [ -n "$report" ] || continue
     report_task=$(ledger_scalar "$report" task_id 2>/dev/null) || continue
-    report_result=$(ledger_scalar "$report" result 2>/dev/null) || continue
-    if [ "$report_task" = "$wanted" ] && [ "$report_result" = green ]; then
-      return 0
+    [ "$report_task" = "$wanted" ] || continue
+    report_result=$(ledger_scalar "$report" result 2>/dev/null) || { [ "$strict" = true ] && return 1; continue; }
+    [ "$report_result" = green ] || { [ "$strict" = true ] && return 1; continue; }
+    if [ "$strict" = true ]; then
+      report_candidate=$(ledger_scalar "$report" candidate_fingerprint 2>/dev/null) || return 1
+      report_verifier=$(ledger_scalar "$report" verifier_version 2>/dev/null) || return 1
+      [ "$report_candidate" = "$current_candidate" ] || return 1
+      [ "$report_verifier" = "$current_verifier" ] || return 1
     fi
+    return 0
   done <<EOF
 $reports
 EOF

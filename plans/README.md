@@ -2,13 +2,13 @@
 plan_version: "1.1"
 progress_schema: 1
 overall_status: in_progress
-current_phase: "06"
-last_completed_phase: "05"
-last_handoff: "plans/handoffs/05-handoff.md"
+current_phase: "07"
+last_completed_phase: "06"
+last_handoff: "plans/handoffs/06-handoff.md"
 active_blocker: "none"
 rollout_stage: implementation
 pilot_status: not_started
-next_action: "Phase 06 umsetzen"
+next_action: "Phase 07 umsetzen"
 last_updated: "2026-09-04"
 ---
 
@@ -141,7 +141,7 @@ Abnahmekriterien erfüllt. „Dateien wurden geändert“ reicht nicht.
 
 <!-- PROGRESS:START -->
 
-**Aktueller Stand:** Phase 05 ist grün abgeschlossen. Phase 06 ist als nächster
+**Aktueller Stand:** Phase 06 ist grün abgeschlossen. Phase 07 ist als nächster
 einzelner Arbeitsauftrag bereit.
 
 | Phase | Status | Prüfung | Implementierungsstand | Handoff | Aktualisiert |
@@ -151,12 +151,12 @@ einzelner Arbeitsauftrag bereit.
 | 03 | `DONE` | `green` | `working-tree:3cb1beadc6830a17b7bb5d3c5ff99033f0abc91fa7f2090bb8e1032d81186fa0` | [03-handoff](handoffs/03-handoff.md) | 2026-09-04 |
 | 04 | `DONE` | `green` | `working-tree:bea91e7cfc5a4c4aaf62c272aeb67a279b18a373c9925e73a1d5e3664f6e6f1d` | [04-handoff](handoffs/04-handoff.md) | 2026-09-04 |
 | 05 | `DONE` | `green` | `working-tree:6287f9b24127d1aac57b983b18f8f9918c490a4c4cb6aaa3070b2a49a3df1a7b` | [05-handoff](handoffs/05-handoff.md) | 2026-09-04 |
-| 06 | `READY` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
-| 07 | `WAITING` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
+| 06 | `DONE` | `green` | `working-tree:8c3a700a78dbb9db7fa272be1a026cf59d03deb7dea696bb50eb7d5a9fe4523f` | [06-handoff](handoffs/06-handoff.md) | 2026-09-04 |
+| 07 | `READY` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
 | 08 | `WAITING` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
 | 09 | `WAITING` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
 
-**Nächster zulässiger Schritt:** Phase 06 umsetzen.
+**Nächster zulässiger Schritt:** Phase 07 umsetzen.
 
 <!-- PROGRESS:END -->
 

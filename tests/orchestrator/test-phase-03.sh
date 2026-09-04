@@ -6,6 +6,7 @@ project_dir=$(CDPATH= cd -- "$script_dir/../.." && pwd) || exit 1
 router="$project_dir/scripts/route-task.sh"
 validator="$project_dir/scripts/validate-ledger.sh"
 status_gate="$project_dir/scripts/agent/status.sh"
+. "$project_dir/scripts/agent/ledger.sh"
 
 passed=0
 failed=0
@@ -90,6 +91,8 @@ make_active_run() {
 
 make_green_report() {
   id=$1
+  candidate_fingerprint=$(ledger_candidate_fingerprint "$fixture" "$fixture/docs/tasks/$id.md")
+  verifier_version=$(ledger_verifier_fingerprint "$fixture")
   {
     echo '---'
     echo 'run_id: test-run'
@@ -97,6 +100,8 @@ make_green_report() {
     echo 'result: green'
     echo 'attempt: 1'
     echo 'finished_at: 2026-09-04T09:15:00Z'
+    echo "candidate_fingerprint: $candidate_fingerprint"
+    echo "verifier_version: $verifier_version"
     echo '---'
     echo '# Letzte Prüfung'
     echo '## Ergebnis'

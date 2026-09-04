@@ -71,6 +71,12 @@ make_task() {
 
 make_report() {
   id=$1; result=$2
+  if [ -f "$fixture/docs/tasks/$id.md" ]; then
+    candidate_fingerprint=$(ledger_candidate_fingerprint "$fixture" "$fixture/docs/tasks/$id.md")
+  else
+    candidate_fingerprint=0000000000000000000000000000000000000000000000000000000000000000
+  fi
+  verifier_version=$(ledger_verifier_fingerprint "$fixture")
   {
     echo '---'
     echo 'run_id: test-run'
@@ -78,6 +84,8 @@ make_report() {
     echo "result: $result"
     echo 'attempt: 1'
     echo 'finished_at: 2026-09-04T09:15:00Z'
+    echo "candidate_fingerprint: $candidate_fingerprint"
+    echo "verifier_version: $verifier_version"
     echo '---'
     echo '# Letzte Prüfung'
     echo '## Ergebnis'

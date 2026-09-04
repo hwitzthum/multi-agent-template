@@ -105,7 +105,7 @@ EOF
   fi
   if [ "$status" = done ]; then
     [ "$verification" = green ] || problem "$label: done ist nur mit last_verification: green erlaubt"
-    ledger_verification_is_green "$verification_dir" "$id" || problem "$label: passender gruener Pruefbericht fehlt"
+    ledger_verification_is_green "$verification_dir" "$id" "$project_dir" "$file" || problem "$label: passender gruener Pruefbericht mit aktuellen Fingerprints fehlt"
   fi
 
   if [ -n "$id" ]; then
