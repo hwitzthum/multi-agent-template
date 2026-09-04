@@ -1,1 +1,1 @@
-task_id,class,model,rounds,tokens_total,outcome,date,mode,reason_code,human_gate,rule_version,signals
+task_id,class,model,rounds,tokens_total,outcome,date,mode,reason_code,human_gate,rule_version,signals,run_id,prompt_hash,context_hash,role

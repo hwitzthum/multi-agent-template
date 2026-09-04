@@ -40,14 +40,16 @@ role_may_write() {
   role=$1
   path=$(normalize_repo_path "$2") || return 1
   case "$role" in
-    manager)
+    manager|manager-plan|manager-manage)
       case "$path" in docs/state/plan.md|docs/tasks/*.md) return 0;; *) return 1;; esac ;;
-    brainstorm)
+    brainstorm|worker-brainstorm)
       [ "$path" = docs/state/notes.md ] ;;
-    worker)
+    worker|worker-task|worker-fresh)
       worker_path_allowed "$path" ;;
     verifier)
       case "$path" in docs/verification/*|docs/state/notes.md) return 0;; *) return 1;; esac ;;
+    reviewer)
+      return 1 ;;
     status-gate)
       case "$path" in docs/tasks/*.md) return 0;; *) return 1;; esac ;;
     finalizer)

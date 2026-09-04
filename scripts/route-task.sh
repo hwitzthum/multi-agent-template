@@ -31,6 +31,7 @@ done
 case "$task_id" in *[!0-9]*|'') echo "route-task: ungueltige Task-ID" >&2; exit 1 ;; esac
 
 . "$script_dir/agent/ledger.sh"
+. "$script_dir/agent/common.sh"
 validator="$script_dir/validate-ledger.sh"
 config_reader="$script_dir/agent/config.sh"
 tasks_dir="$project_dir/docs/tasks"
@@ -84,8 +85,7 @@ record_route() {
   lock="$state_dir/.route-record-lock"
   mkdir "$lock" 2>/dev/null || { echo "route-task: eine andere Routing-Protokollierung laeuft bereits" >&2; return 1; }
   run_tmp=$(mktemp "$state_dir/.current-run.md.route.XXXXXX") || { rmdir "$lock"; return 1; }
-  metrics_tmp=''
-  cleanup_record() { rm -f "$run_tmp"; [ -z "$metrics_tmp" ] || rm -f "$metrics_tmp"; rmdir "$lock" 2>/dev/null || true; }
+  cleanup_record() { rm -f "$run_tmp"; rmdir "$lock" 2>/dev/null || true; }
   trap cleanup_record EXIT HUP INT TERM
 
   if ! awk -v version="$RULE_VERSION" -v mode="$selected_mode" -v reason="$reason_code" -v gate="$human_gate" -v route_signals="$signals" '
@@ -106,16 +106,12 @@ record_route() {
   "$validator" --project-dir "$project_dir" --current-run-file "$run_tmp" >/dev/null || return 1
   ledger_copy_mode "$current_run" "$run_tmp" || return 1
 
-  expected_header='task_id,class,model,rounds,tokens_total,outcome,date,mode,reason_code,human_gate,rule_version,signals'
+  expected_header='task_id,class,model,rounds,tokens_total,outcome,date,mode,reason_code,human_gate,rule_version,signals,run_id,prompt_hash,context_hash,role'
   [ "$(sed -n '1p' "$metrics")" = "$expected_header" ] || { echo "route-task: metrics.csv hat ein unbekanntes Schema" >&2; return 1; }
-  metrics_tmp=$(mktemp "$state_dir/.metrics.csv.route.XXXXXX") || return 1
-  cp "$metrics" "$metrics_tmp" || { rm -f "$metrics_tmp"; return 1; }
   metric_signals=$(printf '%s' "$signals" | tr ',' '+')
-  printf '%s,%s,none,0,0,routed,%s,%s,%s,%s,%s,%s\n' "$task_id" "$task_class" "$(date -u +%Y-%m-%d)" "$selected_mode" "$reason_code" "$human_gate" "$RULE_VERSION" "$metric_signals" >> "$metrics_tmp"
-  ledger_copy_mode "$metrics" "$metrics_tmp" || { rm -f "$metrics_tmp"; return 1; }
-
-  mv -f "$metrics_tmp" "$metrics" || return 1
-  metrics_tmp=''
+  metric_run_id=$(ledger_scalar "$current_run" run_id) || return 1
+  metric_line="$task_id,$task_class,none,0,0,routed,$(date -u +%Y-%m-%d),$selected_mode,$reason_code,$human_gate,$RULE_VERSION,$metric_signals,$metric_run_id,,,router"
+  agent_atomic_append_line "$metrics" "$metric_line" || return 1
   mv -f "$run_tmp" "$current_run" || return 1
   trap - EXIT HUP INT TERM
   rmdir "$lock" 2>/dev/null || true

@@ -25,3 +25,5 @@ erweitert. Jede Ausbauphase wird einzeln geprüft und übergeben.
 - 2026-09-04: Stabiles Ledger und erweitertes Task-Schema für Phase 02 angelegt.
 - 2026-09-04: Deterministischen Router und begrenzte Modus-Eskalation für Phase
   03 ergänzt.
+- 2026-09-04: Sieben getrennte Rollen-Prompts, begrenzte Kontextpakete,
+  Fresh-Worker-Isolation und validierte Rollenoutputs für Phase 04 ergänzt.

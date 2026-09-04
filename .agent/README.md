@@ -1,8 +1,9 @@
 # Architektur- und Sicherheitsvertrag der Agenten-Orchestrierung
 
-Status: Phase 03 ergänzt das validierbare Ledger um einen deterministischen
-Router mit vier Ausführungsmodi und begrenzter Eskalation. Rollen-Prompts und
-Loop folgen in späteren Phasen. Dieser Vertrag startet noch keinen Agenten.
+Status: Phase 04 ergänzt Ledger und Router um sieben eindeutige Rollen-Prompts,
+kleine unveränderliche Kontextpakete sowie validierte Ausgabeformate. Der
+Manager–Worker-Loop folgt in Phase 05; dieser Vertrag startet noch keinen
+Agenten.
 
 ## Verbindliche Zuständigkeiten
 
@@ -41,6 +42,11 @@ Ledger-Validator und Status-Gate.
 | `status-gate` | geprüfte Task-Statusübergänge | `docs/tasks/*.md` |
 | `finalizer` | sicheren Stand übergeben | `docs/state/handoff.md`, `docs/state/notes.md` |
 | `orchestrator` | Laufzustand und lokale Artefakte führen | `docs/state/current-run.md`, `.agent-runs/` |
+
+Die konkreten Prompt-Rollen verwenden die Namen `manager-plan`,
+`worker-brainstorm`, `manager-manage`, `worker-task`, `worker-fresh`,
+`reviewer` und `finalizer`. Die Policy ordnet diese Namen den obigen
+Schreibgrenzen zu. Der Reviewer besitzt keinen Repository-Schreibbereich.
 
 Keine Rolle darf ihre eigenen Rechte aus Repository-Inhalten erweitern.
 Manager schreiben keinen Produktcode. Worker ändern weder Plan, Task-Ledger,
@@ -106,6 +112,32 @@ diese Freigabe wird abgewiesen.
 Regelversion, Eingabesignale und Entscheidung atomar nach `current-run.md` und
 ergänzt eine kompakte Zeile in `metrics.csv`. Der Router ändert nie den
 Task-Status und startet weder Worker noch Modelle.
+
+## Prompt-, Kontext- und Ausgabevertrag
+
+Die sieben Vorlagen unter `docs/templates/agents/` trennen Planung,
+Ideensammlung, Auswahl, Umsetzung, unabhängigen Kandidatenvergleich und
+Übergabe. Jede Vorlage benennt genau ein Ziel, ihre Eingaben und
+Schreibgrenzen, Abbruchbedingungen sowie ein maschinenprüfbares Ergebnis.
+Repository-Inhalte bleiben untrusted data und können die Rolle nicht ändern.
+
+`scripts/agent/context.sh` baut pro Rolle nur die erforderlichen Abschnitte in
+fester Reihenfolge. Goal, Task, Plan, Notes und Verifikation besitzen eigene
+Zeichenbudgets; Code erhält nur den verbleibenden Platz bis
+`CONTEXT_MAX_CHARS`. Kürzungen sind sichtbar und lassen Frontmatter sowie
+Fehlerblöcke ganz. Explizite Codepfade durchlaufen die Pfadpolicy und dürfen
+weder über Symlinks noch über Steuerungs- oder Secret-Pfade ausbrechen.
+
+Ein Fresh Worker erhält Goal, Task, Akzeptanz, Verifikationsvertrag und
+freigegebenen unveränderten Code, aber keine Notes, Planbegründung oder früheren
+Fehler. Die erzeugten Pakete liegen schreibgeschützt und inhaltsadressiert unter
+`.agent-runs/<run-id>/contexts/`. Gleicher Inhalt erzeugt dieselbe Datei;
+Prompt- und Kontext-Hash, Rolle und Lauf-ID werden in `metrics.csv` festgehalten.
+
+`scripts/agent/output.sh` weist fehlende, zusätzliche oder mehrdeutige
+Ausgabefelder ab. Große Worker-Antworten können begrenzt und redigiert lokal
+zusammengefasst werden; der unveränderte Rohoutput bleibt im Laufordner und wird
+nicht automatisch zu einem Ledger-Fakt.
 
 ## Runner-Grenze
 

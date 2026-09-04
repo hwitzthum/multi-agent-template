@@ -77,3 +77,21 @@ ist eine unabhängige Prüfung oder frische Perspektive dagegen wertvoll.
 **Folge für den Auftraggeber:** Der gewählte Modus und sein Grund bleiben im
 Laufstand sichtbar. Eine bewusste Vorgabe ist möglich, kann aber Prüfungen,
 Sicherheitsminimum oder eine notwendige menschliche Freigabe nicht abschalten.
+
+## 2026-09-04 — Jede Rolle erhält ein kleines, nachvollziehbares Kontextpaket
+
+**Was:** Jeder Modellaufruf bekommt einen festen Rollenvertrag und nur die für
+diese Rolle nötigen Auszüge. Die Pakete werden nach Abschnitten begrenzt,
+vertrauliche Muster werden entfernt und Inhalt sowie Prompt werden per
+Prüfsumme dokumentiert. Gleiche Eingaben bleiben als dieselbe lokale Datei
+nachvollziehbar.
+
+**Warum:** Eine vollständige Projekthistorie macht Aufrufe teuer und kann alte
+Irrwege oder Anweisungen aus Repository-Dateien ungewollt weitertragen. Kleine,
+feste Pakete machen deutlicher, worauf eine Entscheidung beruhte, ohne
+Frontmatter oder zusammengehörige Fehlertexte mitten im Block abzuschneiden.
+
+**Folge für den Auftraggeber:** Läufe lassen sich später anhand ihrer
+Prüfsummen vergleichen. Der Fresh Worker sieht bewusst weder frühere Notizen
+noch Lösungsbegründungen oder Fehler und liefert dadurch eine unabhängige
+Perspektive; Sicherheitsregeln, Ziel und Akzeptanz bleiben trotzdem verbindlich.
