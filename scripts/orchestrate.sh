@@ -36,7 +36,7 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$selection" ] || { [ "$dry_run" = true ] && selection=next || usage; }
 [ "$selection" != resume ] || { [ "$dry_run" = false ] && [ -z "$manual_mode" ] || usage; }
-case "$manual_mode" in ''|single|verified|managed) ;; managed-fresh) echo "orchestrate: managed-fresh folgt erst in Phase 07" >&2; exit 1 ;; *) echo "orchestrate: unbekannter Modus '$manual_mode'" >&2; exit 1 ;; esac
+case "$manual_mode" in ''|single|verified|managed|managed-fresh) ;; *) echo "orchestrate: unbekannter Modus '$manual_mode'" >&2; exit 1 ;; esac
 
 project_dir=$(CDPATH= cd -- "$project_dir" 2>/dev/null && pwd -P) || { echo "orchestrate: Projektpfad fehlt" >&2; exit 1; }
 validator="$script_dir/validate-ledger.sh"
@@ -47,6 +47,7 @@ verification_gateway="$script_dir/verify-task.sh"
 context_builder="$script_dir/agent/context.sh"
 output_tool="$script_dir/agent/output.sh"
 runner_adapter="$script_dir/agent/runner.sh"
+candidate_tool="$script_dir/agent/candidates.sh"
 runner=${ORCHESTRATOR_RUNNER:-$runner_adapter}
 current_run="$project_dir/docs/state/current-run.md"
 tasks_dir="$project_dir/docs/tasks"
@@ -61,6 +62,8 @@ max_iterations=$("$config_reader" --get MAX_GLOBAL_ITERATIONS "$project_dir/.age
 max_task_attempts=$("$config_reader" --get MAX_TASK_ATTEMPTS "$project_dir/.agent/config.env") || exit 1
 max_no_progress=$("$config_reader" --get MAX_NO_PROGRESS "$project_dir/.agent/config.env") || exit 1
 verify_timeout=$("$config_reader" --get VERIFY_TIMEOUT_SECONDS "$project_dir/.agent/config.env") || exit 1
+max_infra_retries=$("$config_reader" --get MAX_INFRA_RETRIES "$project_dir/.agent/config.env") || exit 1
+retry_backoff=$("$config_reader" --get RETRY_BACKOFF_SECONDS "$project_dir/.agent/config.env") || exit 1
 
 task_is_ready() {
   candidate=$1
@@ -228,6 +231,12 @@ $(ledger_list "$task_file" touches 2>/dev/null || true)
 EOF
     ;;
   esac
+  if [ "$role" = reviewer ]; then
+    context_args+=(
+      --candidate-a-diff "$reviewer_a_diff" --candidate-b-diff "$reviewer_b_diff"
+      --candidate-a-report "$reviewer_a_report" --candidate-b-report "$reviewer_b_report"
+    )
+  fi
   context=$("$context_builder" "${context_args[@]}") || return 1
   agent_repo_manifest "$project_dir" "$before" || return 1
   task_control_snapshot "$controls_before" || return 1
@@ -274,6 +283,7 @@ manager_value() {
 verify_candidate() {
   update_run_field phase verify || return 1
   call_sequence=$((call_sequence + 1))
+  mkdir -p "$run_dir/outputs" || return 1
   verify_log="$run_dir/outputs/$(printf '%02d' "$call_sequence")-verify.log"
   attempt_value=$(ledger_scalar "$task_file" attempts) || return 1
   attempt_value=$((attempt_value + 1))
@@ -377,10 +387,222 @@ EOF
   } | shasum -a 256 | awk '{print $1}'
 }
 
+run_finalizer_role() {
+  update_run_field phase finalize || return 1
+  finalizer_context=$("$context_builder" build --project-dir "$project_dir" --role finalizer --run-id "$run_id" --task-id "$task_id") || return 1
+  finalizer_workspace=$(mktemp -d "${TMPDIR:-/tmp}/agent-finalizer.XXXXXX") || return 1
+  mkdir -p "$finalizer_workspace/.agent" "$finalizer_workspace/.agent-runs/$run_id/outputs" "$finalizer_workspace/.agent-runs/$run_id/metadata" || { rm -rf "$finalizer_workspace"; return 1; }
+  cp -R "$project_dir/docs" "$finalizer_workspace/docs" || { rm -rf "$finalizer_workspace"; return 1; }
+  cp -R "$project_dir/scripts" "$finalizer_workspace/scripts" || { rm -rf "$finalizer_workspace"; return 1; }
+  cp "$project_dir/.agent/config.env" "$finalizer_workspace/.agent/config.env" || { rm -rf "$finalizer_workspace"; return 1; }
+  finalizer_context_copy="$finalizer_workspace/.agent-runs/$run_id/finalizer.context.md"
+  cp "$finalizer_context" "$finalizer_context_copy" || { rm -rf "$finalizer_workspace"; return 1; }
+  finalizer_raw="$finalizer_workspace/.agent-runs/$run_id/outputs/finalizer.raw"
+  finalizer_metadata="$finalizer_workspace/.agent-runs/$run_id/metadata/finalizer.env"
+  before="$finalizer_workspace/.agent-runs/$run_id/before.manifest"
+  after="$finalizer_workspace/.agent-runs/$run_id/after.manifest"
+  changes="$finalizer_workspace/.agent-runs/$run_id/changed-paths.txt"
+  agent_repo_manifest "$finalizer_workspace" "$before" || { rm -rf "$finalizer_workspace"; return 1; }
+  ORCHESTRATOR_PROJECT_DIR="$project_dir" "$runner" run_agent finalizer "$finalizer_context_copy" "$finalizer_workspace" "$finalizer_raw" "$finalizer_metadata"
+  finalizer_status=$?
+  "$runner_adapter" validate_metadata "$finalizer_metadata" >/dev/null 2>&1 || { rm -rf "$finalizer_workspace"; return 1; }
+  [ "$finalizer_status" -eq 0 ] && [ "$(awk -F= '$1 == "output_status" { print $2; exit }' "$finalizer_metadata")" = ok ] || { rm -rf "$finalizer_workspace"; return 1; }
+  "$output_tool" validate finalizer "$finalizer_raw" >/dev/null || { rm -rf "$finalizer_workspace"; return 1; }
+  agent_repo_manifest "$finalizer_workspace" "$after" || { rm -rf "$finalizer_workspace"; return 1; }
+  agent_manifest_changes "$before" "$after" > "$changes"
+  check_role_changes finalizer "$changes" || { rm -rf "$finalizer_workspace"; return 1; }
+  "$validator" --project-dir "$finalizer_workspace" >/dev/null || { rm -rf "$finalizer_workspace"; return 1; }
+  cp "$project_dir/docs/state/handoff.md" "$run_dir/finalizer-handoff.before" || { rm -rf "$finalizer_workspace"; return 1; }
+  cp "$project_dir/docs/state/notes.md" "$run_dir/finalizer-notes.before" || { rm -rf "$finalizer_workspace"; return 1; }
+  agent_atomic_write "$project_dir/docs/state/handoff.md" "$finalizer_workspace/docs/state/handoff.md" || { rm -rf "$finalizer_workspace"; return 1; }
+  agent_atomic_write "$project_dir/docs/state/notes.md" "$finalizer_workspace/docs/state/notes.md" || {
+    agent_atomic_write "$project_dir/docs/state/handoff.md" "$run_dir/finalizer-handoff.before" || true
+    rm -rf "$finalizer_workspace"
+    return 1
+  }
+  if ! "$validator" --project-dir "$project_dir" >/dev/null; then
+    agent_atomic_write "$project_dir/docs/state/handoff.md" "$run_dir/finalizer-handoff.before" || true
+    agent_atomic_write "$project_dir/docs/state/notes.md" "$run_dir/finalizer-notes.before" || true
+    rm -rf "$finalizer_workspace"
+    return 1
+  fi
+  cp "$finalizer_raw" "$run_dir/outputs/$(printf '%02d' "$((call_sequence + 1))")-finalizer.raw" || true
+  cp "$finalizer_metadata" "$run_dir/metadata/$(printf '%02d' "$((call_sequence + 1))")-finalizer.env" || true
+  call_sequence=$((call_sequence + 1))
+  rm -rf "$finalizer_workspace"
+}
+
 run_finalizer() {
   reason=$1
-  if run_role finalizer "$task_id" finalize; then :; else echo "orchestrate: Finalizer scheiterte" >&2; fi
+  if run_finalizer_role; then :; else echo "orchestrate: Finalizer scheiterte" >&2; fi
   block_current_task "$reason"
+}
+
+pause_with_finalizer() {
+  reason=$1
+  if run_finalizer_role; then :; else echo "orchestrate: Finalizer scheiterte" >&2; fi
+  update_run_field phase paused || return 1
+  run_active=false
+  echo "orchestrate: Lauf pausiert ($reason)" >&2
+}
+
+run_candidate_worker() {
+  candidate_name=$1
+  candidate_role=$2
+  candidate_root="$run_dir/candidates/$candidate_name/worktree"
+  [ -d "$candidate_root" ] || { echo "orchestrate: Kandidaten-Worktree fehlt: $candidate_name" >&2; return 1; }
+  update_run_field phase work || return 1
+  candidate_run_dir="$candidate_root/.agent-runs/$run_id"
+  mkdir -p "$candidate_run_dir/outputs" "$candidate_run_dir/metadata" "$candidate_run_dir/manifests" || return 1
+  context_args=(build --project-dir "$candidate_root" --role "$candidate_role" --run-id "$run_id" --task-id "$task_id")
+  while IFS= read -r include; do [ -n "$include" ] && context_args+=(--include "$include"); done <<EOF
+$(ledger_list "$task_file" touches 2>/dev/null || true)
+EOF
+  candidate_context=$("$context_builder" "${context_args[@]}") || return 1
+  candidate_before="$candidate_run_dir/manifests/$candidate_role.before"
+  candidate_after="$candidate_run_dir/manifests/$candidate_role.after"
+  candidate_changes="$candidate_run_dir/manifests/$candidate_role.changed"
+  agent_repo_manifest "$candidate_root" "$candidate_before" || return 1
+  fresh_git_link=''
+  if [ "$candidate_role" = worker-fresh ]; then
+    [ -f "$candidate_root/.git" ] && [ ! -L "$candidate_root/.git" ] || { echo "orchestrate: Fresh-Kandidat besitzt keinen sicheren Git-Verweis" >&2; return 1; }
+    fresh_git_link=$(sed -n '1p' "$candidate_root/.git")
+    case "$fresh_git_link" in gitdir:\ *) ;; *) echo "orchestrate: Fresh-Kandidat besitzt einen ungueltigen Git-Verweis" >&2; return 1 ;; esac
+    rm -f "$candidate_root/.git" || return 1
+  fi
+  infra_retry=0
+  invocation=1
+  while :; do
+    candidate_raw="$candidate_run_dir/outputs/$candidate_role-$invocation.raw"
+    candidate_metadata="$candidate_run_dir/metadata/$candidate_role-$invocation.env"
+    "$runner" run_agent "$candidate_role" "$candidate_context" "$candidate_root" "$candidate_raw" "$candidate_metadata"
+    candidate_runner_status=$?
+    if [ "$candidate_role" = worker-fresh ] && [ ! -f "$candidate_root/.git" ]; then printf '%s\n' "$fresh_git_link" > "$candidate_root/.git"; fi
+    if ! "$runner_adapter" validate_metadata "$candidate_metadata" >/dev/null 2>&1; then
+      echo "orchestrate: ungueltige Runner-Metadaten fuer $candidate_name" >&2
+      return 1
+    fi
+    candidate_output_status=$(awk -F= '$1 == "output_status" { print $2; exit }' "$candidate_metadata")
+    if [ "$candidate_runner_status" -eq 0 ] && [ "$candidate_output_status" != error ]; then break; fi
+    if [ "$infra_retry" -ge "$max_infra_retries" ]; then
+      echo "orchestrate: Infrastruktur-Retry fuer $candidate_name ist erschoepft" >&2
+      return 1
+    fi
+    infra_retry=$((infra_retry + 1))
+    sleep "$retry_backoff"
+    invocation=$((invocation + 1))
+    if [ "$candidate_role" = worker-fresh ]; then rm -f "$candidate_root/.git" || return 1; fi
+  done
+  if [ "$candidate_role" = worker-fresh ] && [ ! -f "$candidate_root/.git" ]; then printf '%s\n' "$fresh_git_link" > "$candidate_root/.git"; fi
+  [ "$candidate_output_status" = ok ] || { echo "orchestrate: Kandidatenausgabe $candidate_name ist $candidate_output_status" >&2; return 1; }
+  "$output_tool" validate "$candidate_role" "$candidate_raw" >/dev/null || return 1
+  agent_repo_manifest "$candidate_root" "$candidate_after" || return 1
+  agent_manifest_changes "$candidate_before" "$candidate_after" > "$candidate_changes"
+  check_role_changes "$candidate_role" "$candidate_changes" || return 1
+  "$validator" --project-dir "$candidate_root" >/dev/null || return 1
+  "$candidate_tool" capture --project-dir "$project_dir" --run-dir "$run_dir" --candidate "$candidate_name" --task-id "$task_id" || return 1
+}
+
+verify_isolated_candidate() {
+  candidate_name=$1
+  candidate_root="$run_dir/candidates/$candidate_name/worktree"
+  candidate_dir="$run_dir/candidates/$candidate_name"
+  update_run_field phase verify || return 1
+  if "$verification_gateway" --project-dir "$candidate_root" --run-id "$run_id" --attempt 1 --timeout "$verify_timeout" "$task_id" > "$candidate_dir/verify.log" 2>&1; then
+    candidate_result=green
+  else
+    candidate_result=red
+  fi
+  cp "$candidate_root/docs/verification/latest.md" "$candidate_dir/report.md" || return 1
+  report_result=$(ledger_scalar "$candidate_dir/report.md" result 2>/dev/null || true)
+  [ "$report_result" = "$candidate_result" ] || { echo "orchestrate: widerspruechlicher Kandidatenbericht" >&2; return 1; }
+  printf 'candidate=%s\nresult=%s\nbase_commit=%s\npatch_sha256=%s\n' \
+    "$candidate_name" "$candidate_result" "$(sed -n '1p' "$run_dir/candidates/base.commit")" \
+    "$(sed -n '1p' "$candidate_dir/patch.sha256")" > "$candidate_dir/result.env"
+}
+
+record_candidate_decision() {
+  selected_candidate=$1
+  decision_reason=$2
+  {
+    echo "selected=$selected_candidate"
+    echo "reason_code=$decision_reason"
+    echo "candidate_a_result=$candidate_a_result"
+    echo "candidate_b_result=$candidate_b_result"
+    echo 'requires_reverify=true'
+  } > "$run_dir/candidates/decision.env"
+}
+
+managed_fresh_loop() {
+  git -C "$project_dir" rev-parse --git-dir >/dev/null 2>&1 || { run_finalizer GIT_REQUIRED; return 1; }
+  "$candidate_tool" init --project-dir "$project_dir" --run-dir "$run_dir" >/dev/null || { run_finalizer CANDIDATE_INIT_FAILED; return 1; }
+
+  if ! run_candidate_worker candidate-a worker-task; then
+    "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true
+    run_finalizer CANDIDATE_A_INVALID
+    return 1
+  fi
+  verify_isolated_candidate candidate-a || { "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true; run_finalizer CANDIDATE_A_VERIFY_ERROR; return 1; }
+  candidate_a_result=$candidate_result
+
+  if ! run_candidate_worker candidate-b worker-fresh; then
+    "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true
+    run_finalizer CANDIDATE_B_INVALID
+    return 1
+  fi
+  verify_isolated_candidate candidate-b || { "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true; run_finalizer CANDIDATE_B_VERIFY_ERROR; return 1; }
+  candidate_b_result=$candidate_result
+
+  selected_candidate=''
+  decision_reason=''
+  if [ "$candidate_a_result" = green ] && [ "$candidate_b_result" = red ]; then
+    selected_candidate=candidate-a; decision_reason=ONLY_A_GREEN
+  elif [ "$candidate_a_result" = red ] && [ "$candidate_b_result" = green ]; then
+    selected_candidate=candidate-b; decision_reason=ONLY_B_GREEN
+  elif [ "$candidate_a_result" = red ] && [ "$candidate_b_result" = red ]; then
+    record_candidate_decision neither BOTH_RED
+    "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true
+    run_finalizer BOTH_CANDIDATES_RED
+    return 1
+  else
+    reviewer_a_diff="$run_dir/candidates/candidate-a/candidate.patch"
+    reviewer_b_diff="$run_dir/candidates/candidate-b/candidate.patch"
+    reviewer_a_report="$run_dir/candidates/candidate-a/report.md"
+    reviewer_b_report="$run_dir/candidates/candidate-b/report.md"
+    if ! run_role reviewer "$task_id" finalize; then
+      "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true
+      run_finalizer REVIEWER_INVALID
+      return 1
+    fi
+    recommendation=$(output_value RECOMMENDATION "$last_raw")
+    decision_reason=$(output_value REASON_CODE "$last_raw")
+    case "$recommendation" in
+      candidate-a|candidate-b) selected_candidate=$recommendation ;;
+      neither) record_candidate_decision neither "$decision_reason"; "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true; run_finalizer REVIEWER_NEITHER; return 1 ;;
+      human) record_candidate_decision human "$decision_reason"; "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true; run_finalizer HUMAN_DECISION; return 1 ;;
+      *) "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true; run_finalizer REVIEWER_INVALID; return 1 ;;
+    esac
+  fi
+
+  record_candidate_decision "$selected_candidate" "$decision_reason"
+  if ! "$candidate_tool" check-main --project-dir "$project_dir" --run-dir "$run_dir"; then
+    pause_with_finalizer EXTERNAL_CHANGE
+    return 1
+  fi
+  "$candidate_tool" apply --project-dir "$project_dir" --run-dir "$run_dir" --candidate "$selected_candidate" || { pause_with_finalizer APPLY_CONFLICT; return 1; }
+  if verify_candidate; then
+    "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true
+    finish_success
+    return 0
+  fi
+  "$candidate_tool" rollback --project-dir "$project_dir" --run-dir "$run_dir" --candidate "$selected_candidate" || {
+    pause_with_finalizer ROLLBACK_FAILED
+    return 1
+  }
+  "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true
+  record_failure || true
+  run_finalizer MAIN_REVERIFY_RED
+  return 1
 }
 
 switch_to_task() {
@@ -395,7 +617,6 @@ switch_to_task() {
 }
 
 managed_loop() {
-  case "$mode" in managed-fresh) echo "orchestrate: managed-fresh benötigt Phase 07" >&2; update_run_field phase paused; return 1 ;; esac
   if ! grep -qvE '^(#|[[:space:]]*$|.*Initialisierung.*|.*noch nicht.*|.*Platzhalter.*)$' "$project_dir/docs/state/plan.md"; then
     run_role manager-plan '' plan || return 1
   fi
@@ -437,7 +658,8 @@ managed_loop() {
 
     switch_to_task "$selected" || { update_run_field phase failed || true; return 1; }
     worker_kind=$(manager_value worker_kind "$decision")
-    [ "$worker_kind" = normal ] || { echo "orchestrate: Fresh Worker folgt erst in Phase 07" >&2; update_run_field phase paused; return 1; }
+    if [ "$worker_kind" = fresh ]; then managed_fresh_loop; return; fi
+    [ "$worker_kind" = normal ] || { echo "orchestrate: unbekannte Worker-Art" >&2; update_run_field phase paused; return 1; }
     run_role worker-task "$task_id" work || return 1
     worker_result=$(output_value RESULT "$last_raw")
     [ "$worker_result" != blocked ] || { run_finalizer WORKER_BLOCKED; return 1; }
@@ -496,8 +718,6 @@ else
   mode=$(route_value MODE "$route_file") || { rm -f "$route_file"; exit 1; }
   reason_code=$(route_value REASON_CODE "$route_file") || { rm -f "$route_file"; exit 1; }
   rm -f "$route_file"
-  [ "$mode" != managed-fresh ] || { echo "orchestrate: Route managed-fresh benötigt Phase 07" >&2; exit 1; }
-
   if [ "$dry_run" = true ]; then
     printf 'DRY_RUN=true\nTASK_ID=%s\nMODE=%s\nREASON_CODE=%s\nMAX_GLOBAL_ITERATIONS=%s\nMAX_TASK_ATTEMPTS=%s\nMAX_NO_PROGRESS=%s\n' \
       "$task_id" "$mode" "$reason_code" "$max_iterations" "$max_task_attempts" "$max_no_progress"
@@ -505,15 +725,22 @@ else
       single) echo 'PLANNED_CALLS=worker-task,verify' ;;
       verified) echo 'PLANNED_CALLS=worker-task,verify,worker-task-if-red,verify-if-fixed,manager-if-still-red' ;;
       managed) echo 'PLANNED_CALLS=manager-plan-if-needed,worker-brainstorm-once,manager-manage,worker-task,verify,repeat-bounded' ;;
+      managed-fresh) echo 'PLANNED_CALLS=worker-task-isolated,verify-a,worker-fresh-isolated,verify-b,reviewer-if-both-green,apply-selected,reverify-main' ;;
     esac
     exit 0
   fi
 
   [ "$mode" != blocked ] || { echo "orchestrate: Router blockiert Task $task_id vor dem Start" >&2; exit 1; }
 
-  if git -C "$project_dir" rev-parse --git-dir >/dev/null 2>&1 && [ "$allow_dirty" = false ] && [ -n "$(git -C "$project_dir" status --porcelain 2>/dev/null)" ]; then
-    echo "orchestrate: Arbeitsverzeichnis ist nicht sauber; wiederhole bewusst mit --allow-dirty" >&2
-    exit 1
+  if git -C "$project_dir" rev-parse --git-dir >/dev/null 2>&1 && [ -n "$(git -C "$project_dir" status --porcelain 2>/dev/null)" ]; then
+    if [ "$mode" = managed-fresh ]; then
+      echo "orchestrate: managed-fresh benoetigt einen sauberen, eindeutig versionierten Basisstand" >&2
+      exit 1
+    fi
+    if [ "$allow_dirty" = false ]; then
+      echo "orchestrate: Arbeitsverzeichnis ist nicht sauber; wiederhole bewusst mit --allow-dirty" >&2
+      exit 1
+    fi
   fi
   mkdir -p "$project_dir/.agent-runs" || exit 1
   agent_acquire_lock "$lock_dir" || exit 1
@@ -566,5 +793,6 @@ case "$mode" in
       exit 1
     fi ;;
   managed) managed_loop ;;
-  *) echo "orchestrate: Modus $mode wird in Phase 05 nicht ausgeführt" >&2; update_run_field phase paused || true; exit 1 ;;
+  managed-fresh) managed_fresh_loop ;;
+  *) echo "orchestrate: Modus $mode wird nicht ausgeführt" >&2; update_run_field phase paused || true; exit 1 ;;
 esac

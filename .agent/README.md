@@ -1,9 +1,9 @@
 # Architektur- und Sicherheitsvertrag der Agenten-Orchestrierung
 
-Status: Phase 06 ergänzt den begrenzten Manager–Worker-Loop um ein
-fingerprintgebundenes Verification Gateway. Kontrollflusstests verwenden
-ausschließlich einen Fake Runner; echte Aufrufe bleiben hinter dem
-Runner-Adapter gekapselt.
+Status: Phase 07 ergänzt den begrenzten Manager–Worker-Loop um isolierte
+Kandidaten, deterministische Vorauswahl, Review, sichere Übernahme und einen
+produktcodefreien Finalizer. Kontrollflusstests verwenden ausschließlich einen
+Fake Runner; echte Aufrufe bleiben hinter dem Runner-Adapter gekapselt.
 
 ## Verbindliche Zuständigkeiten
 
@@ -159,8 +159,8 @@ Laufzeit. Andere Skripte dürfen den Befehl `claude` nicht direkt aufrufen.
 ## Orchestrator-Vertrag
 
 `scripts/orchestrate.sh` wählt genau einen bereiten Task, sperrt den Ledger-
-Zustand, protokolliert Route und Checkpoints und führt `single`, `verified` oder
-`managed` innerhalb der konfigurierten Grenzen aus. `--dry-run` zeigt Route,
+Zustand, protokolliert Route und Checkpoints und führt `single`, `verified`,
+`managed` oder `managed-fresh` innerhalb der konfigurierten Grenzen aus. `--dry-run` zeigt Route,
 Budgets und geplante Rollen ohne Schreibzugriff; `--resume` akzeptiert nur
 `paused`/`failed` und weist fremde Änderungen seit dem letzten vollständigen
 Schritt ab. Ein absichtlich schmutziger Git-Stand benötigt `--allow-dirty`.
@@ -169,6 +169,31 @@ Rollenänderungen werden aus tatsächlichen Dateihashes ermittelt. Verbotene
 Steuerungspfade, Änderungen an geschützten Task-Feldern oder Produktpfade
 außerhalb von `touches` stoppen den Lauf. Rohoutput und Runner-Metadaten bleiben
 unter `.agent-runs/<run-id>/`; kein Agentenergebnis wird ungeprüft ausgewertet.
+
+## Fresh-, Review- und Finalizer-Vertrag
+
+`scripts/agent/candidates.sh` erzeugt für `managed-fresh` zwei getrennte
+Git-Worktrees vom selben dokumentierten Basis-Commit. Candidate B erhält eine
+technisch bereinigte `notes.md`; sein Kontext enthält weder historische Notes
+noch Candidate-A-Diff. Beide Patches, Hashes und Prüfberichte bleiben pro Lauf
+unter `.agent-runs/<run-id>/candidates/` auffindbar. Die Worktrees werden nach
+dokumentierter Auswahl kontrolliert entfernt; bei externer Hauptänderung bleibt
+der Lauf pausiert und der aktuelle Fingerprint wird nicht überschrieben.
+
+Nur grüne Kandidaten sind wählbar. Genau ein grüner Kandidat gewinnt
+deterministisch, zwei rote ergeben `neither`, und nur zwei grüne Kandidaten
+gehen mit ihren redigierten Diffs und strukturierten Berichten an den Reviewer.
+Vor Patchübernahme wird der Hauptstand erneut mit dem Startmanifest verglichen;
+nach Übernahme ist die vollständige Hauptverifikation Pflicht. Scheitert sie,
+wird der Produktpatch zurückgenommen und kein `done` erzeugt.
+
+Provider-/Timeoutfehler besitzen mit `MAX_INFRA_RETRIES` und
+`RETRY_BACKOFF_SECONDS` ein separates kleines Retry-Budget. Leere oder
+abgeschnittene Ausgaben werden nicht als Infrastruktur-Retry umgedeutet und nie
+in das Ledger übernommen. Der Finalizer läuft in einer Arbeitskopie ohne
+Produktcode. Nur validierte Änderungen an `docs/state/handoff.md` und
+`docs/state/notes.md` werden atomar zurückgespielt; Taskstatus und Laufabschluss
+bleiben beim Orchestrator und Status-Gate.
 
 ## Verification Gateway
 

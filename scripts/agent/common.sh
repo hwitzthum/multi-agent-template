@@ -173,6 +173,7 @@ agent_run_with_timeout() {
 }
 
 agent_repo_manifest() {
+  local project_dir destination file
   project_dir=$1
   destination=$2
   (
@@ -190,6 +191,7 @@ agent_repo_manifest() {
 }
 
 agent_product_manifest() {
+  local project_dir destination file
   project_dir=$1
   destination=$2
   (
@@ -221,6 +223,7 @@ agent_product_manifest() {
 }
 
 agent_manifest_changes() {
+  local before after
   before=$1
   after=$2
   awk '

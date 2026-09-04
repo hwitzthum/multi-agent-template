@@ -9,7 +9,8 @@ workdir=$4
 raw=$5
 metadata=$6
 [ -f "$context" ] || exit 1
-state_dir="$workdir/.agent-runs/fake"
+state_root=${ORCHESTRATOR_FAKE_STATE_DIR:-${ORCHESTRATOR_PROJECT_DIR:-$workdir}/.agent-runs/fake}
+state_dir=$state_root
 mkdir -p "$state_dir" "$(dirname -- "$raw")" "$(dirname -- "$metadata")"
 counter="$state_dir/$role.count"
 count=0
@@ -26,6 +27,14 @@ case "$action" in
   none) ;;
   write-good) printf '%s\n' good > "$workdir/src/app.txt" ;;
   write-bad) printf '%s\n' bad > "$workdir/src/app.txt" ;;
+  write-alpha) printf '%s\n' alpha > "$workdir/src/app.txt" ;;
+  write-beta) printf '%s\n' beta > "$workdir/src/app.txt" ;;
+  require-no-git-write-good)
+    [ ! -e "$workdir/.git" ] || { echo "fake-runner: Fresh-Workspace enthaelt einen Git-Verweis" >&2; exit 1; }
+    printf '%s\n' good > "$workdir/src/app.txt" ;;
+  write-good-external)
+    printf '%s\n' good > "$workdir/src/app.txt"
+    [ -n "${ORCHESTRATOR_PROJECT_DIR:-}" ] && printf '%s\n' external > "$ORCHESTRATOR_PROJECT_DIR/src/app.txt" ;;
   append-bad) printf '%s\n' bad >> "$workdir/src/app.txt" ;;
   forbidden) printf '%s\n' '# unerlaubte Worker-Aenderung' >> "$workdir/docs/state/plan.md" ;;
   empty) : > "$raw" ;;

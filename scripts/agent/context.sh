@@ -9,9 +9,13 @@ role=''
 run_id=''
 task_id=''
 includes=()
+candidate_a_diff=''
+candidate_b_diff=''
+candidate_a_report=''
+candidate_b_report=''
 
 usage() {
-  echo "Verwendung: $0 build --role ROLLE --run-id ID [--task-id ID] [--include PFAD] [--project-dir PFAD]" >&2
+  echo "Verwendung: $0 build --role ROLLE --run-id ID [--task-id ID] [--include PFAD] [--candidate-a-diff DATEI --candidate-b-diff DATEI --candidate-a-report DATEI --candidate-b-report DATEI] [--project-dir PFAD]" >&2
   exit 2
 }
 
@@ -23,6 +27,10 @@ while [ "$#" -gt 0 ]; do
     --run-id) [ "$#" -ge 2 ] || usage; run_id=$2; shift 2 ;;
     --task-id) [ "$#" -ge 2 ] || usage; task_id=$2; shift 2 ;;
     --include) [ "$#" -ge 2 ] || usage; includes+=("$2"); shift 2 ;;
+    --candidate-a-diff) [ "$#" -ge 2 ] || usage; candidate_a_diff=$2; shift 2 ;;
+    --candidate-b-diff) [ "$#" -ge 2 ] || usage; candidate_b_diff=$2; shift 2 ;;
+    --candidate-a-report) [ "$#" -ge 2 ] || usage; candidate_a_report=$2; shift 2 ;;
+    --candidate-b-report) [ "$#" -ge 2 ] || usage; candidate_b_report=$2; shift 2 ;;
     --project-dir) [ "$#" -ge 2 ] || usage; project_dir=$2; shift 2 ;;
     *) echo "context: unbekannte Option $1" >&2; exit 2 ;;
   esac
@@ -32,6 +40,14 @@ case "$role" in manager-plan|worker-brainstorm|manager-manage|worker-task|worker
 case "$run_id" in ''|.*|*[!A-Za-z0-9._-]*) echo "context: ungueltige run-id" >&2; exit 1 ;; esac
 case "$task_id" in *[!0-9]*) echo "context: ungueltige Task-ID" >&2; exit 1 ;; esac
 case "$role" in worker-brainstorm|worker-task|worker-fresh|reviewer) [ -n "$task_id" ] || { echo "context: Rolle $role benoetigt --task-id" >&2; exit 1; } ;; esac
+evidence_count=0
+for evidence in "$candidate_a_diff" "$candidate_b_diff" "$candidate_a_report" "$candidate_b_report"; do [ -n "$evidence" ] && evidence_count=$((evidence_count + 1)); done
+if [ "$role" = reviewer ]; then
+  [ "$evidence_count" -eq 0 ] || [ "$evidence_count" -eq 4 ] || { echo "context: Reviewer benoetigt entweder keine oder genau vier Kandidatenbelege" >&2; exit 1; }
+elif [ "$evidence_count" -ne 0 ]; then
+  echo "context: Kandidatenbelege sind nur fuer Reviewer erlaubt" >&2
+  exit 1
+fi
 
 project_dir=$(CDPATH= cd -- "$project_dir" && pwd -P) || { echo "context: Projektpfad fehlt" >&2; exit 1; }
 . "$script_dir/common.sh"
@@ -62,7 +78,7 @@ case "$role" in
   manager-manage) include_plan=true; include_notes=true; include_verification=true ;;
   worker-task) include_plan=true; include_notes=true; include_verification=true; include_code=true ;;
   worker-fresh) include_verification=true; include_code=true ;;
-  reviewer) include_verification=true; include_code=true ;;
+  reviewer) [ "$evidence_count" -eq 0 ] && { include_verification=true; include_code=true; } ;;
   finalizer) include_plan=true; include_notes=true; include_verification=true ;;
 esac
 
@@ -76,6 +92,7 @@ plan_raw="$work_dir/plan.raw"; plan_section="$work_dir/plan"
 notes_raw="$work_dir/notes.raw"; notes_section="$work_dir/notes"
 verification_raw="$work_dir/verification.raw"; verification_section="$work_dir/verification"
 code_raw="$work_dir/code.raw"; code_section="$work_dir/code"
+candidate_raw="$work_dir/candidates.raw"; candidate_section="$work_dir/candidates"
 final_work="$work_dir/context"
 
 awk '$0 == "# Strukturiertes Ergebnis" { exit } { print }' "$template" | agent_redact > "$role_contract"
@@ -185,11 +202,29 @@ if [ "$include_code" = true ]; then
   [ "$removed" = false ] || printf '%s\n' '[AUSGESCHLOSSENER PFAD ENTFERNT]' >> "$code_raw"
 fi
 
+: > "$candidate_raw"
+if [ "$role" = reviewer ] && [ "$evidence_count" -eq 4 ]; then
+  for entry in \
+    "candidate-a diff:$candidate_a_diff" \
+    "candidate-a report:$candidate_a_report" \
+    "candidate-b diff:$candidate_b_diff" \
+    "candidate-b report:$candidate_b_report"; do
+    label=${entry%%:*}
+    evidence=${entry#*:}
+    case "$evidence" in "$project_dir/.agent-runs/$run_id/candidates/"*) ;; *) echo "context: Kandidatenbeleg liegt ausserhalb des Laufs" >&2; exit 1 ;; esac
+    [ -f "$evidence" ] && [ ! -L "$evidence" ] || { echo "context: Kandidatenbeleg fehlt oder ist ein Symlink" >&2; exit 1; }
+    printf '### %s\n\n' "$label" >> "$candidate_raw"
+    agent_redact < "$evidence" >> "$candidate_raw"
+    echo >> "$candidate_raw"
+  done
+fi
+
 agent_truncate_blocks "$goal_raw" 8000 Goal > "$goal_section"
 agent_truncate_blocks "$task_raw" 12000 Task > "$task_section"
 agent_truncate_blocks "$plan_raw" 8000 Plan > "$plan_section"
 agent_truncate_blocks "$notes_raw" "$notes_max" Notes > "$notes_section"
 agent_truncate_blocks "$verification_raw" 8000 Verification > "$verification_section"
+agent_truncate_blocks "$candidate_raw" 20000 Kandidatenbelege > "$candidate_section"
 
 render_context() {
   destination=$1
@@ -217,6 +252,7 @@ render_context() {
       echo; echo '## Freigegebene Codeausschnitte oder Dateiliste'; echo
       if [ -s "$code_file" ]; then cat "$code_file"; else echo '(keine freigegebenen Dateien)'; fi
     fi
+    if [ "$role" = reviewer ] && [ "$evidence_count" -eq 4 ]; then echo; echo '## Isolierte Kandidatenbelege'; echo; cat "$candidate_section"; fi
     echo
     echo '## Ausgabeformat'
     echo
@@ -231,7 +267,7 @@ while [ "$(wc -c < "$final_work" | tr -d ' ')" -gt "$context_max" ]; do
   round=$((round + 1))
   [ "$round" -le 12 ] || { echo "context: Rollenvertrag passt nicht in CONTEXT_MAX_CHARS" >&2; exit 1; }
   largest=''; largest_size=0
-  for entry in "$notes_raw:$notes_section:Notes" "$plan_raw:$plan_section:Plan" "$verification_raw:$verification_section:Verification" "$goal_raw:$goal_section:Goal" "$task_raw:$task_section:Task"; do
+  for entry in "$candidate_raw:$candidate_section:Kandidatenbelege" "$notes_raw:$notes_section:Notes" "$plan_raw:$plan_section:Plan" "$verification_raw:$verification_section:Verification" "$goal_raw:$goal_section:Goal" "$task_raw:$task_section:Task"; do
     raw=${entry%%:*}; rest=${entry#*:}; section=${rest%%:*}; label=${entry##*:}
     size=$(wc -c < "$section" | tr -d ' ')
     if [ "$size" -gt "$largest_size" ]; then largest=$entry; largest_size=$size; fi
