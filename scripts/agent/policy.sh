@@ -51,7 +51,7 @@ role_may_write() {
     status-gate)
       case "$path" in docs/tasks/*.md) return 0;; *) return 1;; esac ;;
     finalizer)
-      case "$path" in docs/state/handoff.md|docs/state/notes.md|docs/state/current-run.md) return 0;; *) return 1;; esac ;;
+      case "$path" in docs/state/handoff.md|docs/state/notes.md) return 0;; *) return 1;; esac ;;
     orchestrator)
       case "$path" in docs/state/current-run.md|.agent-runs/*) return 0;; *) return 1;; esac ;;
     *) return 1 ;;

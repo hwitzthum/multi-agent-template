@@ -2,13 +2,13 @@
 plan_version: "1.1"
 progress_schema: 1
 overall_status: in_progress
-current_phase: "02"
-last_completed_phase: "01"
-last_handoff: "plans/handoffs/01-handoff.md"
+current_phase: "03"
+last_completed_phase: "02"
+last_handoff: "plans/handoffs/02-handoff.md"
 active_blocker: "none"
 rollout_stage: implementation
 pilot_status: not_started
-next_action: "Phase 02 umsetzen"
+next_action: "Phase 03 umsetzen"
 last_updated: "2026-09-04"
 ---
 
@@ -141,14 +141,14 @@ Abnahmekriterien erfüllt. „Dateien wurden geändert“ reicht nicht.
 
 <!-- PROGRESS:START -->
 
-**Aktueller Stand:** Phase 01 ist grün abgeschlossen. Phase 02 ist als nächster
+**Aktueller Stand:** Phase 02 ist grün abgeschlossen. Phase 03 ist als nächster
 einzelner Arbeitsauftrag bereit.
 
 | Phase | Status | Prüfung | Implementierungsstand | Handoff | Aktualisiert |
 |---|---|---|---|---|---|
 | 01 | `DONE` | `green` | `working-tree:5e04acd97d78f4cd62dddc16c001ea494ab5fb0d` | [01-handoff](handoffs/01-handoff.md) | 2026-09-04 |
-| 02 | `READY` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
-| 03 | `WAITING` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
+| 02 | `DONE` | `green` | `working-tree:6c39757075a2fe07d35b8b0a03beeee38eabdf45787b1825d6e957d649ed8ba3` | [02-handoff](handoffs/02-handoff.md) | 2026-09-04 |
+| 03 | `READY` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
 | 04 | `WAITING` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
 | 05 | `WAITING` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
 | 06 | `WAITING` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
@@ -156,7 +156,7 @@ einzelner Arbeitsauftrag bereit.
 | 08 | `WAITING` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
 | 09 | `WAITING` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
 
-**Nächster zulässiger Schritt:** Phase 02 umsetzen.
+**Nächster zulässiger Schritt:** Phase 03 umsetzen.
 
 <!-- PROGRESS:END -->
 

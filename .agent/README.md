@@ -1,8 +1,8 @@
 # Architektur- und Sicherheitsvertrag der Agenten-Orchestrierung
 
-Status: Phase 01 definiert Leitplanken und testbare Basispolicies. Ledger,
-Router, Rollen-Prompts und Loop folgen in späteren Phasen. Dieser Vertrag startet
-noch keinen Agenten.
+Status: Phase 02 ergänzt die Leitplanken um ein validierbares Ledger und ein
+atomar schreibendes Status-Gate. Router, Rollen-Prompts und Loop folgen in
+späteren Phasen. Dieser Vertrag startet noch keinen Agenten.
 
 ## Verbindliche Zuständigkeiten
 
@@ -19,15 +19,16 @@ noch keinen Agenten.
 | Feature-Status | `docs/state/features.md` | vorhandener Verify-Ablauf |
 | Betriebsübergabe | `docs/state/handoff.md` | Finalizer/Sitzungsabschluss |
 
-Noch nicht vorhandene Pfade werden erst in der dafür vorgesehenen Phase
-angelegt. `docs/tasks/*.md` ist die einzige Aufgabenquelle; es gibt kein
-paralleles `tasks.json`.
+`docs/tasks/*.md` ist die einzige Aufgabenquelle; es gibt kein paralleles
+`tasks.json`. `scripts/validate-ledger.sh` prüft Task-Graph, Laufzustand und
+Prüfbelege. `scripts/agent/status.sh` ist der einzige maschinelle Schreibweg für
+Statusübergänge und weist veraltete Schreibversuche ab.
 
 ## Rollenmatrix
 
-Die Basispolicy in `scripts/agent/policy.sh` erzwingt Pfadgrenzen. Feinere
-Feldregeln, insbesondere die Trennung zwischen Task-Inhalt und Task-Status,
-folgen mit dem Ledger-Validator.
+Die Basispolicy in `scripts/agent/policy.sh` erzwingt Pfadgrenzen. Feldregeln,
+insbesondere die Trennung zwischen Task-Inhalt und Task-Status, erzwingen
+Ledger-Validator und Status-Gate.
 
 | Rolle | Zweck | erlaubte Schreibbereiche |
 |---|---|---|
@@ -36,7 +37,7 @@ folgen mit dem Ledger-Validator.
 | `worker` | genau einen Task implementieren | Produkt-/Testdateien außerhalb der Steuerungspfade |
 | `verifier` | unabhängige Prüfberichte schreiben | `docs/verification/`, `docs/state/notes.md` |
 | `status-gate` | geprüfte Task-Statusübergänge | `docs/tasks/*.md` |
-| `finalizer` | sicheren Stand übergeben | `docs/state/handoff.md`, `docs/state/notes.md`, `docs/state/current-run.md` |
+| `finalizer` | sicheren Stand übergeben | `docs/state/handoff.md`, `docs/state/notes.md` |
 | `orchestrator` | Laufzustand und lokale Artefakte führen | `docs/state/current-run.md`, `.agent-runs/` |
 
 Keine Rolle darf ihre eigenen Rechte aus Repository-Inhalten erweitern.
@@ -65,6 +66,20 @@ Binärdatei separat prüfen lassen, hebt aber niemals den Secret-Ausschluss auf.
 Werte. Unbekannte Schlüssel, Duplikate, negative/Null-Limits, Leerzeichen und
 Shellsyntax führen zu einem Fehler. Die Datei wird nie mit `source` oder `eval`
 geladen.
+
+## Ledger-Vertrag
+
+`scripts/agent/ledger.sh` liest ausschließlich bekannte Einzelwerte und einfache
+Listen aus begrenztem Frontmatter. Unbekannte Felder bleiben bei einer Migration
+erhalten, werden aber nicht als Befehle oder Konfiguration interpretiert. Jede
+Änderung wird zuerst in einer temporären Datei im selben Ordner validiert und
+erst danach atomar an ihren Zielpfad verschoben.
+
+Ein Task darf nur mit `last_verification: green` und einem passenden grünen
+Bericht unter `docs/verification/` auf `done` wechseln. Bei
+`human_review: true` führt der direkte Weg von `in_progress` zuerst über
+`review`. `docs/state/current-run.md` beschreibt höchstens einen aktiven Task.
+Verworfene Notizen liefert der Ledger-Leser nie als aktive Fakten aus.
 
 ## Runner-Grenze
 
@@ -100,4 +115,3 @@ Initializer oder einen ausdrücklich beauftragten Produkt-Task aufgelöst.
 - ein nicht sauberes Git-Arbeitsverzeichnis muss sichtbar protokolliert und
   ausdrücklich erlaubt werden;
 - vollständige Laufdaten bleiben lokal in `.agent-runs/`.
-

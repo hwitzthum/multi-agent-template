@@ -46,3 +46,18 @@ kleiner, geprüfter Projektzustand.
 **Folge für den Auftraggeber:** Das Repository bleibt übersichtlich. Lokale
 Rohprotokolle werden nicht automatisch hochgeladen; sie müssen bei Bedarf vor
 einer Weitergabe separat geprüft werden.
+
+## 2026-09-04 — Statuswechsel brauchen einen überprüfbaren Beleg
+
+**Was:** Automatische Statuswechsel laufen ausschließlich über ein Status-Gate.
+Es vergleicht den erwarteten alten Status, prüft erlaubte Übergänge und verlangt
+vor `done` einen passenden grünen Prüfbericht. Dateien werden erst nach einer
+erfolgreichen Prüfung ersetzt.
+
+**Warum:** Ein verspäteter Agent könnte sonst neuere Arbeit überschreiben oder
+eine Aufgabe allein aufgrund seiner eigenen Behauptung als fertig markieren.
+Ein unterbrochener Schreibvorgang könnte außerdem eine halbe Datei hinterlassen.
+
+**Folge für den Auftraggeber:** „Fertig“ bedeutet künftig, dass eine konkrete
+Prüfung grün war. Bei Text, Optik oder anderen menschlichen Entscheidungen bleibt
+die Aufgabe zunächst sichtbar auf `review`.
