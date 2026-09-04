@@ -1,4 +1,4 @@
-# Handoff — 2026-09-04 20:30
+# Handoff — 2026-09-04 21:00
 
 ## Laufbeleg
 
@@ -6,8 +6,9 @@
 - Modus: keiner
 - Verifierstatus: NEVER — noch keine Task-Prüfung; `./scripts/verify.sh` ist bis
   zur Initialisierung ein Platzhalter und meldet GREEN
-- Letzter grüner Stand: Branch `cleanup/bugfixes-und-bereinigung`, noch nicht
-  committet; alle neun Testsuiten unter `tests/orchestrator/` GREEN
+- Letzter grüner Stand: `main` bei `37c6fcc` (Merge von
+  `cleanup/bugfixes-und-bereinigung`, Commit `9a03369`); alle neun Testsuiten
+  unter `tests/orchestrator/` GREEN
 
 ## Letzte Sitzung
 
@@ -25,6 +26,8 @@
   - Ungenutzte Funktion `agent_atomic_append_line` aus `common.sh` entfernt.
   - Gelöscht: `main.py`, `pyproject.toml`, `.mcp.json`, `KURSANLEITUNG.docx`,
     `plans/` (siehe `docs/state/decisions.md`).
+  - Branch committet, mit Merge-Commit in `main` übernommen und gelöscht.
+    Arbeitsbaum sauber; kein Remote konfiguriert, nichts gepusht.
 
 ## Achtung nächste Sitzung
 
@@ -35,8 +38,7 @@
 
 ## Für den Auftraggeber zu prüfen
 
-- Entscheidung: offen
-- Commit und Merge des Branches `cleanup/bugfixes-und-bereinigung` freigeben.
+- Entscheidung: bestätigt (Commit und Merge freigegeben und ausgeführt)
 - Entscheiden, ob die gelöschte Word-Fassung der Kursanleitung gebraucht wird;
   sie lässt sich mit `pandoc docs/KURSANLEITUNG.md -o KURSANLEITUNG.docx`
   jederzeit aus dem Markdown erzeugen.
@@ -44,8 +46,8 @@
 ## Fehler und Wiederaufnahme
 
 - Erster offener Fehler: keiner
-- Nächster Schritt: Branch committen und in `main` übernehmen; danach
-  Initialisierung nach `docs/templates/initializer-prompt.md`.
+- Nächster Schritt: Initialisierung nach `docs/templates/initializer-prompt.md`
+  auf einem neuen Branch ab `main`.
 
 ## Vorgeschlagene nächste Aufgabe
 
