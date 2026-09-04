@@ -1,0 +1,8 @@
+# Shell-Skripte müssen überall LF behalten. Mit CRLF (Windows-Standard beim
+# Klonen) scheitert schon die Shebang-Zeile — Git Bash meldet dann
+# "bad interpreter" bzw. "$'\r': command not found", und verify.sh sowie das
+# Commit-Gate laufen still ins Leere.
+*.sh text eol=lf
+
+# Die Kursanleitung als Word-Datei ist binär — nie Zeilenenden umwandeln.
+*.docx binary

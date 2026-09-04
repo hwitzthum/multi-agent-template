@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Liest .agent/config.env als validierte Daten. Niemals source/eval verwenden.
+set -uo pipefail
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
+project_dir=$(CDPATH= cd -- "$script_dir/../.." && pwd) || exit 1
+default_config="$project_dir/.agent/config.env"
+
+fail() {
+  echo "config: $1" >&2
+  return 1
+}
+
+known_key() {
+  case "$1" in
+    MAX_GLOBAL_ITERATIONS|MAX_TASK_ATTEMPTS|MAX_NO_PROGRESS|DEFAULT_MODE|CONTEXT_MAX_CHARS|NOTES_MAX_CHARS|VERIFY_TIMEOUT_SECONDS) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+valid_value() {
+  key=$1
+  value=$2
+  case "$key" in
+    DEFAULT_MODE)
+      case "$value" in
+        auto|single|verified|managed|managed-fresh) return 0 ;;
+        *) return 1 ;;
+      esac ;;
+    *)
+      case "$value" in
+        ''|*[!0-9]*|0) return 1 ;;
+        *) return 0 ;;
+      esac ;;
+  esac
+}
+
+validate_config() {
+  config_file=$1
+  [ -f "$config_file" ] || { fail "Datei fehlt: $config_file"; return 1; }
+
+  seen='|'
+  line_no=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line_no=$((line_no + 1))
+    case "$line" in
+      ''|'#'*) continue ;;
+      *[!A-Za-z0-9_=-]*) fail "unerlaubte Zeichen in Zeile $line_no"; return 1 ;;
+      *=*) ;;
+      *) fail "KEY=VALUE erwartet in Zeile $line_no"; return 1 ;;
+    esac
+
+    key=${line%%=*}
+    value=${line#*=}
+    [ -n "$key" ] && [ -n "$value" ] || { fail "leerer Schlüssel oder Wert in Zeile $line_no"; return 1; }
+    known_key "$key" || { fail "unbekannter Schlüssel $key"; return 1; }
+    case "$seen" in
+      *"|$key|"*) fail "doppelter Schlüssel $key"; return 1 ;;
+    esac
+    valid_value "$key" "$value" || { fail "ungültiger Wert für $key"; return 1; }
+    seen="${seen}${key}|"
+  done < "$config_file"
+
+  for required in MAX_GLOBAL_ITERATIONS MAX_TASK_ATTEMPTS MAX_NO_PROGRESS DEFAULT_MODE CONTEXT_MAX_CHARS NOTES_MAX_CHARS VERIFY_TIMEOUT_SECONDS; do
+    case "$seen" in
+      *"|$required|"*) ;;
+      *) fail "Pflichtschlüssel fehlt: $required"; return 1 ;;
+    esac
+  done
+}
+
+get_value() {
+  requested=$1
+  config_file=$2
+  known_key "$requested" || { fail "unbekannter Schlüssel $requested"; return 1; }
+  validate_config "$config_file" || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "$requested="*) printf '%s\n' "${line#*=}"; return 0 ;;
+    esac
+  done < "$config_file"
+  fail "Pflichtschlüssel fehlt: $requested"
+}
+
+usage() {
+  echo "Verwendung: $0 --check [config] | --get KEY [config]"
+}
+
+case "${1:-}" in
+  --check)
+    validate_config "${2:-$default_config}" ;;
+  --get)
+    [ -n "${2:-}" ] || { usage >&2; exit 2; }
+    get_value "$2" "${3:-$default_config}" ;;
+  *)
+    usage >&2
+    exit 2 ;;
+esac
