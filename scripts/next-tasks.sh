@@ -4,6 +4,12 @@ set -uo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 project_dir=$(CDPATH= cd -- "$script_dir/.." && pwd) || exit 1
+case "${1:-}" in
+  -h|--help)
+    echo "Verwendung: $0 [--project-dir PFAD]"
+    echo "Zeigt todo-Tasks, deren Abhängigkeiten vollständig done sind."
+    exit 0 ;;
+esac
 if [ "${1:-}" = --project-dir ]; then project_dir=$2; shift 2; fi
 [ "$#" -eq 0 ] || { echo "Verwendung: $0 [--project-dir PFAD]" >&2; exit 2; }
 . "$script_dir/agent/ledger.sh"

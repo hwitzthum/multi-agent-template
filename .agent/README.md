@@ -1,27 +1,25 @@
 # Architektur- und Sicherheitsvertrag der Agenten-Orchestrierung
 
-Status: Phase 07 ergänzt den begrenzten Manager–Worker-Loop um isolierte
-Kandidaten, deterministische Vorauswahl, Review, sichere Übernahme und einen
-produktcodefreien Finalizer. Kontrollflusstests verwenden ausschließlich einen
+Kontrollflusstests unter `tests/orchestrator/` verwenden ausschließlich einen
 Fake Runner; echte Aufrufe bleiben hinter dem Runner-Adapter gekapselt.
 
 ## Verbindliche Zuständigkeiten
 
-| Information | Verbindliche Quelle | Darf schreiben |
-|---|---|---|
-| ursprüngliches Ziel | `docs/state/goal.md` | Nutzer/Initializer, später kontrolliert |
-| Gesamtstrategie | `docs/state/plan.md` | Manager |
-| Task-Inhalt/Zerlegung | `docs/tasks/*.md` | Manager |
-| Task-Status | `docs/tasks/*.md` | ausschließlich Status-Gate |
-| Task-Versuchszähler | `docs/tasks/*.md` | Router bei bestätigtem Fehlschlag |
-| Erkenntnisse und Fehler | `docs/state/notes.md` | Rollen über Ledger-Funktion |
-| technische Entscheidungen | `docs/state/decisions.md` | zuständiger Agent, in Alltagssprache |
-| aktueller Lauf | `docs/state/current-run.md` | Orchestrator |
-| Laufmetrik | `docs/state/metrics.csv` | Orchestrator bei genau einem finalen Outcome |
-| lokale Laufdetails | `.agent-runs/<run-id>/metadata/` | Runner, Router und Orchestrator |
-| Prüfurteil | `docs/verification/` | Verifier |
-| Feature-Status | `docs/state/features.md` | vorhandener Verify-Ablauf |
-| Betriebsübergabe | `docs/state/handoff.md` | Finalizer/Sitzungsabschluss |
+| Information               | Verbindliche Quelle              | Darf schreiben                               |
+| ------------------------- | -------------------------------- | -------------------------------------------- |
+| ursprüngliches Ziel       | `docs/state/goal.md`             | Nutzer/Initializer, später kontrolliert      |
+| Gesamtstrategie           | `docs/state/plan.md`             | Manager                                      |
+| Task-Inhalt/Zerlegung     | `docs/tasks/*.md`                | Manager                                      |
+| Task-Status               | `docs/tasks/*.md`                | ausschließlich Status-Gate                   |
+| Task-Versuchszähler       | `docs/tasks/*.md`                | Router bei bestätigtem Fehlschlag            |
+| Erkenntnisse und Fehler   | `docs/state/notes.md`            | Rollen über Ledger-Funktion                  |
+| technische Entscheidungen | `docs/state/decisions.md`        | zuständiger Agent, in Alltagssprache         |
+| aktueller Lauf            | `docs/state/current-run.md`      | Orchestrator                                 |
+| Laufmetrik                | `docs/state/metrics.csv`         | Orchestrator bei genau einem finalen Outcome |
+| lokale Laufdetails        | `.agent-runs/<run-id>/metadata/` | Runner, Router und Orchestrator              |
+| Prüfurteil                | `docs/verification/`             | Verifier                                     |
+| Feature-Status            | `docs/state/features.md`         | vorhandener Verify-Ablauf                    |
+| Betriebsübergabe          | `docs/state/handoff.md`          | Finalizer/Sitzungsabschluss                  |
 
 `docs/tasks/*.md` ist die einzige Aufgabenquelle; es gibt kein paralleles
 `tasks.json`. `scripts/validate-ledger.sh` prüft Task-Graph, Laufzustand und
@@ -34,15 +32,15 @@ Die Basispolicy in `scripts/agent/policy.sh` erzwingt Pfadgrenzen. Feldregeln,
 insbesondere die Trennung zwischen Task-Inhalt und Task-Status, erzwingen
 Ledger-Validator und Status-Gate.
 
-| Rolle | Zweck | erlaubte Schreibbereiche |
-|---|---|---|
-| `manager` | planen und Tasks kuratieren | `docs/state/plan.md`, `docs/tasks/*.md` |
-| `brainstorm` | Hypothesen und Risiken sammeln | `docs/state/notes.md` |
-| `worker` | genau einen Task implementieren | Produkt-/Testdateien außerhalb der Steuerungspfade |
-| `verifier` | unabhängige Prüfberichte schreiben | `docs/verification/`, `docs/state/notes.md` |
-| `status-gate` | geprüfte Task-Statusübergänge | `docs/tasks/*.md` |
-| `finalizer` | sicheren Stand übergeben | `docs/state/handoff.md`, `docs/state/notes.md` |
-| `orchestrator` | Laufzustand und lokale Artefakte führen | `docs/state/current-run.md`, `.agent-runs/` |
+| Rolle          | Zweck                                   | erlaubte Schreibbereiche                           |
+| -------------- | --------------------------------------- | -------------------------------------------------- |
+| `manager`      | planen und Tasks kuratieren             | `docs/state/plan.md`, `docs/tasks/*.md`            |
+| `brainstorm`   | Hypothesen und Risiken sammeln          | `docs/state/notes.md`                              |
+| `worker`       | genau einen Task implementieren         | Produkt-/Testdateien außerhalb der Steuerungspfade |
+| `verifier`     | unabhängige Prüfberichte schreiben      | `docs/verification/`, `docs/state/notes.md`        |
+| `status-gate`  | geprüfte Task-Statusübergänge           | `docs/tasks/*.md`                                  |
+| `finalizer`    | sicheren Stand übergeben                | `docs/state/handoff.md`, `docs/state/notes.md`     |
+| `orchestrator` | Laufzustand und lokale Artefakte führen | `docs/state/current-run.md`, `.agent-runs/`        |
 
 Die konkreten Prompt-Rollen verwenden die Namen `manager-plan`,
 `worker-brainstorm`, `manager-manage`, `worker-task`, `worker-fresh`,
@@ -173,10 +171,10 @@ Ein Exitcode `0` bedeutet nur, dass der Modellaufruf technisch beendet wurde.
 Er beweist nicht, dass die Aufgabe korrekt oder vollständig ist. Fachliche
 Freigabe erfolgt ausschließlich über den späteren Verifier und das Status-Gate.
 
-Der Adapter liegt allein in `scripts/agent/runner.sh`. Auf dem während Phase 01
-geprüften Rechner ist Claude Code 2.1.260 verfügbar. Pfad und Version werden
-nicht fest in die Architektur geschrieben; der Adapter erkennt sie zur
-Laufzeit. Andere Skripte dürfen den Befehl `claude` nicht direkt aufrufen.
+Der Adapter liegt allein in `scripts/agent/runner.sh` und setzt das CLI
+`claude` voraus. Pfad und Version werden nicht fest in die Architektur
+geschrieben; der Adapter erkennt sie zur Laufzeit. Andere Skripte dürfen den
+Befehl `claude` nicht direkt aufrufen.
 
 ## Orchestrator-Vertrag
 
@@ -241,10 +239,9 @@ liegt unter `.agent-runs/<run-id>/verify/`. Das Status-Gate lässt `review` und
 
 ## Produkt-Stack
 
-Die Orchestrierung ist stackneutral. Das aktuelle Repository enthält sowohl ein
-Node.js-Landingpage-Profil als auch die unveränderten Beispieldateien `main.py`
-und `pyproject.toml`. Diese Inkonsistenz ist dokumentiert und wird erst durch
-Initializer oder einen ausdrücklich beauftragten Produkt-Task aufgelöst.
+Die Orchestrierung ist stackneutral. Das Repository enthält keinen Produktcode;
+Stack und Skelett legt erst der Initializer nach dem Profil unter
+`docs/profil/` an.
 
 ## Unveränderliche Sicherheitsregeln
 

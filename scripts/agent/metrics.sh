@@ -7,7 +7,6 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 . "$script_dir/ledger.sh"
 
 METRICS_HEADER='run_id,task_id,class,mode,model,prompt_version,manager_calls,worker_calls,verifier_runs,rounds,attempts,tokens_in,tokens_out,cost_estimate,duration_seconds,verification,human_review,outcome,date'
-LEGACY_HEADER='task_id,class,model,rounds,tokens_total,outcome,date,mode,reason_code,human_gate,rule_version,signals,run_id,prompt_hash,context_hash,role'
 
 metrics_fail() { echo "metrics: $1" >&2; return 1; }
 
@@ -35,7 +34,9 @@ metrics_ensure_schema() {
   [ -f "$file" ] && [ ! -L "$file" ] || { metrics_fail 'metrics.csv muss eine regulaere Datei sein'; return 1; }
   header=$(sed -n '1p' "$file")
   [ "$header" = "$METRICS_HEADER" ] && return 0
-  if [ "$header" = "$LEGACY_HEADER" ] && [ "$(wc -l < "$file" | tr -d ' ')" -eq 1 ]; then
+  # Eine aeltere Datei ohne Laufzeilen (nur Kopfzeile) wird verlustfrei auf das
+  # aktuelle Schema umgestellt; mit Laufzeilen bleibt sie unangetastet.
+  if [ "$(wc -l < "$file" | tr -d ' ')" -eq 1 ]; then
     tmp=$(mktemp "$(dirname -- "$file")/.metrics.csv.tmp.XXXXXX") || return 1
     printf '%s\n' "$METRICS_HEADER" > "$tmp"
     agent_atomic_write "$file" "$tmp"

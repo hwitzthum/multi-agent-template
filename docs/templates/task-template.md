@@ -31,6 +31,21 @@ Router. `touches` nennt betroffene Pfade oder Komponenten. `risk_flags` wird nur
 für bereits kuratierte Signale verwendet, die sich nicht zuverlässig aus dem
 Umfang ableiten lassen; freie oder unbekannte Werte sind ungültig.
 
+Modusbeispiele:
+
+- Routineänderung: `class: mechanical`, `orchestration: auto`,
+  `fresh_perspective: off` — empfohlen wird `single`.
+- Fachlogik nach vorhandenem Muster: `class: patterned`,
+  `orchestration: auto`, `fresh_perspective: auto` — empfohlen wird
+  `verified`.
+- Offene oder strittige Entscheidung: `class: open`, `human_review: true` —
+  empfohlen wird `managed`, die Aufgabe bleibt bis zur menschlichen Freigabe
+  auf `review`.
+- Festgefahrener Hochrisiko-Task: `risk_flags: [repeated-failure]` oder
+  `fresh_perspective: required` — empfohlen wird `managed-fresh`. Dieser Modus
+  braucht einen sauberen Git-Ausgangsstand und eine explizit freigegebene
+  Rollout-Stufe beziehungsweise Moduswahl.
+
 # Kontext
 <2–4 Zeilen: was und warum, mit relevanten Entscheidungen aus decisions.md/handoff.md>
 

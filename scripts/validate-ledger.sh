@@ -8,6 +8,12 @@ project_dir=$(CDPATH= cd -- "$script_dir/.." && pwd) || exit 1
 
 only_task=''
 current_run_override=''
+case "${1:-}" in
+  -h|--help)
+    echo "Verwendung: $0 [--project-dir PFAD] [--task-file DATEI] [--current-run-file DATEI]"
+    echo "Validiert Task-Graph, Ledger-Schema und Status-/Prüfbeziehungen."
+    exit 0 ;;
+esac
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --project-dir) project_dir=$2; shift 2 ;;

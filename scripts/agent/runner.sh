@@ -93,9 +93,11 @@ run_agent() {
   case "$timeout_seconds" in ''|*[!0-9]*|0) echo "runner: AGENT_TIMEOUT_SECONDS ist ungueltig" >&2; return 1 ;; esac
   model=${AGENT_MODEL:-default}
   started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  # stderr getrennt halten: Warnungen des CLI duerfen die strukturierte
+  # Rollenausgabe nicht verunreinigen; sie bleiben als .stderr im Laufordner.
   (
     cd "$workdir" || exit 1
-    agent_run_with_timeout "$timeout_seconds" claude -p --permission-mode acceptEdits --output-format text < "$context" > "$raw_output" 2>&1
+    agent_run_with_timeout "$timeout_seconds" claude -p --permission-mode acceptEdits --output-format text < "$context" > "$raw_output" 2> "$raw_output.stderr"
   )
   status=$?
   finished=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -115,7 +117,7 @@ case "${1:-}" in
     echo "exit 0 = Modellaufruf technisch beendet; keine fachliche Freigabe" ;;
   --check)
     if command -v claude >/dev/null 2>&1; then echo "runner: Claude Code verfügbar"; else echo "runner: kein unterstützter Agenten-CLI gefunden" >&2; exit 1; fi ;;
-  run_agent|invoke_role)
+  run_agent)
     shift
     run_agent "$@" ;;
   validate_metadata)

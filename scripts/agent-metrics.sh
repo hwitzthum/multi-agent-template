@@ -12,6 +12,13 @@ usage() {
   exit 2
 }
 
+case "${1:-}" in
+  -h|--help)
+    echo "Verwendung: $0 [summary] [--project-dir PFAD] | compare --manifest DATEI [--project-dir PFAD]"
+    echo "Fasst finalisierte Läufe zusammen oder vergleicht vorbereitete Pilotpaare."
+    exit 0 ;;
+esac
+
 if [ "${1:-}" = summary ] || [ "${1:-}" = compare ]; then command=$1; shift; fi
 while [ "$#" -gt 0 ]; do
   case "$1" in

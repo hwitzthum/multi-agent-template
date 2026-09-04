@@ -17,6 +17,13 @@ usage() {
   exit 2
 }
 
+case "${1:-}" in
+  -h|--help)
+    echo "Verwendung: $0 [--project-dir PFAD] [--mode MODUS] [--record] [--execution] [--escalate-from MODUS --expected-attempts N] TASK-ID"
+    echo "Ermittelt deterministisch einen Modus; startet selbst keinen Agenten."
+    exit 0 ;;
+esac
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --project-dir) [ "$#" -ge 2 ] || usage; project_dir=$2; shift 2 ;;

@@ -84,24 +84,6 @@ agent_copy_mode() {
   chmod "$mode" "$target_file"
 }
 
-agent_atomic_append_line() (
-  file=$1
-  line=$2
-  dir=$(dirname -- "$file")
-  base=$(basename -- "$file")
-  lock="$dir/.${base}.lock"
-  mkdir "$lock" 2>/dev/null || { echo "agent-common: $base wird bereits geschrieben" >&2; return 1; }
-  tmp=$(mktemp "$dir/.${base}.tmp.XXXXXX") || { rmdir "$lock"; return 1; }
-  cleanup_append() { rm -f "$tmp"; rmdir "$lock" 2>/dev/null || true; }
-  trap cleanup_append EXIT HUP INT TERM
-  cp "$file" "$tmp" || return 1
-  printf '%s\n' "$line" >> "$tmp" || return 1
-  agent_copy_mode "$file" "$tmp" || return 1
-  mv -f "$tmp" "$file" || return 1
-  trap - EXIT HUP INT TERM
-  rmdir "$lock" 2>/dev/null || true
-)
-
 agent_project_root() {
   start=${1:-.}
   start=$(CDPATH= cd -- "$start" 2>/dev/null && pwd -P) || return 1

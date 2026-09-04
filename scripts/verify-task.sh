@@ -18,6 +18,13 @@ usage() {
   exit 2
 }
 
+case "${1:-}" in
+  -h|--help)
+    echo "Verwendung: $0 [--project-dir PFAD] [--run-id ID] [--attempt N] [--timeout SEKUNDEN] TASK-ID"
+    echo "Prüft einen Task stufenweise und bindet das Ergebnis an Kandidat und Verifierstand."
+    exit 0 ;;
+esac
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --project-dir) [ "$#" -ge 2 ] || usage; project_dir=$2; shift 2 ;;
@@ -49,7 +56,7 @@ if [ -z "$attempt" ]; then
 fi
 case "$attempt" in ''|*[!0-9]*|0) echo "verify-task: ungueltiger Versuch" >&2; exit 2 ;; esac
 
-if [ -z "$run_id" ]; then run_id="$(date -u +%Y%m%dT%H%M%SZ)-T$task_id"; fi
+if [ -z "$run_id" ]; then run_id="$(date -u +%Y%m%dT%H%M%SZ)-T$(printf '%03d' "$((10#$task_id))")"; fi
 case "$run_id" in
   [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z-T[0-9][0-9][0-9]) ;;
   *) echo "verify-task: ungueltige Run-ID" >&2; exit 2 ;;

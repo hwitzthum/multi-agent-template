@@ -3,6 +3,14 @@
 set -uo pipefail
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 0
 project_dir=${CLAUDE_PROJECT_DIR:-$(dirname -- "$script_dir")}
+case "${1:-}" in
+  -h|--help)
+    echo "Verwendung: $0"
+    echo "Erklärt Lauf, letzten Prüfstand und offene Arbeit in genau drei Zeilen."
+    exit 0 ;;
+  '') ;;
+  *) echo "Verwendung: $0" >&2; exit 2 ;;
+esac
 cd "$project_dir" || exit 0
 . "$script_dir/agent/ledger.sh"
 

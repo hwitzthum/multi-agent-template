@@ -24,6 +24,14 @@ usage() {
   exit 2
 }
 
+case "${1:-}" in
+  -h|--help)
+    echo "Verwendung: $0 (--task ID | --next | --resume | --dry-run) [--mode MODUS] [--allow-dirty] [--project-dir PFAD]"
+    echo "  --dry-run zeigt Route, Limits und geplante Rollen ohne Produktänderung."
+    echo "  --resume setzt nur einen passenden pausierten oder fehlgeschlagenen Lauf fort."
+    exit 0 ;;
+esac
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --task) [ "$#" -ge 2 ] || usage; [ -z "$selection" ] || usage; selection=task; requested_task=$2; shift 2 ;;

@@ -129,3 +129,57 @@ separat ausgewiesen und entscheiden nicht über fachliche Qualität.
 rechtfertigen. Ohne die festgelegte Qualitätsverbesserung bleibt oder fällt der
 Schalter auf `single-verify` zurück. Der noch nicht beauftragte echte Pilot ist
 eine offene Betriebsaufgabe und keine fehlende technische Messung.
+
+## 2026-09-04 — Offene Aufgaben bleiben menschlich beaufsichtigt
+
+**Was:** Aufgaben mit `class: open` oder `human_review: true` dürfen nach einer
+grünen Maschinenprüfung nur auf `review` wechseln. Erst eine ausdrückliche
+menschliche Freigabe erlaubt `done`. Fehlende Entscheidungen führen nicht zu
+einer stillen Annahme, sondern zu einer Rückfrage oder Blockade.
+
+**Warum:** Texte, Gestaltung, Rechtliches und strittige Produktentscheidungen
+lassen sich nicht vollständig durch technische Tests beurteilen. Ein grüner
+Test beweist dort Funktionsfähigkeit, aber nicht, dass die Entscheidung für den
+Auftraggeber richtig ist.
+
+**Folge für den Auftraggeber:** Offene Arbeit verschwindet nicht automatisch
+aus der Aufgabenliste. Der Auftraggeber sieht im Handoff genau, was geprüft
+werden muss, und bestätigt die Entscheidung bewusst.
+
+## 2026-09-04 — Modellaufrufe und lokale Logs haben sichtbare Kostenfolgen
+
+**Was:** Zusätzliche Modellaufrufe sind nur erlaubt, wenn Taskklasse, kuratierte
+Risikosignale, ein bestätigter Fehlschlag oder eine ausdrückliche Moduswahl sie
+begründen. Harte Runden-, Versuchs- und Retry-Limits begrenzen die Nutzung.
+Tokens und Kosten werden nur erfasst, wenn der Anbieter echte Werte liefert;
+sie werden nie geschätzt. Vollständige Kontexte, Antworten und Logs bleiben
+lokal unter `.agent-runs/` und werden nicht versioniert.
+
+**Warum:** Manager-, Review- und Fresh-Worker-Aufrufe können Zuverlässigkeit
+erhöhen, verbrauchen aber mehr Zeit und Modellbudget. Lokale Logs helfen bei
+Fehleranalyse und Wiederaufnahme, können jedoch Inhalte aus dem Arbeitskontext
+wiederholen. Darum werden Secrets vor dem Kontextaufbau ausgeschlossen und
+Rohdaten nicht automatisch geteilt.
+
+**Folge für den Auftraggeber:** Ein einfacher Task löst nicht unnötig mehrere
+Modelle aus. Vor der Weitergabe eines Laufordners muss dessen Inhalt separat auf
+vertrauliche Daten geprüft werden; Löschen lokaler Laufdaten reduziert die
+Diagnose- und Wiederaufnahmemöglichkeiten. Der reale Pilot verursacht Kosten
+und startet nur nach einem eigenen Auftrag.
+
+## 2026-09-04 — Beispiel- und Bauunterlagen aus der Vorlage entfernt
+
+**Was:** Die von der Entwicklungsumgebung erzeugten Beispieldateien `main.py`
+und `pyproject.toml`, die leere `.mcp.json`, der Umbauplan unter `plans/` und
+die veraltete Word-Fassung `KURSANLEITUNG.docx` wurden gelöscht. Die
+Kursanleitung existiert nur noch als Markdown-Quelle.
+
+**Warum:** Das Python-Beispiel widersprach dem mitgelieferten Node.js-Profil
+und hatte keinen Bezug zum Produkt. Der Umbauplan war nach Abschluss aller
+Phasen reine Baugeschichte, die in der Git-Historie erhalten bleibt. Die
+Word-Datei war von Hand erstellt, nicht mehr mit dem Markdown synchron und
+ließ sich nicht automatisch prüfen.
+
+**Folge für den Auftraggeber:** Die Vorlage enthält nur noch, was für den
+Betrieb gebraucht wird. Eine Word-Fassung der Kursanleitung wird bei Bedarf mit
+einem Befehl aus dem Markdown erzeugt und nicht mehr versioniert.
