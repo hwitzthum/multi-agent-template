@@ -186,7 +186,8 @@ second=$(build_context worker-task --task-id 017 --include src/app.txt)
 metrics_after_second=$(wc -l < "$fixture/docs/state/metrics.csv" | tr -d ' ')
 [ "$first" = "$second" ] && [ "$first_hash" = "$(shasum -a 256 "$second" | awk '{print $1}')" ] && ok || bad "gleiche Inputs und Prompt-Version sind deterministisch"
 [ "$metrics_after_first" = "$metrics_after_second" ] && ok || bad "identischer Kontext erzeugt keine doppelte Metrik"
-grep -q ",$first_hash,worker-task$" "$fixture/docs/state/metrics.csv" && ok || bad "Kontext-Hash und Rolle stehen in Metriken"
+case "$first" in *"worker-task-017-$first_hash.md") ok ;; *) bad "Kontext-Hash und Rolle stehen im lokalen Artefakt" ;; esac
+[ "$metrics_after_first" = 1 ] && ok || bad "Kontextbau erzeugt keine vorzeitige Laufzeile"
 [ ! -w "$first" ] && ok || bad "Kontextdatei ist unveraenderlich markiert"
 
 old_hash=$(shasum -a 256 "$first" | awk '{print $1}')

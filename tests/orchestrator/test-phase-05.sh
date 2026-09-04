@@ -24,6 +24,8 @@ new_fixture() {
   fixture=$(mktemp -d "$tmp_root/case.XXXXXX") || exit 1
   mkdir -p "$fixture/.agent" "$fixture/docs/tasks" "$fixture/docs/state/notes-archive" "$fixture/docs/verification/history" "$fixture/docs/templates" "$fixture/src" "$fixture/.agent-runs/fake/responses" "$fixture/.agent-runs/fake/actions" "$fixture/scripts"
   cp "$project_dir/.agent/config.env" "$fixture/.agent/config.env"
+  sed 's/ROLLOUT_STAGE=shadow/ROLLOUT_STAGE=adaptive-execution/' "$fixture/.agent/config.env" > "$fixture/.agent/config.tmp"
+  mv "$fixture/.agent/config.tmp" "$fixture/.agent/config.env"
   cp -R "$project_dir/docs/templates/agents" "$fixture/docs/templates/agents"
   cp "$project_dir/docs/state/goal.md" "$fixture/docs/state/goal.md"
   cp "$project_dir/docs/state/plan.md" "$fixture/docs/state/plan.md"
@@ -168,7 +170,7 @@ echo write-good > "$fixture/.agent-runs/fake/actions/worker-task-1"
 expect_success "Managed-Modus führt Manager-Worker-Runde aus" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
 assert_eq "Managed startet einen Worker pro Runde" 1 "$(sed -n '1p' "$fixture/.agent-runs/fake/worker-task.count")"
 assert_eq "Managed ruft Brainstorm genau einmal" 1 "$(sed -n '1p' "$fixture/.agent-runs/fake/worker-brainstorm.count")"
-assert_eq "Managed schließt grünen Task ab" done "$(ledger_scalar "$fixture/docs/tasks/017.md" status)"
+assert_eq "Managed hält offenen grünen Task im Review" review "$(ledger_scalar "$fixture/docs/tasks/017.md" status)"
 
 new_fixture
 sed 's/class: mechanical/class: open/' "$fixture/docs/tasks/017.md" > "$fixture/docs/tasks/.tmp" && mv "$fixture/docs/tasks/.tmp" "$fixture/docs/tasks/017.md"

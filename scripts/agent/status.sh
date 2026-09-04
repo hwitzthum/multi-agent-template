@@ -75,11 +75,12 @@ fi
 
 if [ "$new_status" = done ]; then
   human_review=$(ledger_scalar "$task_file" human_review) || exit 1
-  if [ "$actual_status" = in_progress ] && [ "$human_review" = true ]; then
+  task_class=$(ledger_scalar "$task_file" class) || exit 1
+  if [ "$actual_status" = in_progress ] && { [ "$human_review" = true ] || [ "$task_class" = open ]; }; then
     echo "status-gate: Task $task_id benoetigt zuerst den Status review" >&2
     exit 1
   fi
-  if [ "$actual_status" = review ] && [ "$human_review" = true ] && [ "$human_approved" != true ]; then
+  if [ "$actual_status" = review ] && { [ "$human_review" = true ] || [ "$task_class" = open ]; } && [ "$human_approved" != true ]; then
     echo "status-gate: Task $task_id benoetigt eine ausdrueckliche menschliche Freigabe" >&2
     exit 1
   fi

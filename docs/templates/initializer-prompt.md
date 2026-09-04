@@ -60,18 +60,12 @@ Erzeuge genau:
      in --deep, nicht in die Standard-Prüfung.
    - Muss HEUTE auf dem Skelett grün laufen.
 
-4. scripts/state-summary.sh — ersetzt den Platzhalter. Läuft als
-   SessionStart-Hook (.claude/settings.json); seine Ausgabe landet direkt
-   im Kontext jeder neuen Sitzung. Vertrag:
-   ≤ 250 Tokens, Obergrenze PRO ABSCHNITT (kein globales Abschneiden):
-   1 Zeile git (Branch, uncommitted, letzter Commit) · Scoreboard
-   "N/M passing" · max. 8 FAILING-Features des aktuellen Meilensteins
-   (gefiltert über docs/state/current-milestone) · handoff.md komplett
-   · 1 Zeile Verify-Urteil (./scripts/verify.sh --quick | tail -n 1).
-   Lege docs/state/current-milestone an (eine Zeile; den ersten
-   Meilenstein nennt technik.md).
-   docs/state/metrics.csv existiert bereits (Kopfzeile); jede
-   abgeschlossene Aufgabe hängt eine Zeile an — nicht ändern.
+4. scripts/state-summary.sh — läuft als SessionStart-Hook
+   (.claude/settings.json). Vertrag: höchstens 250 Tokens und genau die drei
+   kompakten Zeilen `run`, `verify` sowie `ready | review | blocked`.
+   docs/state/metrics.csv existiert bereits mit dem verbindlichen
+   Phase-08-Schema; ausschließlich die idempotente Lauf-Finalisierung hängt
+   pro Run genau eine Zeile an. Fehlende Token- oder Kostenwerte bleiben leer.
 
    scripts/next-tasks.sh — ersetzt den Platzhalter. Liest das
    Frontmatter in docs/tasks/, gibt Aufgaben mit status: todo aus,

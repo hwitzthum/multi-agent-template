@@ -1,29 +1,37 @@
 #!/usr/bin/env bash
-# state-summary.sh — Projektzustand in ≤ 250 Tokens. Läuft automatisch als
-# SessionStart-Hook (.claude/settings.json): Die Ausgabe landet direkt im
-# Kontext der neuen Sitzung — auch nach /clear und nach jeder Komprimierung.
+# Bewusst nur drei kompakte Zeilen; geeignet fuer den SessionStart-Kontext.
 set -uo pipefail
-cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/..}" || exit 0
-. ./scripts/agent/ledger.sh
-echo "branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '-')"
-echo "features: Initialisierung noch nicht ausgeführt"
-counts=$(for wanted in todo in_progress review done blocked; do
-  count=0
-  while IFS= read -r file; do
-    [ -n "$file" ] || continue
-    [ "$(ledger_scalar "$file" status 2>/dev/null || true)" = "$wanted" ] && count=$((count + 1))
-  done <<EOF
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 0
+project_dir=${CLAUDE_PROJECT_DIR:-$(dirname -- "$script_dir")}
+cd "$project_dir" || exit 0
+. "$script_dir/agent/ledger.sh"
+
+run_id=$(ledger_scalar docs/state/current-run.md run_id 2>/dev/null || echo none)
+task_id=$(ledger_scalar docs/state/current-run.md task_id 2>/dev/null || echo none)
+mode=$(ledger_scalar docs/state/current-run.md mode 2>/dev/null || echo auto)
+iteration=$(ledger_scalar docs/state/current-run.md iteration 2>/dev/null || echo 0)
+attempt=$(ledger_scalar docs/state/current-run.md attempt 2>/dev/null || echo 0)
+max_iterations=$("$script_dir/agent/config.sh" --get MAX_GLOBAL_ITERATIONS .agent/config.env 2>/dev/null || echo '?')
+max_attempts=$("$script_dir/agent/config.sh" --get MAX_TASK_ATTEMPTS .agent/config.env 2>/dev/null || echo '?')
+if [ "$run_id" = none ]; then
+  echo 'run: none'
+else
+  printf 'run: T%03d %s iter %s/%s attempt %s/%s\n' "$((10#$task_id))" "$mode" "$iteration" "$max_iterations" "$attempt" "$max_attempts"
+fi
+
+verify_result=$(ledger_scalar docs/verification/latest.md result 2>/dev/null || echo never)
+failure_kind=$(ledger_scalar docs/verification/latest.md failure_kind 2>/dev/null || true)
+verify_upper=$(printf '%s' "$verify_result" | tr '[:lower:]' '[:upper:]')
+if [ -n "$failure_kind" ] && [ "$failure_kind" != none ]; then echo "verify: $verify_upper ($failure_kind)"; else echo "verify: $verify_upper"; fi
+
+ready=$("$script_dir/next-tasks.sh" --project-dir "$project_dir" 2>/dev/null | awk -F: '$1 == "READY" { count++ } END { print count+0 }')
+review=0 blocked=0
+while IFS= read -r file; do
+  [ -n "$file" ] || continue
+  status=$(ledger_scalar "$file" status 2>/dev/null || true)
+  [ "$status" != review ] || review=$((review + 1))
+  [ "$status" != blocked ] || blocked=$((blocked + 1))
+done <<EOF
 $(ledger_task_files docs/tasks)
 EOF
-  printf '%s=%s ' "$wanted" "$count"
-done)
-echo "tasks: $counts"
-route_reason=$(ledger_scalar docs/state/current-run.md route_reason_code 2>/dev/null || true)
-if [ -n "$route_reason" ] && [ "$route_reason" != none ]; then
-  route_mode=$(ledger_scalar docs/state/current-run.md mode 2>/dev/null || true)
-  echo "route: $route_mode ($route_reason)"
-fi
-echo "ready:"
-./scripts/next-tasks.sh 2>/dev/null | sed -n '1,5p'
-echo "--- handoff ---"
-[ -f docs/state/handoff.md ] && head -30 docs/state/handoff.md || echo "(kein handoff.md)"
+echo "ready: $ready | review: $review | blocked: $blocked"

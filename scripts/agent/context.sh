@@ -309,15 +309,4 @@ chmod 444 "$context_tmp" || { rm -f "$context_tmp"; rmdir "$lock"; exit 1; }
 mv -f "$context_tmp" "$destination" || { rm -f "$context_tmp"; rmdir "$lock"; exit 1; }
 rmdir "$lock" 2>/dev/null || true
 
-metrics="$project_dir/docs/state/metrics.csv"
-expected_header='task_id,class,model,rounds,tokens_total,outcome,date,mode,reason_code,human_gate,rule_version,signals,run_id,prompt_hash,context_hash,role'
-[ "$(sed -n '1p' "$metrics")" = "$expected_header" ] || { echo "context: metrics.csv hat ein unbekanntes Schema" >&2; exit 1; }
-run_file="$project_dir/docs/state/current-run.md"
-run_mode=$(ledger_scalar "$run_file" mode 2>/dev/null || printf auto)
-run_reason=$(ledger_scalar "$run_file" route_reason_code 2>/dev/null || printf none)
-run_gate=$(ledger_scalar "$run_file" route_human_gate 2>/dev/null || printf false)
-rule_version=$(ledger_scalar "$run_file" route_rule_version 2>/dev/null || printf 1)
-metric_task=${task_id:--}
-metric_line="$metric_task,$task_class,none,0,0,context-built,$(date -u +%Y-%m-%d),$run_mode,$run_reason,$run_gate,$rule_version,CONTEXT_BUILT,$run_id,$prompt_hash,$context_hash,$role"
-agent_atomic_append_line "$metrics" "$metric_line" || exit 1
 printf '%s\n' "$destination"

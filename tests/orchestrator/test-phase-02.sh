@@ -33,6 +33,7 @@ new_fixture() {
   cp "$project_dir/docs/state/plan.md" "$fixture/docs/state/plan.md"
   cp "$project_dir/docs/state/notes.md" "$fixture/docs/state/notes.md"
   cp "$project_dir/docs/state/current-run.md" "$fixture/docs/state/current-run.md"
+  cp "$project_dir/docs/state/metrics.csv" "$fixture/docs/state/metrics.csv"
   cp "$project_dir/docs/verification/latest.md" "$fixture/docs/verification/latest.md"
   cp "$project_dir/.agent/config.env" "$fixture/.agent/config.env"
 }

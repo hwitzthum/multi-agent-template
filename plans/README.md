@@ -2,13 +2,13 @@
 plan_version: "1.1"
 progress_schema: 1
 overall_status: in_progress
-current_phase: "08"
-last_completed_phase: "07"
-last_handoff: "plans/handoffs/07-handoff.md"
+current_phase: "09"
+last_completed_phase: "08"
+last_handoff: "plans/handoffs/08-handoff.md"
 active_blocker: "none"
-rollout_stage: implementation
+rollout_stage: shadow
 pilot_status: not_started
-next_action: "Phase 08 umsetzen"
+next_action: "Phase 09 umsetzen"
 last_updated: "2026-09-04"
 ---
 
@@ -141,8 +141,8 @@ Abnahmekriterien erfüllt. „Dateien wurden geändert“ reicht nicht.
 
 <!-- PROGRESS:START -->
 
-**Aktueller Stand:** Phase 07 ist grün abgeschlossen. Phase 08 ist als nächster
-einzelner Arbeitsauftrag bereit.
+**Aktueller Stand:** Phase 08 ist technisch grün abgeschlossen. Der
+kostenpflichtige Pilot ist vorbereitet, aber bewusst noch nicht gestartet.
 
 | Phase | Status | Prüfung | Implementierungsstand | Handoff | Aktualisiert |
 |---|---|---|---|---|---|
@@ -153,10 +153,10 @@ einzelner Arbeitsauftrag bereit.
 | 05 | `DONE` | `green` | `working-tree:6287f9b24127d1aac57b983b18f8f9918c490a4c4cb6aaa3070b2a49a3df1a7b` | [05-handoff](handoffs/05-handoff.md) | 2026-09-04 |
 | 06 | `DONE` | `green` | `working-tree:8c3a700a78dbb9db7fa272be1a026cf59d03deb7dea696bb50eb7d5a9fe4523f` | [06-handoff](handoffs/06-handoff.md) | 2026-09-04 |
 | 07 | `DONE` | `green` | `working-tree:23f854bfd3b7573744eff76e6a2169009b9c379b8acadaee9ee51b780bf24a3c` | [07-handoff](handoffs/07-handoff.md) | 2026-09-04 |
-| 08 | `READY` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
-| 09 | `WAITING` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
+| 08 | `DONE` | `green` | `working-tree:883a89cf7821de5c0a9871c95cb24d2e7c8aa34e531a8f8aef8a7aa40fa98be1` | [08-handoff](handoffs/08-handoff.md) | 2026-09-04 |
+| 09 | `READY` | `not_run` | `not_started` | `not_created` | 2026-09-04 |
 
-**Nächster zulässiger Schritt:** Phase 08 umsetzen.
+**Nächster zulässiger Schritt:** Phase 09 umsetzen.
 
 <!-- PROGRESS:END -->
 

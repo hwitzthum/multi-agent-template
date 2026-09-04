@@ -17,7 +17,8 @@ Fake Runner; echte Aufrufe bleiben hinter dem Runner-Adapter gekapselt.
 | Erkenntnisse und Fehler | `docs/state/notes.md` | Rollen über Ledger-Funktion |
 | technische Entscheidungen | `docs/state/decisions.md` | zuständiger Agent, in Alltagssprache |
 | aktueller Lauf | `docs/state/current-run.md` | Orchestrator |
-| Routing-Metrik | `docs/state/metrics.csv` | Router im Auftrag des Orchestrators |
+| Laufmetrik | `docs/state/metrics.csv` | Orchestrator bei genau einem finalen Outcome |
+| lokale Laufdetails | `.agent-runs/<run-id>/metadata/` | Runner, Router und Orchestrator |
 | Prüfurteil | `docs/verification/` | Verifier |
 | Feature-Status | `docs/state/features.md` | vorhandener Verify-Ablauf |
 | Betriebsübergabe | `docs/state/handoff.md` | Finalizer/Sitzungsabschluss |
@@ -91,15 +92,16 @@ Verworfene Notizen liefert der Ledger-Leser nie als aktive Fakten aus.
 
 ## Router-Vertrag
 
-`scripts/route-task.sh <task-id>` liefert maschinenlesbar genau `MODE`,
-`REASON_CODE` und `HUMAN_GATE`. Das Ausgangsmapping lautet `mechanical ->
+`scripts/route-task.sh <task-id>` liefert maschinenlesbar `MODE`,
+`RECOMMENDED_MODE`, `REASON_CODE`, `ROLLOUT_STAGE` und `HUMAN_GATE`. Das
+Ausgangsmapping lautet `mechanical ->
 single`, `patterned -> verified` und `open -> managed`. Authentifizierung,
 Berechtigungen, Zahlungen, Migrationen, Secrets, Deployment, mehrere explizite
 Komponenten sowie wiederholte Fehler dürfen einen Modus nur verschärfen.
 
 Eine Task-Vorgabe über `orchestration` oder ein bewusster Einmallauf über
-`--mode` wird respektiert, kann aber weder ein Sicherheitsminimum noch ein
-menschliches Gate umgehen. `ROUTER_ENABLED=false` deaktiviert die automatische
+`--mode` wird innerhalb der aktiven Rollout-Stufe respektiert; ein
+menschliches Gate bleibt bestehen. `ROUTER_ENABLED=false` deaktiviert die automatische
 Klassenzuordnung; harte Sicherheitsregeln bleiben trotzdem aktiv. Ein
 Fehlschlag wird mit `--escalate-from` genau eine Stufe weitergereicht und über
 `--expected-attempts` gegen parallele oder veraltete Aufrufe geschützt.
@@ -109,8 +111,9 @@ Bei `human_review: true` verlangt auch der letzte Übergang von `review` nach
 diese Freigabe wird abgewiesen.
 
 `--record` ist nur bei einem passenden aktiven Lauf zulässig. Es schreibt
-Regelversion, Eingabesignale und Entscheidung atomar nach `current-run.md` und
-ergänzt eine kompakte Zeile in `metrics.csv`. Der Router ändert nie den
+Regelversion, Eingabesignale und den ausgeführten Modus atomar nach
+`current-run.md`; Empfehlung und Rollout-Stufe landen in den lokalen
+Laufmetadaten. Der Router ändert nie den
 Task-Status und startet weder Worker noch Modelle.
 
 ## Prompt-, Kontext- und Ausgabevertrag
@@ -131,13 +134,32 @@ weder über Symlinks noch über Steuerungs- oder Secret-Pfade ausbrechen.
 Ein Fresh Worker erhält Goal, Task, Akzeptanz, Verifikationsvertrag und
 freigegebenen unveränderten Code, aber keine Notes, Planbegründung oder früheren
 Fehler. Die erzeugten Pakete liegen schreibgeschützt und inhaltsadressiert unter
-`.agent-runs/<run-id>/contexts/`. Gleicher Inhalt erzeugt dieselbe Datei;
-Prompt- und Kontext-Hash, Rolle und Lauf-ID werden in `metrics.csv` festgehalten.
+`.agent-runs/<run-id>/contexts/`. Gleicher Inhalt erzeugt dieselbe Datei.
+Prompt- und Kontext-Hash bleiben lokal nachvollziehbar; Zwischenereignisse
+erzeugen keine halben CSV-Laufzeilen.
 
 `scripts/agent/output.sh` weist fehlende, zusätzliche oder mehrdeutige
 Ausgabefelder ab. Große Worker-Antworten können begrenzt und redigiert lokal
 zusammengefasst werden; der unveränderte Rohoutput bleibt im Laufordner und wird
 nicht automatisch zu einem Ledger-Fakt.
+
+## Metrik- und Rollout-Vertrag
+
+`docs/state/metrics.csv` enthält pro finalisiertem Lauf genau eine kompakte
+Zeile. `scripts/agent/metrics.sh` führt die vollständigen lokalen Metadaten unter
+`.agent-runs/<run-id>/metadata/`, sperrt den CSV-Schreibvorgang und finalisiert
+idempotent. Nicht verfügbare Token-, Kosten- oder Qualitätswerte bleiben leer;
+sie werden nie geschätzt. Infrastrukturfehler, Verifierfehler, No-Progress,
+menschliches Review und fachlicher Erfolg sind getrennte Outcomes.
+
+`ROLLOUT_STAGE` kann ohne Datenmigration zwischen `shadow`, `single-verify`,
+`managed-opt-in`, `adaptive-recommendation` und `adaptive-execution` wechseln.
+Der ausgelieferte Stand ist `shadow`: automatische Routerentscheidungen werden
+als Empfehlung protokolliert, ausgeführt wird ohne explizite Vorgabe die
+Verified-Baseline. `scripts/orchestrate.sh --dry-run` schreibt nur lokale,
+eindeutig als `dry_run=true` markierte Metadaten und niemals eine Erfolgszeile.
+`scripts/agent-metrics.sh` zeigt Rohzahlen; `compare` akzeptiert Pilotpaare nur
+bei identischem Basis-Fingerprint.
 
 ## Runner-Grenze
 

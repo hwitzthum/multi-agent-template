@@ -29,6 +29,9 @@ write_metadata() {
     printf 'finished_at=%s\n' "$finished"
     printf 'exit_status=%s\n' "$exit_status"
     printf 'tokens_total=%s\n' "$tokens"
+    printf 'tokens_in=\n'
+    printf 'tokens_out=\n'
+    printf 'cost_estimate=\n'
     printf 'abort_reason=%s\n' "$abort_reason"
     printf 'output_status=%s\n' "$output_status"
   } > "$temp"
@@ -43,7 +46,7 @@ validate_metadata() {
     /^[A-Za-z_]+=/ {
       key=$0; sub(/=.*/, "", key); value=substr($0,length(key)+2)
       if (seen[key]++) fail("doppeltes Metadatenfeld " key)
-      if (key !~ /^(model|started_at|finished_at|exit_status|tokens_total|abort_reason|output_status)$/) fail("unbekanntes Metadatenfeld " key)
+      if (key !~ /^(model|started_at|finished_at|exit_status|tokens_total|tokens_in|tokens_out|cost_estimate|abort_reason|output_status)$/) fail("unbekanntes Metadatenfeld " key)
       values[key]=value
       next
     }
@@ -53,6 +56,9 @@ validate_metadata() {
       for (i=1;i<=7;i++) if (!(required[i] in seen) || values[required[i]] == "") fail("Pflichtfeld fehlt: " required[i])
       if (values["exit_status"] !~ /^[0-9]+$/) fail("exit_status ist nicht numerisch")
       if (values["tokens_total"] !~ /^([0-9]+|unknown)$/) fail("tokens_total ist ungueltig")
+      if (("tokens_in" in seen) && values["tokens_in"] !~ /^([0-9]+|unknown)?$/) fail("tokens_in ist ungueltig")
+      if (("tokens_out" in seen) && values["tokens_out"] !~ /^([0-9]+|unknown)?$/) fail("tokens_out ist ungueltig")
+      if (("cost_estimate" in seen) && values["cost_estimate"] !~ /^([0-9]+([.][0-9]+)?|unknown)?$/) fail("cost_estimate ist ungueltig")
       if (values["output_status"] !~ /^(ok|truncated|empty|error)$/) fail("output_status ist ungueltig")
       exit bad ? 1 : 0
     }

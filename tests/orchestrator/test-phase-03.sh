@@ -260,7 +260,7 @@ make_task 001 patterned auto false auto '' '' 0 3 in_progress
 make_active_run 001
 expect_output "Routing kann atomar protokolliert werden" "$patterned" "$router" --project-dir "$fixture" --record 001
 grep -Fqx 'mode: verified' "$fixture/docs/state/current-run.md" && grep -Fqx 'route_reason_code: PATTERNED_LOCAL' "$fixture/docs/state/current-run.md" && ok || bad "current-run enthaelt Routingentscheidung"
-[ "$(wc -l < "$fixture/docs/state/metrics.csv" | tr -d ' ')" = 2 ] && grep -q ',verified,PATTERNED_LOCAL,false,1,.*20260904T091500Z-T001,,,router$' "$fixture/docs/state/metrics.csv" && ok || bad "Metrik enthaelt Modus, Grund und Regelversion"
+[ "$(wc -l < "$fixture/docs/state/metrics.csv" | tr -d ' ')" = 1 ] && grep -Fqx 'recommended_mode=verified' "$fixture/.agent-runs/20260904T091500Z-T001/metadata/route.env" && ok || bad "Routing bleibt lokal und erzeugt keine vorzeitige Laufzeile"
 expect_success "protokollierter Lauf bleibt gueltig" "$validator" --project-dir "$fixture"
 
 new_fixture

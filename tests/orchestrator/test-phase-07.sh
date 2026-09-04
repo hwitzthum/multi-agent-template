@@ -170,7 +170,7 @@ printf '%s\n' write-bad > "$fixture/.agent-runs/fake/actions/worker-task-1"
 printf '%s\n' require-no-git-write-good > "$fixture/.agent-runs/fake/actions/worker-fresh-1"
 expect_success "Nur der grüne Fresh-Kandidat wird übernommen" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
 assert_eq "Grüner Kandidat verdrängt roten" good "$(sed -n '1p' "$fixture/src/app.txt")"
-assert_eq "Erneute Hauptprüfung schließt Task ab" done "$(ledger_scalar "$fixture/docs/tasks/017.md" status)"
+assert_eq "Erneute Hauptprüfung führt offene Aufgabe ins Review" review "$(ledger_scalar "$fixture/docs/tasks/017.md" status)"
 decision=$(latest_run_file)
 assert_file_has "Entscheidung protokolliert Fresh-Gewinner" "$decision" 'selected=candidate-b'
 assert_file_has "Übernahme verlangt Reverify" "$decision" 'requires_reverify=true'

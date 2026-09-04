@@ -107,3 +107,25 @@ Zeitstempel und Logdateien endlos wie Fortschritt aussehen.
 
 **Folge für den Auftraggeber:** Ein unveränderter Wiederholungsversuch führt
 kontrolliert zum Finalizer; der letzte konsistente Stand bleibt fortsetzbar.
+
+## 2026-09-04 — Rollout-Schwellen werden vor dem Pilot eingefroren
+
+**Was:** Der Pilot umfasst 20 gepaarte Aufgaben: sechs mechanische, acht
+regelbasierte und sechs offene. Die Manager-Variante wird für `patterned` nur
+freigegeben, wenn sie mindestens zwei zusätzliche grüne Paare erreicht oder bei
+gleicher Zahl grüner Paare mindestens drei menschliche Korrekturen vermeidet.
+Dabei darf sie keine zusätzliche Regression erzeugen. `managed-fresh` wird nur
+für festgefahrene oder hochriskante Fälle freigegeben, wenn es dort mindestens
+zwei zusätzliche grüne Paare ohne zusätzliche Regression erzielt. Für
+`mechanical` bleibt Single + Verify Standard, solange die Manager-Variante nicht
+nachweislich zuverlässiger ist. Offene Aufgaben bleiben immer beaufsichtigt.
+
+**Warum:** Bei nur 20 Aufgaben wären fein aufgelöste Prozentwerte irreführend.
+Vorab festgelegte Rohzahl-Schwellen verhindern, dass die Regeln nach Sichtung
+der Ergebnisse passend gemacht werden. Infrastruktur- und Harness-Fehler werden
+separat ausgewiesen und entscheiden nicht über fachliche Qualität.
+
+**Folge für den Auftraggeber:** Höhere Kosten allein können keine Aktivierung
+rechtfertigen. Ohne die festgelegte Qualitätsverbesserung bleibt oder fällt der
+Schalter auf `single-verify` zurück. Der noch nicht beauftragte echte Pilot ist
+eine offene Betriebsaufgabe und keine fehlende technische Messung.

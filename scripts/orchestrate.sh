@@ -16,6 +16,8 @@ allow_dirty=false
 lock_held=false
 run_active=false
 call_sequence=0
+metrics_started=false
+run_outcome=''
 
 usage() {
   echo "Verwendung: $0 (--task ID | --next | --resume | --dry-run) [--mode MODUS] [--allow-dirty] [--project-dir PFAD]" >&2
@@ -48,6 +50,7 @@ context_builder="$script_dir/agent/context.sh"
 output_tool="$script_dir/agent/output.sh"
 runner_adapter="$script_dir/agent/runner.sh"
 candidate_tool="$script_dir/agent/candidates.sh"
+metrics_tool="$script_dir/agent/metrics.sh"
 runner=${ORCHESTRATOR_RUNNER:-$runner_adapter}
 current_run="$project_dir/docs/state/current-run.md"
 tasks_dir="$project_dir/docs/tasks"
@@ -57,6 +60,7 @@ lock_dir="$project_dir/.agent-runs/.orchestrator-lock"
 
 [ -x "$runner" ] || { echo "orchestrate: Runner ist nicht ausführbar: $runner" >&2; exit 1; }
 "$config_reader" --check "$project_dir/.agent/config.env" || exit 1
+"$metrics_tool" ensure-schema "$project_dir" || exit 1
 "$validator" --project-dir "$project_dir" >/dev/null || exit 1
 max_iterations=$("$config_reader" --get MAX_GLOBAL_ITERATIONS "$project_dir/.agent/config.env") || exit 1
 max_task_attempts=$("$config_reader" --get MAX_TASK_ATTEMPTS "$project_dir/.agent/config.env") || exit 1
@@ -64,6 +68,14 @@ max_no_progress=$("$config_reader" --get MAX_NO_PROGRESS "$project_dir/.agent/co
 verify_timeout=$("$config_reader" --get VERIFY_TIMEOUT_SECONDS "$project_dir/.agent/config.env") || exit 1
 max_infra_retries=$("$config_reader" --get MAX_INFRA_RETRIES "$project_dir/.agent/config.env") || exit 1
 retry_backoff=$("$config_reader" --get RETRY_BACKOFF_SECONDS "$project_dir/.agent/config.env") || exit 1
+
+product_fingerprint() {
+  destination=$1
+  manifest=$(mktemp "${TMPDIR:-/tmp}/agent-base-manifest.XXXXXX") || return 1
+  agent_product_manifest "$project_dir" "$manifest" || { rm -f "$manifest"; return 1; }
+  shasum -a 256 "$manifest" | awk '{print $1}' > "$destination"
+  rm -f "$manifest"
+}
 
 task_is_ready() {
   candidate=$1
@@ -87,9 +99,9 @@ select_next_task() {
 
 route_task() {
   if [ -n "$manual_mode" ]; then
-    "$router" --project-dir "$project_dir" --mode "$manual_mode" "$task_id"
+    "$router" --project-dir "$project_dir" --execution --mode "$manual_mode" "$task_id"
   else
-    "$router" --project-dir "$project_dir" "$task_id"
+    "$router" --project-dir "$project_dir" --execution "$task_id"
   fi
 }
 
@@ -242,9 +254,9 @@ EOF
   task_control_snapshot "$controls_before" || return 1
   "$runner" run_agent "$role" "$context" "$project_dir" "$raw" "$metadata"
   runner_status=$?
-  "$runner_adapter" validate_metadata "$metadata" >/dev/null 2>&1 || { echo "orchestrate: ungültige Runner-Metadaten für $role" >&2; return 1; }
-  [ "$runner_status" -eq 0 ] || { echo "orchestrate: Agentenaufruf $role scheiterte (Exit $runner_status)" >&2; return 1; }
-  [ "$(awk -F= '$1 == "output_status" { print $2; exit }' "$metadata")" = ok ] || { echo "orchestrate: Agentenausgabe $role ist leer, abgeschnitten oder fehlerhaft" >&2; return 1; }
+  "$runner_adapter" validate_metadata "$metadata" >/dev/null 2>&1 || { run_outcome=infrastructure_error; echo "orchestrate: ungültige Runner-Metadaten für $role" >&2; return 1; }
+  [ "$runner_status" -eq 0 ] || { run_outcome=infrastructure_error; echo "orchestrate: Agentenaufruf $role scheiterte (Exit $runner_status)" >&2; return 1; }
+  [ "$(awk -F= '$1 == "output_status" { print $2; exit }' "$metadata")" = ok ] || { run_outcome=infrastructure_error; echo "orchestrate: Agentenausgabe $role ist leer, abgeschnitten oder fehlerhaft" >&2; return 1; }
   "$output_tool" validate "$role" "$raw" >/dev/null || return 1
   agent_repo_manifest "$project_dir" "$after" || return 1
   agent_manifest_changes "$before" "$after" > "$changes"
@@ -334,8 +346,10 @@ record_failure() {
 
 finish_success() {
   human_review=$(ledger_scalar "$task_file" human_review) || return 1
-  if [ "$human_review" = true ]; then target=review; else target=done; fi
+  route_human_gate=$(ledger_scalar "$current_run" route_human_gate 2>/dev/null || echo false)
+  if [ "$human_review" = true ] || [ "$route_human_gate" = true ]; then target=review; else target=done; fi
   "$status_gate" --project-dir "$project_dir" set-status "$task_id" "$target" in_progress || return 1
+  if [ "$target" = review ]; then run_outcome=review; else run_outcome=success; fi
   update_run_field phase finished || return 1
   run_active=false
   checkpoint_product || return 1
@@ -345,6 +359,7 @@ finish_success() {
 finish_single_red() {
   record_failure || true
   "$status_gate" --project-dir "$project_dir" set-status "$task_id" todo in_progress || return 1
+  if [ "$(ledger_scalar "$verification_dir/latest.md" failure_kind 2>/dev/null || true)" = verifier ]; then run_outcome=verification_error; else run_outcome=blocked; fi
   update_run_field phase finished || return 1
   run_active=false
   checkpoint_product || return 1
@@ -359,6 +374,11 @@ block_current_task() {
   validate_task_candidate() { "$validator" --project-dir "$project_dir" --task-file "$1" >/dev/null; }
   ledger_atomic_replace_scalar "$task_file" blocked_reason "$safe_reason" validate_task_candidate || return 1
   "$status_gate" --project-dir "$project_dir" set-status "$task_id" blocked in_progress || return 1
+  case "$safe_reason" in
+    NO_PROGRESS) run_outcome=no_progress ;;
+    *VERIFY_ERROR*) run_outcome=verification_error ;;
+    *) run_outcome=blocked ;;
+  esac
   update_run_field phase finished || return 1
   run_active=false
   checkpoint_product || return 1
@@ -479,12 +499,15 @@ EOF
     candidate_runner_status=$?
     if [ "$candidate_role" = worker-fresh ] && [ ! -f "$candidate_root/.git" ]; then printf '%s\n' "$fresh_git_link" > "$candidate_root/.git"; fi
     if ! "$runner_adapter" validate_metadata "$candidate_metadata" >/dev/null 2>&1; then
+      run_outcome=infrastructure_error
       echo "orchestrate: ungueltige Runner-Metadaten fuer $candidate_name" >&2
       return 1
     fi
+    cp "$candidate_metadata" "$run_dir/metadata/$candidate_name-$candidate_role-$invocation.env" || return 1
     candidate_output_status=$(awk -F= '$1 == "output_status" { print $2; exit }' "$candidate_metadata")
     if [ "$candidate_runner_status" -eq 0 ] && [ "$candidate_output_status" != error ]; then break; fi
     if [ "$infra_retry" -ge "$max_infra_retries" ]; then
+      run_outcome=infrastructure_error
       echo "orchestrate: Infrastruktur-Retry fuer $candidate_name ist erschoepft" >&2
       return 1
     fi
@@ -599,6 +622,7 @@ managed_fresh_loop() {
     pause_with_finalizer ROLLBACK_FAILED
     return 1
   }
+  : > "$run_dir/rollback.performed"
   "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true
   record_failure || true
   run_finalizer MAIN_REVERIFY_RED
@@ -684,6 +708,24 @@ cleanup() {
     phase=$(ledger_scalar "$current_run" phase 2>/dev/null || true)
     case "$phase" in finished|paused|failed) ;; *) update_run_field phase failed >/dev/null 2>&1 || true ;; esac
   fi
+  if [ "$metrics_started" = true ] && [ -f "$run_dir/metadata/run.env" ]; then
+    phase=$(ledger_scalar "$current_run" phase 2>/dev/null || true)
+    if [ "$phase" != paused ]; then
+      if [ -z "$run_outcome" ]; then
+        if [ "$exit_status" -eq 130 ]; then
+          run_outcome=cancelled
+        elif find "$run_dir/metadata" -maxdepth 1 -type f -name '*.env' ! -name run.env -exec awk -F= '$1 == "exit_status" && $2 != "0" { bad=1 } END { exit bad ? 0 : 1 }' {} \; -print -quit 2>/dev/null | grep -q .; then
+          run_outcome=infrastructure_error
+        elif [ "$(ledger_scalar "$verification_dir/latest.md" failure_kind 2>/dev/null || true)" = verifier ] && [ "$(ledger_scalar "$verification_dir/latest.md" run_id 2>/dev/null || true)" = "$run_id" ]; then
+          run_outcome=verification_error
+        else
+          task_status=$(ledger_scalar "$task_file" status 2>/dev/null || true)
+          case "$task_status" in done) run_outcome=success ;; review) run_outcome=review ;; *) run_outcome=blocked ;; esac
+        fi
+      fi
+      "$metrics_tool" finalize "$project_dir" "$run_dir" "$run_outcome" >/dev/null || exit_status=1
+    fi
+  fi
   [ "$lock_held" = false ] || agent_release_lock "$lock_dir"
   exit "$exit_status"
 }
@@ -700,6 +742,8 @@ if [ "$resume" = true ]; then
   mode=$(ledger_scalar "$current_run" mode) || exit 1
   run_dir="$project_dir/.agent-runs/$run_id"
   checkpoint_matches || exit 1
+  "$metrics_tool" reopen "$project_dir" "$run_dir" || exit 1
+  metrics_started=true
   call_sequence=$(find "$run_dir/outputs" -maxdepth 1 -type f -name '[0-9][0-9]-*' -print 2>/dev/null | sed 's#.*/##; s/-.*//' | LC_ALL=C sort -n | tail -n 1)
   call_sequence=${call_sequence:-0}
 else
@@ -717,10 +761,17 @@ else
   route_task > "$route_file" || { rm -f "$route_file"; exit 1; }
   mode=$(route_value MODE "$route_file") || { rm -f "$route_file"; exit 1; }
   reason_code=$(route_value REASON_CODE "$route_file") || { rm -f "$route_file"; exit 1; }
+  recommended_mode=$(route_value RECOMMENDED_MODE "$route_file") || { rm -f "$route_file"; exit 1; }
+  rollout_stage=$(route_value ROLLOUT_STAGE "$route_file") || { rm -f "$route_file"; exit 1; }
   rm -f "$route_file"
   if [ "$dry_run" = true ]; then
-    printf 'DRY_RUN=true\nTASK_ID=%s\nMODE=%s\nREASON_CODE=%s\nMAX_GLOBAL_ITERATIONS=%s\nMAX_TASK_ATTEMPTS=%s\nMAX_NO_PROGRESS=%s\n' \
-      "$task_id" "$mode" "$reason_code" "$max_iterations" "$max_task_attempts" "$max_no_progress"
+    base_file=$(mktemp "${TMPDIR:-/tmp}/agent-dry-base.XXXXXX") || exit 1
+    product_fingerprint "$base_file" || { rm -f "$base_file"; exit 1; }
+    base_fingerprint=$(sed -n '1p' "$base_file")
+    rm -f "$base_file"
+    dry_metadata=$("$metrics_tool" dry-run "$project_dir" "$task_id" "$mode" "$recommended_mode" "$reason_code" "$rollout_stage" "$base_fingerprint") || exit 1
+    printf 'DRY_RUN=true\nTASK_ID=%s\nMODE=%s\nRECOMMENDED_MODE=%s\nREASON_CODE=%s\nROLLOUT_STAGE=%s\nMETADATA=%s\nMAX_GLOBAL_ITERATIONS=%s\nMAX_TASK_ATTEMPTS=%s\nMAX_NO_PROGRESS=%s\n' \
+      "$task_id" "$mode" "$recommended_mode" "$reason_code" "$rollout_stage" "${dry_metadata#"$project_dir/"}" "$max_iterations" "$max_task_attempts" "$max_no_progress"
     case "$mode" in
       single) echo 'PLANNED_CALLS=worker-task,verify' ;;
       verified) echo 'PLANNED_CALLS=worker-task,verify,worker-task-if-red,verify-if-fixed,manager-if-still-red' ;;
@@ -749,13 +800,18 @@ else
   run_dir="$project_dir/.agent-runs/$run_id"
   mkdir "$run_dir" || exit 1
   started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  base_file="$run_dir/base-fingerprint"
+  product_fingerprint "$base_file" || exit 1
+  base_fingerprint=$(sed -n '1p' "$base_file")
+  "$metrics_tool" start "$project_dir" "$run_dir" "$run_id" "$task_id" "$mode" "$started_at" "$run_attempt" "$base_fingerprint" || exit 1
+  metrics_started=true
   "$status_gate" --project-dir "$project_dir" set-status "$task_id" in_progress todo >/dev/null || exit 1
   run_active=true
   create_active_run || exit 1
   if [ -n "$manual_mode" ]; then
-    "$router" --project-dir "$project_dir" --mode "$manual_mode" --record "$task_id" >/dev/null || exit 1
+      "$router" --project-dir "$project_dir" --execution --mode "$manual_mode" --record "$task_id" >/dev/null || exit 1
   else
-    "$router" --project-dir "$project_dir" --record "$task_id" >/dev/null || exit 1
+    "$router" --project-dir "$project_dir" --execution --record "$task_id" >/dev/null || exit 1
   fi
   mode=$(ledger_scalar "$current_run" mode) || exit 1
   checkpoint_product || exit 1
@@ -784,7 +840,7 @@ case "$mode" in
       [ "$(output_value RESULT "$last_raw")" != blocked ] || { block_current_task WORKER_BLOCKED; exit 1; }
       if verify_candidate; then finish_success; exit 0; fi
       escalation=$(mktemp "${TMPDIR:-/tmp}/route-escalation.XXXXXX") || exit 1
-      "$router" --project-dir "$project_dir" --record --escalate-from verified --expected-attempts "$attempts" "$task_id" > "$escalation" || { rm -f "$escalation"; run_finalizer ATTEMPT_LIMIT; exit 1; }
+      "$router" --project-dir "$project_dir" --execution --record --escalate-from verified --expected-attempts "$attempts" "$task_id" > "$escalation" || { rm -f "$escalation"; run_finalizer ATTEMPT_LIMIT; exit 1; }
       mode=$(route_value MODE "$escalation") || { rm -f "$escalation"; exit 1; }
       rm -f "$escalation"
       if [ "$mode" = managed ]; then managed_loop; else run_finalizer ATTEMPT_LIMIT; exit 1; fi

@@ -6,13 +6,14 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 project_dir=$(CDPATH= cd -- "$script_dir/.." && pwd) || exit 1
 manual_mode=''
 record=false
+execution_view=false
 escalate_from=''
 expected_attempts=''
 task_id=''
 RULE_VERSION=1
 
 usage() {
-  echo "Verwendung: $0 [--project-dir PFAD] [--mode MODUS] [--record] [--escalate-from MODUS --expected-attempts N] TASK-ID" >&2
+  echo "Verwendung: $0 [--project-dir PFAD] [--mode MODUS] [--record] [--execution] [--escalate-from MODUS --expected-attempts N] TASK-ID" >&2
   exit 2
 }
 
@@ -21,6 +22,7 @@ while [ "$#" -gt 0 ]; do
     --project-dir) [ "$#" -ge 2 ] || usage; project_dir=$2; shift 2 ;;
     --mode) [ "$#" -ge 2 ] || usage; manual_mode=$2; shift 2 ;;
     --record) record=true; shift ;;
+    --execution) execution_view=true; shift ;;
     --escalate-from) [ "$#" -ge 2 ] || usage; escalate_from=$2; shift 2 ;;
     --expected-attempts) [ "$#" -ge 2 ] || usage; expected_attempts=$2; shift 2 ;;
     --*) echo "route-task: unbekannte Option $1" >&2; exit 2 ;;
@@ -37,7 +39,7 @@ config_reader="$script_dir/agent/config.sh"
 tasks_dir="$project_dir/docs/tasks"
 state_dir="$project_dir/docs/state"
 config="$project_dir/.agent/config.env"
-metrics="$project_dir/docs/state/metrics.csv"
+metrics_tool="$script_dir/agent/metrics.sh"
 
 "$validator" --project-dir "$project_dir" >/dev/null || exit 1
 task_file=$(ledger_task_path_by_id "$tasks_dir" "$task_id") || exit 1
@@ -45,6 +47,7 @@ task_class=$(ledger_scalar "$task_file" class) || exit 1
 task_human=$(ledger_scalar "$task_file" human_review) || exit 1
 attempts=$(ledger_scalar "$task_file" attempts) || exit 1
 max_attempts=$(ledger_scalar "$task_file" max_attempts) || exit 1
+rollout_stage=$($config_reader --get ROLLOUT_STAGE "$config") || exit 1
 
 valid_mode() {
   case "$1" in single|verified|managed|managed-fresh) return 0 ;; *) return 1 ;; esac
@@ -73,7 +76,8 @@ write_attempt() {
 
 record_route() {
   selected_mode=$1
-  reason_code=$2
+  recommended_mode=$2
+  reason_code=$3
   current_run="$state_dir/current-run.md"
   run_task=$(ledger_scalar "$current_run" task_id 2>/dev/null || true)
   run_phase=$(ledger_scalar "$current_run" phase 2>/dev/null || true)
@@ -106,13 +110,9 @@ record_route() {
   "$validator" --project-dir "$project_dir" --current-run-file "$run_tmp" >/dev/null || return 1
   ledger_copy_mode "$current_run" "$run_tmp" || return 1
 
-  expected_header='task_id,class,model,rounds,tokens_total,outcome,date,mode,reason_code,human_gate,rule_version,signals,run_id,prompt_hash,context_hash,role'
-  [ "$(sed -n '1p' "$metrics")" = "$expected_header" ] || { echo "route-task: metrics.csv hat ein unbekanntes Schema" >&2; return 1; }
-  metric_signals=$(printf '%s' "$signals" | tr ',' '+')
   metric_run_id=$(ledger_scalar "$current_run" run_id) || return 1
-  metric_line="$task_id,$task_class,none,0,0,routed,$(date -u +%Y-%m-%d),$selected_mode,$reason_code,$human_gate,$RULE_VERSION,$metric_signals,$metric_run_id,,,router"
-  agent_atomic_append_line "$metrics" "$metric_line" || return 1
   mv -f "$run_tmp" "$current_run" || return 1
+  "$metrics_tool" route "$project_dir/.agent-runs/$metric_run_id" "$selected_mode" "$recommended_mode" "$reason_code" "$RULE_VERSION" "$rollout_stage" "$human_gate" || return 1
   trap - EXIT HUP INT TERM
   rmdir "$lock" 2>/dev/null || true
 }
@@ -137,6 +137,7 @@ if [ -n "$escalate_from" ]; then
   add_signal FAILURE_RECORDED
   if [ "$new_attempts" -ge "$max_attempts" ]; then
     selected=blocked
+    recommended=blocked
     reason=ATTEMPT_LIMIT
     add_signal ATTEMPT_LIMIT
   else
@@ -146,11 +147,20 @@ if [ -n "$escalate_from" ]; then
       managed) selected=managed-fresh ;;
       managed-fresh) selected=blocked ;;
     esac
+    recommended=$selected
     if [ "$selected" = blocked ]; then reason=MODE_EXHAUSTED; add_signal MODE_EXHAUSTED
     else reason=ESCALATED_AFTER_FAILURE; fi
+    if [ "$execution_view" = true ] && [ "$rollout_stage" != adaptive-execution ] && { [ "$selected" = managed ] || [ "$selected" = managed-fresh ]; }; then
+      selected=blocked
+      add_signal ROLLOUT_LIMIT
+    fi
   fi
-  [ "$record" = false ] || record_route "$selected" "$reason" || exit 1
-  printf 'MODE=%s\nREASON_CODE=%s\nHUMAN_GATE=%s\n' "$selected" "$reason" "$human_gate"
+  [ "$record" = false ] || record_route "$selected" "$recommended" "$reason" || exit 1
+  if [ "$execution_view" = true ]; then
+    printf 'MODE=%s\nRECOMMENDED_MODE=%s\nREASON_CODE=%s\nROLLOUT_STAGE=%s\nHUMAN_GATE=%s\n' "$selected" "$recommended" "$reason" "$rollout_stage" "$human_gate"
+  else
+    printf 'MODE=%s\nREASON_CODE=%s\nHUMAN_GATE=%s\n' "$selected" "$reason" "$human_gate"
+  fi
   exit 0
 fi
 
@@ -235,5 +245,35 @@ if [ "$attempts" -ge "$max_attempts" ]; then
   add_signal ATTEMPT_LIMIT
 fi
 
-[ "$record" = false ] || record_route "$selected" "$reason" || exit 1
-printf 'MODE=%s\nREASON_CODE=%s\nHUMAN_GATE=%s\n' "$selected" "$reason" "$human_gate"
+recommended=$selected
+explicit_selection=false
+explicit_mode=''
+if [ -n "$manual_mode" ]; then explicit_selection=true; explicit_mode=$manual_mode
+elif [ "$task_override" != auto ]; then explicit_selection=true; explicit_mode=$task_override
+elif [ "$router_enabled" = false ]; then explicit_selection=true; explicit_mode=$selected
+fi
+
+if [ "$execution_view" = true ] && [ "$recommended" != blocked ]; then
+  case "$rollout_stage" in
+    shadow)
+      if [ "$explicit_selection" = true ]; then selected=$explicit_mode
+      else
+        case "$default_mode" in single|verified) selected=$default_mode ;; *) selected=verified ;; esac
+        add_signal ROLLOUT_SHADOW
+      fi ;;
+    single-verify)
+      case "$explicit_mode" in single|verified) selected=$explicit_mode ;; *) selected=verified; add_signal ROLLOUT_LIMIT ;; esac ;;
+    managed-opt-in)
+      if [ "$explicit_selection" = true ]; then selected=$explicit_mode; else selected=verified; add_signal ROLLOUT_LIMIT; fi ;;
+    adaptive-recommendation)
+      if [ "$explicit_selection" = true ]; then selected=$explicit_mode; else selected=verified; add_signal ROLLOUT_RECOMMENDATION; fi ;;
+    adaptive-execution) ;;
+  esac
+fi
+
+[ "$record" = false ] || record_route "$selected" "$recommended" "$reason" || exit 1
+if [ "$execution_view" = true ]; then
+  printf 'MODE=%s\nRECOMMENDED_MODE=%s\nREASON_CODE=%s\nROLLOUT_STAGE=%s\nHUMAN_GATE=%s\n' "$selected" "$recommended" "$reason" "$rollout_stage" "$human_gate"
+else
+  printf 'MODE=%s\nREASON_CODE=%s\nHUMAN_GATE=%s\n' "$selected" "$reason" "$human_gate"
+fi

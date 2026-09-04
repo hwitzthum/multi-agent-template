@@ -160,6 +160,31 @@ validate_ledger_files() {
   [ -f "$verification_dir/latest.md" ] || problem "docs/verification/latest.md fehlt"
   [ -d "$verification_dir/history" ] || problem "docs/verification/history fehlt"
   [ -d "$state_dir/notes-archive" ] || problem "docs/state/notes-archive fehlt"
+  metrics_file="$state_dir/metrics.csv"
+  metrics_header='run_id,task_id,class,mode,model,prompt_version,manager_calls,worker_calls,verifier_runs,rounds,attempts,tokens_in,tokens_out,cost_estimate,duration_seconds,verification,human_review,outcome,date'
+  if [ ! -f "$metrics_file" ]; then
+    problem "docs/state/metrics.csv fehlt"
+  elif [ "$(sed -n '1p' "$metrics_file")" != "$metrics_header" ]; then
+    problem "metrics.csv hat ein unbekanntes Schema"
+  elif ! awk -F, '
+    function fail() { bad=1 }
+    NR == 1 { next }
+    NF != 19 { fail(); next }
+    $1 !~ /^[0-9]{8}T[0-9]{6}Z-T[0-9]{3}$/ { fail() }
+    $2 !~ /^[0-9]+$/ { fail() }
+    $3 !~ /^(mechanical|patterned|open)$/ { fail() }
+    $4 !~ /^(single|verified|managed|managed-fresh)$/ { fail() }
+    $7 !~ /^[0-9]+$/ || $8 !~ /^[0-9]+$/ || $9 !~ /^[0-9]+$/ || $10 !~ /^[0-9]+$/ || $11 !~ /^[0-9]+$/ { fail() }
+    $12 !~ /^([0-9]+)?$/ || $13 !~ /^([0-9]+)?$/ || $14 !~ /^([0-9]+([.][0-9]+)?)?$/ || $15 !~ /^([0-9]+)?$/ { fail() }
+    $16 !~ /^$/ && $16 !~ /^(green|red)$/ { fail() }
+    $17 !~ /^(not_required|required|pending|approved)$/ { fail() }
+    $18 !~ /^(success|review|blocked|no_progress|infrastructure_error|verification_error|cancelled)$/ { fail() }
+    $19 !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ { fail() }
+    seen_run[$1]++ { fail() }
+    END { exit bad ? 1 : 0 }
+  ' "$metrics_file"; then
+    problem "metrics.csv enthaelt ungueltige oder doppelte Laufzeilen"
+  fi
 
   [ -f "$state_dir/goal.md" ] && for heading in '# Ziel' '## Ergebnis' '## Muss' '## Nicht Teil' '## Globale Abnahme'; do
     ledger_markdown_has_section "$state_dir/goal.md" "$heading" || problem "goal.md: Pflichtabschnitt '$heading' fehlt"
@@ -251,7 +276,7 @@ EOF
     one_of "$route_gate" true false || problem "current-run.md: route_human_gate muss true oder false sein"
     while IFS= read -r route_signal; do
       [ -n "$route_signal" ] || continue
-      one_of "$route_signal" CLI_OVERRIDE TASK_OVERRIDE ROUTER_DISABLED OPEN_CLASS MULTIPLE_FAILURES CROSS_COMPONENT HIGH_RISK_DOMAIN CONFLICTING_LEDGER REPEATED_FAILURE FRESH_REQUIRED FAILURE_RECORDED MODE_EXHAUSTED ATTEMPT_LIMIT || problem "current-run.md: unbekanntes route_signal '$route_signal'"
+      one_of "$route_signal" CLI_OVERRIDE TASK_OVERRIDE ROUTER_DISABLED OPEN_CLASS MULTIPLE_FAILURES CROSS_COMPONENT HIGH_RISK_DOMAIN CONFLICTING_LEDGER REPEATED_FAILURE FRESH_REQUIRED FAILURE_RECORDED MODE_EXHAUSTED ATTEMPT_LIMIT ROLLOUT_SHADOW ROLLOUT_LIMIT ROLLOUT_RECOMMENDATION || problem "current-run.md: unbekanntes route_signal '$route_signal'"
     done <<EOF
 $route_signals
 EOF
