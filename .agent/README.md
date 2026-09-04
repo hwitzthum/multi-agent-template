@@ -1,9 +1,8 @@
 # Architektur- und Sicherheitsvertrag der Agenten-Orchestrierung
 
-Status: Phase 04 ergänzt Ledger und Router um sieben eindeutige Rollen-Prompts,
-kleine unveränderliche Kontextpakete sowie validierte Ausgabeformate. Der
-Manager–Worker-Loop folgt in Phase 05; dieser Vertrag startet noch keinen
-Agenten.
+Status: Phase 05 ergänzt Ledger, Router und Rollenverträge um einen begrenzten,
+fortsetzbaren Manager–Worker-Loop. Kontrollflusstests verwenden ausschließlich
+einen Fake Runner; echte Aufrufe bleiben hinter dem Runner-Adapter gekapselt.
 
 ## Verbindliche Zuständigkeiten
 
@@ -144,7 +143,7 @@ nicht automatisch zu einem Ledger-Fakt.
 Alle späteren Anbieteraufrufe verwenden ausschließlich diesen Vertrag:
 
 ```text
-invoke_role <role> <prompt-file> <workdir> <result-file>
+run_agent <role> <context-file> <workdir> <raw-output> <metadata-output>
 ```
 
 Ein Exitcode `0` bedeutet nur, dass der Modellaufruf technisch beendet wurde.
@@ -155,6 +154,20 @@ Der Adapter liegt allein in `scripts/agent/runner.sh`. Auf dem während Phase 01
 geprüften Rechner ist Claude Code 2.1.260 verfügbar. Pfad und Version werden
 nicht fest in die Architektur geschrieben; der Adapter erkennt sie zur
 Laufzeit. Andere Skripte dürfen den Befehl `claude` nicht direkt aufrufen.
+
+## Orchestrator-Vertrag
+
+`scripts/orchestrate.sh` wählt genau einen bereiten Task, sperrt den Ledger-
+Zustand, protokolliert Route und Checkpoints und führt `single`, `verified` oder
+`managed` innerhalb der konfigurierten Grenzen aus. `--dry-run` zeigt Route,
+Budgets und geplante Rollen ohne Schreibzugriff; `--resume` akzeptiert nur
+`paused`/`failed` und weist fremde Änderungen seit dem letzten vollständigen
+Schritt ab. Ein absichtlich schmutziger Git-Stand benötigt `--allow-dirty`.
+
+Rollenänderungen werden aus tatsächlichen Dateihashes ermittelt. Verbotene
+Steuerungspfade, Änderungen an geschützten Task-Feldern oder Produktpfade
+außerhalb von `touches` stoppen den Lauf. Rohoutput und Runner-Metadaten bleiben
+unter `.agent-runs/<run-id>/`; kein Agentenergebnis wird ungeprüft ausgewertet.
 
 ## Produkt-Stack
 

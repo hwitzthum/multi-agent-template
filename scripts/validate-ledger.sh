@@ -237,7 +237,7 @@ EOF
     route_gate=$(ledger_scalar "$run_file" route_human_gate 2>/dev/null) || { problem "current-run.md: Pflichtfeld route_human_gate fehlt"; route_gate=''; }
     route_signals=$(ledger_list "$run_file" route_signals 2>/dev/null) || { problem "current-run.md: Pflichtliste route_signals fehlt"; route_signals=''; }
     one_of "$mode" auto single verified managed managed-fresh blocked || problem "current-run.md: unbekannter mode '$mode'"
-    one_of "$phase" plan brainstorm work verify finalize finished || problem "current-run.md: unbekannte phase '$phase'"
+    one_of "$phase" plan brainstorm work verify finalize paused failed finished || problem "current-run.md: unbekannte phase '$phase'"
     case "$iteration:$attempt" in *[!0-9:]*) problem "current-run.md: iteration und attempt muessen nichtnegative ganze Zahlen sein" ;; esac
     case "$run_id" in none|[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z-T[0-9][0-9][0-9]) ;; *) problem "current-run.md: run_id hat nicht das erwartete Format" ;; esac
     case "$task_id" in none|*[!0-9]*|'') [ "$task_id" = none ] || problem "current-run.md: task_id muss numerisch oder none sein" ;; esac

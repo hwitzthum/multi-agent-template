@@ -95,3 +95,15 @@ Frontmatter oder zusammengehörige Fehlertexte mitten im Block abzuschneiden.
 Prüfsummen vergleichen. Der Fresh Worker sieht bewusst weder frühere Notizen
 noch Lösungsbegründungen oder Fehler und liefert dadurch eine unabhängige
 Perspektive; Sicherheitsregeln, Ziel und Akzeptanz bleiben trotzdem verbindlich.
+
+## 2026-09-04 — Fortschritt wird ohne Betriebsartefakte gemessen
+
+**Was:** Der Loop zählt Produktänderungen, stabile Task-/Prüfzustände, neue
+Notiz-IDs und die Managerentscheidung. Neue Prüfprotokolle oder ein erhöhter
+Versuchszähler allein gelten nicht als Fortschritt.
+
+**Warum:** Sonst könnte eine unveränderte Reparaturschleife allein durch neue
+Zeitstempel und Logdateien endlos wie Fortschritt aussehen.
+
+**Folge für den Auftraggeber:** Ein unveränderter Wiederholungsversuch führt
+kontrolliert zum Finalizer; der letzte konsistente Stand bleibt fortsetzbar.
