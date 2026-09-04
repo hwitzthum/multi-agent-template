@@ -3,6 +3,3 @@
 # "bad interpreter" bzw. "$'\r': command not found", und verify.sh sowie das
 # Commit-Gate laufen still ins Leere.
 *.sh text eol=lf
-
-# Die Kursanleitung als Word-Datei ist binär — nie Zeilenenden umwandeln.
-*.docx binary

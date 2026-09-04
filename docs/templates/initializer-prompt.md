@@ -17,8 +17,9 @@ du irgendetwas erzeugst:
 WICHTIG ZUM AUFTRAGGEBER: Er kommt aus dem Business und hat keine
 Programmierkenntnisse. Daraus folgt:
 
-- Stelle ihm NUR Fragen, die er beantworten kann — welche das sind,
-  zeigen die Achsen des Fragenkatalogs. Keine Tech-Fragen.
+- Stelle ihm NUR Fragen, die er beantworten kann und deren mögliche Antwort
+  Umfang, Feature-Zuschnitt, Akzeptanz oder technische Abhängigkeiten verändert.
+  Überspringe bereits beantwortete Punkte und stelle keine Tech-Fragen.
 - Alle technischen Entscheidungen triffst DU. Jede davon dokumentierst
   du in docs/state/decisions.md mit: Was / Warum in Alltagssprache /
   Folge für den Auftraggeber (Kosten, Aufwand, Datenschutz).
@@ -26,6 +27,17 @@ Programmierkenntnisse. Daraus folgt:
   Rahmen der Stack- und Werkzeug-Regeln aus technik.md.
 
 Erzeuge genau:
+
+0. Die Ledger-Grundlage (das gemeinsame Arbeitsbuch):
+   - `docs/state/goal.md` mit Ziel, Nicht-Zielen und messbaren Erfolgskriterien;
+   - `docs/state/plan.md` mit der knappen Gesamtstrategie;
+   - `docs/state/notes.md` nur mit bereits belegten Startfakten;
+   - `docs/state/current-run.md` im vorhandenen Leerlauf-Schema;
+   - `docs/verification/latest.md` mit `result: never` sowie die Ordner
+     `docs/tasks/`, `docs/verification/history/` und
+     `docs/state/notes-archive/`.
+   Nutze die vorhandenen Dateien und Schemata als Vorlage und führe kein
+   paralleles `tasks.json` ein.
 
 1. docs/state/features.md — ALLE Anforderungen als atomare, prüfbare
    Features. Eine Zeile pro Feature, beginnend mit [FAILING]. Test:
@@ -86,7 +98,8 @@ Erzeuge genau:
    in Alltagssprache.
 
 7. docs/state/handoff.md — die erste Übergabenotiz nach
-   docs/templates/handoff-template.md, inkl. "Für den Auftraggeber zu prüfen".
+   docs/templates/handoff-template.md, inkl. Run-ID `none`, Verifierstatus,
+   letztem grünen Stand und "Für den Auftraggeber zu prüfen".
 
 Vorhandene Skills: Alles unter .claude/skills/*/SKILL.md ist
 verbindlich — übernimm die Regeln, widersprich ihnen nicht. Fehlt eine
@@ -101,11 +114,12 @@ Wiederholung (beim Meilenstein-Review), nicht durch Vorhersage.
 Erster Brief: docs/briefs/<slug>.md ← HIER PFAD EINTRAGEN
 (Vorlage: docs/profil/brief-template.md)
 
-Bevor du irgendetwas erzeugst: Stelle mir die Fragen, deren Antwort die
-Zerlegung ändern würde — in Business-Sprache, jede als Entscheidung mit
-benannten Optionen ("A, B oder C?"), nicht als offenes Thema. Nutze den
-Fragenkatalog in docs/profil/fragenkatalog.md als Mindestmenge; stelle
-zusätzlich die Fragen, die sich aus produkt.md und dem Brief ergeben.
-Erst nach meinen Antworten erzeugst du alles.
+Bevor du irgendetwas erzeugst: Prüfe den Fragenkatalog als Checkliste, aber
+stelle daraus nur Fragen, deren Antwort die Zerlegung tatsächlich ändern würde.
+Formuliere jede nötige Frage in Business-Sprache als Entscheidung mit benannten
+Optionen ("A, B oder C?"), nie als offenes Thema. Stelle keine Frage erneut,
+die Profil oder Brief bereits eindeutig beantworten. Ergänze nur ebenso
+entscheidungsrelevante Fragen aus `produkt.md` und dem Brief. Erst nach meinen
+Antworten erzeugst du alles.
 
 Zur Erinnerung: KEIN Produktcode in dieser Sitzung.
