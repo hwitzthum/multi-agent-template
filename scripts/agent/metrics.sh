@@ -78,10 +78,8 @@ metrics_write_start() {
     echo "task_id=$task_id"
     echo "class=$task_class"
     echo "mode=$mode"
-    echo 'recommended_mode='
     echo 'route_reason_code=none'
     echo 'route_rule_version=1'
-    echo 'rollout_stage='
     echo "prompt_version=$prompt_version"
     echo "attempts=$attempt"
     echo "human_review=$human_review"
@@ -97,21 +95,19 @@ metrics_write_start() {
 }
 
 metrics_record_route() {
-  run_dir=$1 actual=$2 recommended=$3 reason=$4 rule_version=$5 rollout_stage=$6 human_gate=$7
+  run_dir=$1 actual=$2 reason=$3 rule_version=$4 human_gate=$5
   file="$run_dir/metadata/run.env"
   if [ ! -f "$file" ]; then
     mkdir -p "$run_dir/metadata" || return 1
     tmp=$(mktemp "$run_dir/metadata/.route.env.tmp.XXXXXX") || return 1
-    printf 'mode=%s\nrecommended_mode=%s\nroute_reason_code=%s\nroute_rule_version=%s\nrollout_stage=%s\nhuman_review=%s\n' "$actual" "$recommended" "$reason" "$rule_version" "$rollout_stage" "$human_gate" > "$tmp"
+    printf 'mode=%s\nroute_reason_code=%s\nroute_rule_version=%s\nhuman_review=%s\n' "$actual" "$reason" "$rule_version" "$human_gate" > "$tmp"
     agent_atomic_write "$run_dir/metadata/route.env" "$tmp"
     rm -f "$tmp"
     return
   fi
   metrics_set_value "$file" mode "$actual" || return 1
-  metrics_set_value "$file" recommended_mode "$recommended" || return 1
   metrics_set_value "$file" route_reason_code "$reason" || return 1
   metrics_set_value "$file" route_rule_version "$rule_version" || return 1
-  metrics_set_value "$file" rollout_stage "$rollout_stage" || return 1
   [ "$human_gate" != true ] || metrics_set_value "$file" human_review true
 }
 
@@ -302,7 +298,7 @@ metrics_finalize() {
 }
 
 metrics_record_dry_run() {
-  project_dir=$1 task_id=$2 actual=$3 recommended=$4 reason=$5 rollout_stage=$6 base_fingerprint=$7
+  project_dir=$1 task_id=$2 actual=$3 reason=$4 base_fingerprint=$5
   dry_id="dry-$(date -u +%Y%m%dT%H%M%SZ)-T$(printf '%03d' "$((10#$task_id))")-$$"
   run_dir="$project_dir/.agent-runs/$dry_id"
   mkdir -p "$run_dir/metadata" || return 1
@@ -313,10 +309,8 @@ metrics_record_dry_run() {
     echo "task_id=$task_id"
     echo "class=$(ledger_scalar "$task_file" class)"
     echo "mode=$actual"
-    echo "recommended_mode=$recommended"
     echo "route_reason_code=$reason"
     echo 'route_rule_version=1'
-    echo "rollout_stage=$rollout_stage"
     echo "base_fingerprint=$base_fingerprint"
     echo "recorded_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo 'outcome='
@@ -328,16 +322,16 @@ metrics_record_dry_run() {
 }
 
 usage() {
-  echo 'Verwendung: metrics.sh ensure-schema PROJECT | start PROJECT RUN_DIR RUN_ID TASK MODE START ATTEMPT BASE | route RUN_DIR ACTUAL RECOMMENDED REASON RULE STAGE HUMAN_GATE | finalize PROJECT RUN_DIR OUTCOME | reopen PROJECT RUN_DIR | dry-run PROJECT TASK ACTUAL RECOMMENDED REASON STAGE BASE' >&2
+  echo 'Verwendung: metrics.sh ensure-schema PROJECT | start PROJECT RUN_DIR RUN_ID TASK MODE START ATTEMPT BASE | route RUN_DIR MODE REASON RULE HUMAN_GATE | finalize PROJECT RUN_DIR OUTCOME | reopen PROJECT RUN_DIR | dry-run PROJECT TASK MODE REASON BASE' >&2
   exit 2
 }
 
 case "${1:-}" in
   ensure-schema) [ "$#" -eq 2 ] || usage; metrics_ensure_schema "$2" ;;
   start) [ "$#" -eq 9 ] || usage; metrics_write_start "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" ;;
-  route) [ "$#" -eq 8 ] || usage; metrics_record_route "$2" "$3" "$4" "$5" "$6" "$7" "$8" ;;
+  route) [ "$#" -eq 6 ] || usage; metrics_record_route "$2" "$3" "$4" "$5" "$6" ;;
   finalize) [ "$#" -eq 4 ] || usage; metrics_finalize "$2" "$3" "$4" ;;
   reopen) [ "$#" -eq 3 ] || usage; metrics_reopen "$2" "$3" ;;
-  dry-run) [ "$#" -eq 8 ] || usage; metrics_record_dry_run "$2" "$3" "$4" "$5" "$6" "$7" "$8" ;;
+  dry-run) [ "$#" -eq 6 ] || usage; metrics_record_dry_run "$2" "$3" "$4" "$5" "$6" ;;
   *) usage ;;
 esac

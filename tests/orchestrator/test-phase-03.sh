@@ -224,14 +224,6 @@ second=$($router --project-dir "$fixture" 001)
 
 new_fixture
 make_task 001 mechanical
-sed 's/ROUTER_ENABLED=true/ROUTER_ENABLED=false/' "$fixture/.agent/config.env" > "$fixture/.agent/config.tmp"
-mv "$fixture/.agent/config.tmp" "$fixture/.agent/config.env"
-expect_output "Router kann deaktiviert werden" 'MODE=verified
-REASON_CODE=ROUTER_DISABLED
-HUMAN_GATE=false' "$router" --project-dir "$fixture" 001
-
-new_fixture
-make_task 001 mechanical
 expect_failure "unbekannter manueller Modus" "$router" --project-dir "$fixture" --mode turbo 001
 
 new_fixture
@@ -260,7 +252,7 @@ make_task 001 patterned auto false auto '' '' 0 3 in_progress
 make_active_run 001
 expect_output "Routing kann atomar protokolliert werden" "$patterned" "$router" --project-dir "$fixture" --record 001
 grep -Fqx 'mode: verified' "$fixture/docs/state/current-run.md" && grep -Fqx 'route_reason_code: PATTERNED_LOCAL' "$fixture/docs/state/current-run.md" && ok || bad "current-run enthaelt Routingentscheidung"
-[ "$(wc -l < "$fixture/docs/state/metrics.csv" | tr -d ' ')" = 1 ] && grep -Fqx 'recommended_mode=verified' "$fixture/.agent-runs/20260904T091500Z-T001/metadata/route.env" && ok || bad "Routing bleibt lokal und erzeugt keine vorzeitige Laufzeile"
+[ "$(wc -l < "$fixture/docs/state/metrics.csv" | tr -d ' ')" = 1 ] && grep -Fqx 'mode=verified' "$fixture/.agent-runs/20260904T091500Z-T001/metadata/route.env" && ok || bad "Routing bleibt lokal und erzeugt keine vorzeitige Laufzeile"
 expect_success "protokollierter Lauf bleibt gueltig" "$validator" --project-dir "$fixture"
 
 new_fixture

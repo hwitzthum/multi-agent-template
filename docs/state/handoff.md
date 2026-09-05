@@ -1,4 +1,4 @@
-# Handoff — 2026-09-04 21:00
+# Handoff — 2026-09-05 00:30
 
 ## Laufbeleg
 
@@ -6,48 +6,49 @@
 - Modus: keiner
 - Verifierstatus: NEVER — noch keine Task-Prüfung; `./scripts/verify.sh` ist bis
   zur Initialisierung ein Platzhalter und meldet GREEN
-- Letzter grüner Stand: `main` bei `37c6fcc` (Merge von
-  `cleanup/bugfixes-und-bereinigung`, Commit `9a03369`); alle neun Testsuiten
-  unter `tests/orchestrator/` GREEN
+- Letzter grüner Stand: Branch `refactor/manager-worker-standard` (noch nicht
+  committet), Basis `main` bei `c783a3d`; alle neun Testsuiten unter
+  `tests/orchestrator/` GREEN, `validate-ledger.sh` GREEN
 
 ## Letzte Sitzung
 
-- Fehlerbehebung und Bereinigung der Vorlage (kein Task, keine Initialisierung):
-  - `tests/orchestrator/test-phase-09.sh` verlangte `rg` und einen Quellhash in
-    einer von Hand erstellten Word-Datei; beides entfernt, Test grün.
-  - `scripts/verify-task.sh` erzeugte ohne `--run-id` bei ein- oder zweistelligen
-    Task-IDs eine ungültige Run-ID; jetzt dreistellig aufgefüllt.
-  - `scripts/agent/runner.sh` mischte stderr des CLI in die Rollenausgabe;
-    stderr liegt jetzt separat als `.stderr` im Laufordner. Alias `invoke_role`
-    entfernt.
-  - `scripts/agent/metrics.sh` migrierte nur ein Zwischenschema des Umbaus;
-    jetzt wird jede leere `metrics.csv` (nur Kopfzeile) auf das aktuelle Schema
-    umgestellt.
-  - Ungenutzte Funktion `agent_atomic_append_line` aus `common.sh` entfernt.
-  - Gelöscht: `main.py`, `pyproject.toml`, `.mcp.json`, `KURSANLEITUNG.docx`,
-    `plans/` (siehe `docs/state/decisions.md`).
-  - Branch committet, mit Merge-Commit in `main` übernommen und gelöscht.
-    Arbeitsbaum sauber; kein Remote konfiguriert, nichts gepusht.
+- Vereinfachung der Vorlage (kein Task, keine Initialisierung): Der Router
+  entscheidet weiterhin nach Klasse, Risiko und Fehlversuchen — seine
+  Entscheidung wird jetzt direkt ausgeführt.
+  - Entfernt: `ROLLOUT_STAGE` mit allen fünf Stufen, `DEFAULT_MODE`,
+    `ROUTER_ENABLED`, Router-Option `--execution`, Ausgabefelder
+    `RECOMMENDED_MODE`/`ROLLOUT_STAGE`, Metadatenfelder `recommended_mode`/
+    `rollout_stage`, `agent-metrics.sh compare`, `docs/evaluation/pilot-v1/`.
+  - Unverändert: alle vier Modi, beide Loops, harte Sicherheitsregeln,
+    Eskalation um eine Stufe, menschliches Gate, Profil-System, CSV-Schema.
+  - Tests angepasst (phase-01/03/05/08/09), nicht gelöscht. Dry-Run-Demo auf
+    Wegwerf-Fixture: mechanical → single, patterned → verified, open →
+    managed, fresh_perspective:required → managed-fresh, Auth-Umfang → managed.
+  - Begründung in `docs/state/decisions.md` (Eintrag „Der Router entscheidet
+    und führt aus"), Doku in README, KURSANLEITUNG, `.agent/README.md`,
+    Task-Vorlage nachgezogen.
 
 ## Achtung nächste Sitzung
 
-- Die lokalen Ordner `.venv/` und `.idea/` sind nicht versioniert und gehören
-  zum gelöschten Python-Beispiel; der Auftraggeber kann sie selbst entfernen.
-- Der Schutz-Hook blockiert `git rm -r`; versionierte Ordner werden mit
-  aufgezählten Dateien über `git ls-files | xargs git rm` entfernt.
+- Ein offener, riskanter oder wiederholt gescheiterter Task startet jetzt ohne
+  weitere Freigabe den Manager-Loop bzw. zwei isolierte Worker — das kostet
+  echte Modellaufrufe. Vor dem ersten echten Lauf `--dry-run` ansehen.
+- Der Schutz-Hook blockiert rekursives Löschen, auch als Text in Heredocs;
+  Demo-Fixtures unter `$TMPDIR/pilot-demo.*` und versionierte Ordner räumt der
+  Auftraggeber auf.
 
 ## Für den Auftraggeber zu prüfen
 
-- Entscheidung: bestätigt (Commit und Merge freigegeben und ausgeführt)
-- Entscheiden, ob die gelöschte Word-Fassung der Kursanleitung gebraucht wird;
-  sie lässt sich mit `pandoc docs/KURSANLEITUNG.md -o KURSANLEITUNG.docx`
-  jederzeit aus dem Markdown erzeugen.
+- Entscheidung: offen — Commit und Merge des Branches
+  `refactor/manager-worker-standard` in `main` freigeben.
+- Demo-Fixture `$TMPDIR/pilot-demo.*` löschen (vom Agenten nicht erlaubt).
 
 ## Fehler und Wiederaufnahme
 
 - Erster offener Fehler: keiner
-- Nächster Schritt: Initialisierung nach `docs/templates/initializer-prompt.md`
-  auf einem neuen Branch ab `main`.
+- Nächster Schritt: nach Freigabe committen und mit Merge-Commit in `main`
+  übernehmen; danach Initialisierung nach
+  `docs/templates/initializer-prompt.md` auf einem neuen Branch ab `main`.
 
 ## Vorgeschlagene nächste Aufgabe
 

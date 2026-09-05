@@ -67,8 +67,8 @@ chmod +x "$fixture/scripts/verify.sh"
 expected_header='run_id,task_id,class,mode,model,prompt_version,manager_calls,worker_calls,verifier_runs,rounds,attempts,tokens_in,tokens_out,cost_estimate,duration_seconds,verification,human_review,outcome,date'
 assert_eq "CSV ist auf das Phase-08-Schema migriert" "$expected_header" "$(sed -n '1p' "$fixture/docs/state/metrics.csv")"
 
-route_output=$("$router" --project-dir "$fixture" --execution 017)
-case "$route_output" in *'MODE=verified'*'RECOMMENDED_MODE=managed'*'ROLLOUT_STAGE=shadow'*) ok ;; *) bad "Shadow trennt Empfehlung und ausgeführten Modus" ;; esac
+route_output=$("$router" --project-dir "$fixture" 017)
+case "$route_output" in *'MODE=managed'*'REASON_CODE=OPEN_DECISION'*) ok ;; *) bad "Router entscheidet fuer open direkt auf managed" ;; esac
 
 before_lines=$(wc -l < "$fixture/docs/state/metrics.csv" | tr -d ' ')
 dry_output=$("$orchestrator" --project-dir "$fixture" --task 017 --dry-run)
@@ -147,23 +147,14 @@ assert_eq "Tokens in werden nicht geschätzt" 10 "$(printf '%s\n' "$row" | awk -
 assert_eq "Tokens out werden nicht geschätzt" 4 "$(printf '%s\n' "$row" | awk -F, '{print $13}')"
 assert_eq "Kosten werden nur aus gelieferten Werten summiert" 0.125000 "$(printf '%s\n' "$row" | awk -F, '{print $14}')"
 
-pilot_manifest="$tmp_root/pairs.csv"
-cat > "$pilot_manifest" <<EOF
-pair_id,task_id,baseline_run_id,variant_run_id,base_fingerprint
-P01,017,20260904T100000Z-T017,20260904T100100Z-T017,$base_a
-EOF
-expect_success "Pilotvergleich akzeptiert identischen Basis-Fingerprint" "$metrics_report" compare --project-dir "$fixture" --manifest "$pilot_manifest"
-sed "s/$base_a/$base_b/" "$pilot_manifest" > "$tmp_root/pairs-bad.csv"
-expect_failure "Pilotvergleich weist abweichenden Basis-Fingerprint ab" "$metrics_report" compare --project-dir "$fixture" --manifest "$tmp_root/pairs-bad.csv"
-
-assert_eq "Pilot-Taskset enthält genau 20 stratifizierte Plätze" 20 "$(awk 'NR > 1 {count++} END {print count+0}' "$project_dir/docs/evaluation/pilot-v1/taskset.csv")"
 summary=$(CLAUDE_PROJECT_DIR="$fixture" "$project_dir/scripts/state-summary.sh")
 assert_eq "Kurzsummary hält das Drei-Zeilen-Budget" 3 "$(printf '%s\n' "$summary" | wc -l | tr -d ' ')"
 [ "$(printf '%s\n' "$summary" | wc -w | tr -d ' ')" -le 250 ] && ok || bad "Kurzsummary überschreitet 250 Tokens als konservatives Wortbudget"
 
+sed 's/^id: 017$/id: 018/; s/^class: open$/class: mechanical/' "$fixture/docs/tasks/017.md" > "$fixture/docs/tasks/018.md"
 printf '%s\n' 'RESULT=implemented' > "$fixture/.agent-runs/fake/responses/worker-task-1.out"
 ORCHESTRATOR_FAKE_STATE_DIR="$fixture/.agent-runs/fake"; export ORCHESTRATOR_FAKE_STATE_DIR
-expect_failure "Abgebrochener Lauf wird kontrolliert erfasst" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017 --mode single
+expect_failure "Abgebrochener Lauf wird kontrolliert erfasst" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 018 --mode single
 aborted_run=$(awk -F, 'NR > 1 && $18 == "blocked" {run=$1} END {print run}' "$fixture/docs/state/metrics.csv")
 [ -n "$aborted_run" ] && [ "$(awk -F, -v run="$aborted_run" '$1 == run {count++} END {print count+0}' "$fixture/docs/state/metrics.csv")" -eq 1 ] && ok || bad "Abgebrochener Lauf besitzt genau ein Outcome"
 

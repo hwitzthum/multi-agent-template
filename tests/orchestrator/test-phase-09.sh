@@ -35,7 +35,7 @@ assert_has "README zeigt nächste Tasks" README.md './scripts/next-tasks.sh'
 assert_has "README zeigt kontrollierte Bearbeitung" README.md './scripts/orchestrate.sh --next'
 assert_has "README zeigt Projektstand" README.md './scripts/state-summary.sh'
 assert_has "README begrenzt Multi-Agent" README.md 'nicht der Standard für'
-assert_has "README nennt ausgelieferte Rollout-Stufe" README.md '`shadow`'
+assert_has "README erklärt Router-Entscheidung" README.md 'Router'
 
 assert_has "CLAUDE kennt die Ledger-Quelle" CLAUDE.md '`docs/tasks/*.md` ist die einzige Aufgabenquelle'
 assert_has "CLAUDE bindet done ans Gate" CLAUDE.md '`done` oder'

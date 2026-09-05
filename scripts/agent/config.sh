@@ -13,7 +13,7 @@ fail() {
 
 known_key() {
   case "$1" in
-    MAX_GLOBAL_ITERATIONS|MAX_TASK_ATTEMPTS|MAX_NO_PROGRESS|DEFAULT_MODE|ROUTER_ENABLED|CONTEXT_MAX_CHARS|NOTES_MAX_CHARS|VERIFY_TIMEOUT_SECONDS|MAX_INFRA_RETRIES|RETRY_BACKOFF_SECONDS|ROLLOUT_STAGE|PROMPT_VERSION) return 0 ;;
+    MAX_GLOBAL_ITERATIONS|MAX_TASK_ATTEMPTS|MAX_NO_PROGRESS|CONTEXT_MAX_CHARS|NOTES_MAX_CHARS|VERIFY_TIMEOUT_SECONDS|MAX_INFRA_RETRIES|RETRY_BACKOFF_SECONDS|PROMPT_VERSION) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -21,21 +21,9 @@ known_key() {
 valid_value() {
   key=$1
   value=$2
-  case "$key" in
-    DEFAULT_MODE)
-      case "$value" in
-        auto|single|verified|managed|managed-fresh) return 0 ;;
-        *) return 1 ;;
-      esac ;;
-    ROUTER_ENABLED)
-      case "$value" in true|false) return 0 ;; *) return 1 ;; esac ;;
-    ROLLOUT_STAGE)
-      case "$value" in shadow|single-verify|managed-opt-in|adaptive-recommendation|adaptive-execution) return 0 ;; *) return 1 ;; esac ;;
-    *)
-      case "$value" in
-        ''|*[!0-9]*|0) return 1 ;;
-        *) return 0 ;;
-      esac ;;
+  case "$value" in
+    ''|*[!0-9]*|0) return 1 ;;
+    *) return 0 ;;
   esac
 }
 
@@ -65,7 +53,7 @@ validate_config() {
     seen="${seen}${key}|"
   done < "$config_file"
 
-  for required in MAX_GLOBAL_ITERATIONS MAX_TASK_ATTEMPTS MAX_NO_PROGRESS DEFAULT_MODE ROUTER_ENABLED CONTEXT_MAX_CHARS NOTES_MAX_CHARS VERIFY_TIMEOUT_SECONDS MAX_INFRA_RETRIES RETRY_BACKOFF_SECONDS ROLLOUT_STAGE PROMPT_VERSION; do
+  for required in MAX_GLOBAL_ITERATIONS MAX_TASK_ATTEMPTS MAX_NO_PROGRESS CONTEXT_MAX_CHARS NOTES_MAX_CHARS VERIFY_TIMEOUT_SECONDS MAX_INFRA_RETRIES RETRY_BACKOFF_SECONDS PROMPT_VERSION; do
     case "$seen" in
       *"|$required|"*) ;;
       *) fail "Pflichtschlüssel fehlt: $required"; return 1 ;;

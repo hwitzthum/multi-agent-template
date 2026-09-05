@@ -278,11 +278,11 @@ EOF
     fi
     case "$started_at" in never|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;; *) problem "current-run.md: started_at muss eine UTC-Zeit oder never sein" ;; esac
     case "$route_version" in ''|*[!0-9]*) problem "current-run.md: route_rule_version muss numerisch sein" ;; esac
-    one_of "$route_reason" none EXPLICIT_OVERRIDE MECHANICAL_LOCAL PATTERNED_LOCAL OPEN_DECISION CROSS_COMPONENT HIGH_RISK_DOMAIN FAILED_ATTEMPTS CONFLICTING_LEDGER REPEATED_FAILURE FRESH_REQUIRED ROUTER_DISABLED ESCALATED_AFTER_FAILURE MODE_EXHAUSTED ATTEMPT_LIMIT || problem "current-run.md: unbekannter route_reason_code '$route_reason'"
+    one_of "$route_reason" none EXPLICIT_OVERRIDE MECHANICAL_LOCAL PATTERNED_LOCAL OPEN_DECISION CROSS_COMPONENT HIGH_RISK_DOMAIN FAILED_ATTEMPTS CONFLICTING_LEDGER REPEATED_FAILURE FRESH_REQUIRED ESCALATED_AFTER_FAILURE MODE_EXHAUSTED ATTEMPT_LIMIT || problem "current-run.md: unbekannter route_reason_code '$route_reason'"
     one_of "$route_gate" true false || problem "current-run.md: route_human_gate muss true oder false sein"
     while IFS= read -r route_signal; do
       [ -n "$route_signal" ] || continue
-      one_of "$route_signal" CLI_OVERRIDE TASK_OVERRIDE ROUTER_DISABLED OPEN_CLASS MULTIPLE_FAILURES CROSS_COMPONENT HIGH_RISK_DOMAIN CONFLICTING_LEDGER REPEATED_FAILURE FRESH_REQUIRED FAILURE_RECORDED MODE_EXHAUSTED ATTEMPT_LIMIT ROLLOUT_SHADOW ROLLOUT_LIMIT ROLLOUT_RECOMMENDATION || problem "current-run.md: unbekanntes route_signal '$route_signal'"
+      one_of "$route_signal" CLI_OVERRIDE TASK_OVERRIDE OPEN_CLASS MULTIPLE_FAILURES CROSS_COMPONENT HIGH_RISK_DOMAIN CONFLICTING_LEDGER REPEATED_FAILURE FRESH_REQUIRED FAILURE_RECORDED MODE_EXHAUSTED ATTEMPT_LIMIT || problem "current-run.md: unbekanntes route_signal '$route_signal'"
     done <<EOF
 $route_signals
 EOF

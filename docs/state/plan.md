@@ -27,3 +27,5 @@ erweitert. Jede Ausbauphase wird einzeln geprüft und übergeben.
   03 ergänzt.
 - 2026-09-04: Sieben getrennte Rollen-Prompts, begrenzte Kontextpakete,
   Fresh-Worker-Isolation und validierte Rollenoutputs für Phase 04 ergänzt.
+- 2026-09-04: Rollout-Stufen, `DEFAULT_MODE`, `ROUTER_ENABLED` und die
+  Pilot-Evaluation entfernt; die Router-Entscheidung wird direkt ausgeführt.

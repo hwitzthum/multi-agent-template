@@ -43,8 +43,7 @@ Modusbeispiele:
   auf `review`.
 - Festgefahrener Hochrisiko-Task: `risk_flags: [repeated-failure]` oder
   `fresh_perspective: required` — empfohlen wird `managed-fresh`. Dieser Modus
-  braucht einen sauberen Git-Ausgangsstand und eine explizit freigegebene
-  Rollout-Stufe beziehungsweise Moduswahl.
+  braucht einen sauberen, versionierten Git-Ausgangsstand.
 
 # Kontext
 <2–4 Zeilen: was und warum, mit relevanten Entscheidungen aus decisions.md/handoff.md>

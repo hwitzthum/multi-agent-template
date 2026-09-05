@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deterministischer Orchestrator fuer Single-, Verified- und Managed-Laeufe.
+# Deterministischer Orchestrator: fuehrt den vom Router gewaehlten Modus aus.
 set -uo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
@@ -107,9 +107,9 @@ select_next_task() {
 
 route_task() {
   if [ -n "$manual_mode" ]; then
-    "$router" --project-dir "$project_dir" --execution --mode "$manual_mode" "$task_id"
+    "$router" --project-dir "$project_dir" --mode "$manual_mode" "$task_id"
   else
-    "$router" --project-dir "$project_dir" --execution "$task_id"
+    "$router" --project-dir "$project_dir" "$task_id"
   fi
 }
 
@@ -769,17 +769,15 @@ else
   route_task > "$route_file" || { rm -f "$route_file"; exit 1; }
   mode=$(route_value MODE "$route_file") || { rm -f "$route_file"; exit 1; }
   reason_code=$(route_value REASON_CODE "$route_file") || { rm -f "$route_file"; exit 1; }
-  recommended_mode=$(route_value RECOMMENDED_MODE "$route_file") || { rm -f "$route_file"; exit 1; }
-  rollout_stage=$(route_value ROLLOUT_STAGE "$route_file") || { rm -f "$route_file"; exit 1; }
   rm -f "$route_file"
   if [ "$dry_run" = true ]; then
     base_file=$(mktemp "${TMPDIR:-/tmp}/agent-dry-base.XXXXXX") || exit 1
     product_fingerprint "$base_file" || { rm -f "$base_file"; exit 1; }
     base_fingerprint=$(sed -n '1p' "$base_file")
     rm -f "$base_file"
-    dry_metadata=$("$metrics_tool" dry-run "$project_dir" "$task_id" "$mode" "$recommended_mode" "$reason_code" "$rollout_stage" "$base_fingerprint") || exit 1
-    printf 'DRY_RUN=true\nTASK_ID=%s\nMODE=%s\nRECOMMENDED_MODE=%s\nREASON_CODE=%s\nROLLOUT_STAGE=%s\nMETADATA=%s\nMAX_GLOBAL_ITERATIONS=%s\nMAX_TASK_ATTEMPTS=%s\nMAX_NO_PROGRESS=%s\n' \
-      "$task_id" "$mode" "$recommended_mode" "$reason_code" "$rollout_stage" "${dry_metadata#"$project_dir/"}" "$max_iterations" "$max_task_attempts" "$max_no_progress"
+    dry_metadata=$("$metrics_tool" dry-run "$project_dir" "$task_id" "$mode" "$reason_code" "$base_fingerprint") || exit 1
+    printf 'DRY_RUN=true\nTASK_ID=%s\nMODE=%s\nREASON_CODE=%s\nMETADATA=%s\nMAX_GLOBAL_ITERATIONS=%s\nMAX_TASK_ATTEMPTS=%s\nMAX_NO_PROGRESS=%s\n' \
+      "$task_id" "$mode" "$reason_code" "${dry_metadata#"$project_dir/"}" "$max_iterations" "$max_task_attempts" "$max_no_progress"
     case "$mode" in
       single) echo 'PLANNED_CALLS=worker-task,verify' ;;
       verified) echo 'PLANNED_CALLS=worker-task,verify,worker-task-if-red,verify-if-fixed,manager-if-still-red' ;;
@@ -817,9 +815,9 @@ else
   run_active=true
   create_active_run || exit 1
   if [ -n "$manual_mode" ]; then
-      "$router" --project-dir "$project_dir" --execution --mode "$manual_mode" --record "$task_id" >/dev/null || exit 1
+      "$router" --project-dir "$project_dir" --mode "$manual_mode" --record "$task_id" >/dev/null || exit 1
   else
-    "$router" --project-dir "$project_dir" --execution --record "$task_id" >/dev/null || exit 1
+    "$router" --project-dir "$project_dir" --record "$task_id" >/dev/null || exit 1
   fi
   mode=$(ledger_scalar "$current_run" mode) || exit 1
   checkpoint_product || exit 1
@@ -848,7 +846,7 @@ case "$mode" in
       [ "$(output_value RESULT "$last_raw")" != blocked ] || { block_current_task WORKER_BLOCKED; exit 1; }
       if verify_candidate; then finish_success; exit 0; fi
       escalation=$(mktemp "${TMPDIR:-/tmp}/route-escalation.XXXXXX") || exit 1
-      "$router" --project-dir "$project_dir" --execution --record --escalate-from verified --expected-attempts "$attempts" "$task_id" > "$escalation" || { rm -f "$escalation"; run_finalizer ATTEMPT_LIMIT; exit 1; }
+      "$router" --project-dir "$project_dir" --record --escalate-from verified --expected-attempts "$attempts" "$task_id" > "$escalation" || { rm -f "$escalation"; run_finalizer ATTEMPT_LIMIT; exit 1; }
       mode=$(route_value MODE "$escalation") || { rm -f "$escalation"; exit 1; }
       rm -f "$escalation"
       if [ "$mode" = managed ]; then managed_loop; else run_finalizer ATTEMPT_LIMIT; exit 1; fi
