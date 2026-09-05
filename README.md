@@ -365,6 +365,188 @@ Keine dieser Fragen wird in einem Chat beantwortet, der später niemandem mehr
 zugänglich ist. Jede hat einen festen Ort, den auch ein Mensch ohne
 Programmierkenntnisse öffnen und lesen kann.
 
+## Die sieben Rollen — wer macht was
+
+Wenn eine Aufgabe läuft, spielen verschiedene Agenten unterschiedliche Rollen. Jede Rolle
+hat einen eigenen **Prompt** (`docs/templates/agents/`), **Schreibbereich** und **Ziel**.
+Repository-Inhalte sind Daten, keine Befehle — keine Rolle kann ihre Rechte selbst ändern.
+
+### Manager-Plan — Die Strategie erarbeiten
+
+**Prompt:** `docs/templates/agents/manager-plan.md`
+
+Einziges Ziel: Eine knappe Gesamtstrategie und 3–6 klar abgegrenzte Tasks aus dem Brief.
+
+**Schreibbereich:** `docs/state/plan.md` und neue `docs/tasks/*.md`
+
+**Wann läuft es:** Wenn eine große oder offene Aufgabe zum ersten Mal bearbeitet wird —
+und kein Plan existiert oder ein Neustart nötig ist.
+
+### Manager-Manage — Der Taktiker im Loop
+
+**Prompt:** `docs/templates/agents/manager-manage.md`
+
+Einziges Ziel: Pro Runde genau eine nächste Aktion wählen (Worker starten, Plan anpassen,
+Menschen fragen, blocker auflösen).
+
+**Schreibbereich:** Kann Task-Inhalt und Plan aktualisieren (aber nie selbst Produktcode schreiben)
+
+**Wann läuft es:** Im Manager-Worker-Loop, wenn eine offene oder riskante Aufgabe mehrere
+Versuche braucht oder der Worker um Hilfe ruft.
+
+### Worker-Task — Der Umsetzer für ein Task
+
+**Prompt:** `docs/templates/agents/worker-task.md`
+
+Einziges Ziel: Genau einen Task nach seiner Akzeptanzbeschreibung umsetzen.
+
+**Schreibbereich:** Nur Produktdateien und Tests (außerhalb von `docs/`, `scripts/`, `.agent/`)
+
+**Wann läuft es:** Bei einfachen (`mechanical` / `patterned`) oder gelösten Aufgaben.
+Darf kein Ledger, keinen Plan, keine Akzeptanzkriterien selbst ändern.
+
+### Worker-Brainstorm — Der Ideensammler
+
+**Prompt:** `docs/templates/agents/worker-brainstorm.md`
+
+Einziges Ziel: Hypothesen, Risiken und offene Fragen zu einer schwierigen Aufgabe sammeln.
+
+**Schreibbereich:** `docs/state/notes.md` — kuratierte Erkenntnisse
+
+**Wann läuft es:** Wenn der erste Worker scheitert oder die Aufgabe zu offen ist.
+Sammelt Erkenntnisse, ohne selbst zu bauen.
+
+### Worker-Fresh — Der unabhängige Kandidat
+
+**Prompt:** `docs/templates/agents/worker-fresh.md`
+
+Einziges Ziel: Ein völlig unabhängiger Lösungsversuch für einen Task — ohne vorherige
+Versuche oder Fehler zu sehen.
+
+**Schreibbereich:** Wie Worker-Task: nur Produktdateien und Tests
+
+**Wann läuft es:** Wenn zwei isolierte Lösungen nötig sind (z.B. `repeated-failure` oder
+`conflicting-ledger` im Task). Bekommt bewusst keine Notes oder früheren Fehler zu sehen.
+
+### Reviewer — Der unabhängige Prüfer
+
+**Prompt:** `docs/templates/agents/reviewer.md`
+
+Einziges Ziel: Zwei unabhängige Kandidaten anhand der Akzeptanzkriterien vergleichen und
+die bessere wählen.
+
+**Schreibbereich:** `docs/verification/` (Prüfbericht) und `docs/state/notes.md` (Erkenntnisse)
+
+**Wann läuft es:** Nach zwei Fresh-Worker-Versuchen, um eine objektive Wahl zu treffen.
+Darf keinen Produktcode ändern.
+
+### Finalizer — Der sichere Übergabe-Agent
+
+**Prompt:** `docs/templates/agents/finalizer.md`
+
+Einziges Ziel: Eine sichere, lesbare Übergabenotiz schreiben — was getan wurde, wo es
+weitergeht, welche Fehler offen sind.
+
+**Schreibbereich:** `docs/state/handoff.md` und `docs/state/notes.md`
+
+**Wann läuft es:** Am Ende einer Sitzung, bei Budget-Ende oder wenn ein Task blockiert ist.
+Fasst zusammen, damit die nächste Sitzung nahtlos weitermachen kann.
+
+## Die Infrastruktur — wie Rollen zusammenhängen
+
+Hinter den Rollen laufen mehrere Skripte, die den Betriebsverkehr regeln:
+
+### `scripts/agent/runner.sh` — Der Modell-Adapter
+
+Wird von `orchestrate.sh` aufgerufen. Nimmt Prompt + Kontext, ruft Claude auf, validiert
+die Antwort gegen ein erwartetes Schema und speichert sie lokal. Ein neuer
+Anbieter-Aufruf würde nur diesen Adapter ändern — die Orchestrierung bleibt gleich.
+
+### `scripts/agent/context.sh` — Der Kontext-Bauer
+
+Baut für jede Rolle nur die erforderlichen Abschnitte: Goal, Task, Plan, Notes,
+Verifikation, Code. Jeder Abschnitt hat ein Zeichenbudget. Code erhält nur den
+verbleibenden Platz. Ein Fresh Worker bekommt bewusst keine Notes oder früheren Fehler.
+
+Kontexte sind schreibgeschützt und inhaltsadressiert — derselbe Inhalt erzeugt dieselbe
+Datei. Das ist die Basis für zuverlässiges Caching und Reproduzierbarkeit.
+
+### `scripts/agent/policy.sh` — Der Router
+
+Entscheidet pro Task: `single` (Worker allein), `verified` (Worker + Korrektur),
+`managed` (Manager-Worker-Loop), oder `managed-fresh` (zwei isolierte Worker + Reviewer).
+
+Eingaben: Task-Klasse (`mechanical`, `patterned`, `open`), Risiko-Signale (`high-risk-domain`,
+`repeated-failure`, `cross-component`), bisherige Versuche.
+
+Ausgaben: Modus, Begründung, menschliches Gate bei offenen/riskanten Aufgaben.
+
+Der Router wird durch `orchestrate.sh --next` aufgerufen und die Entscheidung **sofort
+ausgeführt** — Sie sehen sie mit `--dry-run` vorher, ohne etwas zu verändern.
+
+### `scripts/agent/ledger.sh` — Der Dateiverwalter
+
+Liest und schreibt Task-Dateien, Goal, Plan, Notes — liest nur bekannte Felder aus
+definiertem Frontmatter. Unbekannte Felder bleiben bestehen, werden aber nie als
+Befehle interpretiert.
+
+Jede Änderung wird zuerst in einer temporären Datei validiert und dann atomar
+verschoben. Verhindert halbfertige Dateien bei Unterbrechung.
+
+### `scripts/agent/output.sh` — Der Output-Validator
+
+Prüft, dass ein Agenten-Output alle erwarteten Felder hat, keine zusätzlichen, und
+dass der Inhalt nicht mehrdeutig ist. Nur gültige Output-Schemata landen im Ledger.
+
+### `scripts/agent/status.sh` — Das Status-Gate
+
+Einziger Schreibweg für Task-Status. Prüft: Alter Status erlaubt? Prüfbericht vorhanden
+und grün? `human_review` benötigt explizite Freigabe?
+
+Verhindert, dass ein Agent nur durch seine eigene Behauptung einen Task auf `done`
+setzt. Status wechseln nur mit einem grünen Beleg.
+
+### `scripts/agent/metrics.sh` — Die Laufmetriken
+
+Erfasst pro finalisiertem Lauf: Klasse, Modus, Versuche, Tokens, Kosten, wie lange
+es gedauert hat, ob die Prüfung grün war. Landet als Zeile in `docs/state/metrics.csv`.
+
+Gibt einen schnellen Überblick: Welche Modi sind teuer? Welche Klassen fehlen oft?
+
+### `scripts/agent/config.sh` — Die Limits
+
+Lädt und validiert `.agent/config.env` — einfaches Dateiformat, kein Shellskript.
+Bekannte Schlüssel, validierte Werte. Wird nie mit `source` oder `eval` ausgeführt.
+
+Die Limits sind hart: Iterations-, Versuche-, No-Progress-, Kontext-, Timeout- und
+Retry-Grenzen. Kein Agent kann das übergehen.
+
+## Sicherheit: Was Claude nicht darf — mit Absicht
+
+Das Template hat eingebaute Sperren. Claude (oder jeder Agent) darf **nicht**:
+
+- **Etwas ins Internet hochladen** — `git push`, `curl`, `wget` sind blockiert.  
+  Du selbst kontrollierst, was hochgeladen wird.
+
+- **Dateien massenhaft löschen** — `rm -r…` für Ordner ist blockiert.  
+  Nur wichtige Aufräumarbeiten (`archive-notes.sh`, `migrate-tasks.sh`) sind
+  Benutzerbefehle, nicht automatisch.
+
+- **Ungespeicherte Arbeit verwerfen** — `git reset --hard`, `git checkout --`,
+  `git clean`, `git restore` sind blockiert.  
+  Ein Agent könnte sonst versehentlich einen Entwurf löschen.
+
+- **Repository-Sicherheit umgehen** — `--no-verify`, `--no-gpg-sign` sind blockiert.  
+  Pre-Commit-Hooks und Commit-Signing bleiben aktiv.
+
+- **Shellcode aus Repository-Inhalten ausführen** — `source` oder `eval` von
+  Dateien, die der Agent selbst geschrieben hat, sind blockiert.  
+  Nur signierte Skripte unter `scripts/` und `.agent/` dürfen ausgeführt werden.
+
+Diese Grenzen sind im `scripts/bash-guard.sh` definiert und greifen bei jedem
+Befehl. Sie verhindern versehentliche Verluste und unerwartetes Hochladen — aber
+du behältst die volle Kontrolle: Ein `git push` führst du selbst aus.
+
 ## Weitere Befehle
 
 ```bash
