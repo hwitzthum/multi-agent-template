@@ -179,6 +179,169 @@ Sagen Sie, Sie wollen eine Webseite bauen. Das könnte so laufen:
 | 5. Automatisch testen      | `./scripts/verify.sh` läuft           | Seite baut? Typos? Links kaputt?                         |
 | 6. Übergabe festhalten     | `docs/state/handoff.md` aktualisiert  | Nächster kann nahtlos weitermachen                       |
 
+## So würde man die App selbst bauen: Von der ersten Datei zum fertigen System
+
+Stellen Sie sich vor, Sie wollen diese Anwendung von Grund auf selbst entwickeln. Welche Datei würden Sie zuerst anlegen? Und welche bauen darauf auf? So funktioniert es:
+
+### Schicht 1: Das Fundament — Das Ziel (Startpunkt)
+
+**Erste Datei: `docs/state/goal.md`**
+
+Hier schreiben Sie auf, was das Projekt überhaupt soll. Nicht technisch — einfach:
+
+> "Wir wollen eine Landingpage, auf der Kunden mehr über uns erfahren und uns eine Nachricht schicken können."
+
+**Warum das die erste Datei ist:**
+
+- Ohne klares Ziel weiß niemand, was gelungen ist und wann man fertig ist
+- Alle anderen Dateien orientieren sich danach
+- Wenn später etwas unklar ist, schauen alle hier nach, was eigentlich geplant war
+
+### Schicht 2: Die Arbeitsplanung — Aufgaben und Plan
+
+**Aufbauend darauf: `docs/state/plan.md`**
+
+Jetzt zerlegen Sie das Ziel in Schritte:
+
+- Aufgabe 1: Design der Seite festlegen
+- Aufgabe 2: Header und Navigation bauen
+- Aufgabe 3: Kontaktformular programmieren
+- Aufgabe 4: Formularversand testen
+- ...und so weiter
+
+Der Plan sagt: "Insgesamt 12 Aufgaben, in dieser Reihenfolge, und Aufgabe 5 hängt von Aufgabe 3 ab."
+
+**Dann: `docs/tasks/001.md`, `docs/tasks/002.md`, ... (viele Dateien)**
+
+Jede Aufgabe bekommt ihre eigene Datei:
+
+```
+Titel: Header und Navigation bauen
+Beschreibung: Ein Header mit Logo und Navigation oben auf jeder Seite
+Status: offen
+```
+
+Das ist wie ein Zettel für einen Arbeiter — präzise, konkret, prüfbar.
+
+**Warum diese Reihenfolge:**
+
+- Der Plan weiß, in welcher Reihenfolge die Aufgaben kommen
+- Jede Aufgabe weiß, was sie soll
+- Ein neuer Agent kann die Aufgabe später lesen und sofort anfangen
+
+### Schicht 3: Entscheidungen festhalten
+
+**Parallel dazu: `docs/state/decisions.md`**
+
+Wenn Sie sich während der Arbeit für etwas Wichtiges entscheiden, schreiben Sie es hier auf:
+
+> "Warum verwenden wir React statt Vue?
+> — Grund: Der Entwickler kennt React besser und die Seite braucht viele interaktive Elemente."
+
+**Warum das wichtig ist:**
+
+- In zwei Monaten fragt jemand: "Warum haben wir das so gemacht?" Antwort ist sofort da.
+- Neue Entwickler verstehen die Logik, nicht nur den Code.
+
+### Schicht 4: Die Arbeit selbst — Code und Dateien
+
+**Dann, wenn die Aufgaben laufen: Der eigentliche Code**
+
+Ein Agent (oder Sie selbst) bearbeitet die Aufgabe und:
+
+- Ändert `src/components/Header.jsx` — oder erstellt es neu
+- Ändert `index.html`
+- Vielleicht `styles/header.css`
+- Alles wird in Git versioniert
+
+**Hier passiert der Kern der Arbeit:**
+
+- Der Entwickler liest die Aufgabendatei
+- Programmiert, was darin steht
+- Speichert die Änderungen mit Git-Commit
+
+### Schicht 5: Automatische Prüfung
+
+**Nach jeder Aufgabe: `./scripts/verify.sh` läuft automatisch**
+
+Dieses Skript prüft:
+
+- "Baut der Code noch?" (Keine Syntaxfehler)
+- "Funktionieren alle Links?" (Keine 404-Fehler)
+- "Sind die Tests grün?" (Kein Rückschritt)
+
+Das Ergebnis landet in `docs/verification/latest.md`:
+
+```
+Build:  ✅ erfolgreich
+Links:  ✅ alle funktionstüchtig
+Tests:  ✅ 24/24 grün
+```
+
+**Warum das genial ist:**
+
+- Fehler werden sofort sichtbar, nicht erst später
+- Man sieht objektiv: "Hat es funktioniert oder nicht?"
+- Keine versteckten Probleme
+
+### Schicht 6: Die Übergabe — Für den nächsten
+
+**Zum Abschluss: `docs/state/handoff.md`**
+
+Wenn Sie die Arbeit unterbrechen (zum Abendessen, bis morgen, oder ein anderer übernimmt), schreiben Sie:
+
+> "Aufgabe 003 fertig, Test grün. Nächster: Aufgabe 004 starten mit `./scripts/orchestrate.sh --next`."
+
+**Das ist wie eine Notiz an Sie selbst (oder einen Kollegen):**
+
+- Wo bin ich?
+- Ist der Stand sauber?
+- Was kommt nächstes?
+
+### Die ganze Kette zusammen
+
+```
+goal.md (Ziel)
+    ↓
+plan.md (Reihenfolge)
+    ↓
+tasks/001.md, tasks/002.md, ... (Was ist zu tun?)
+    ↓
+decisions.md (Warum diese Entscheidungen?)
+    ↓
+Echter Code: src/, styles/, index.html, ... (Die Umsetzung)
+    ↓
+verify.sh (Hat es funktioniert?)
+    ↓
+verification/latest.md (Prüfergebnis)
+    ↓
+handoff.md (Was kommt nächstes?)
+```
+
+### Ein echtes Beispiel: Sie starten eine Aufgabe
+
+1. Sie rufen auf: `./scripts/orchestrate.sh --next`
+2. Das System liest `docs/tasks/004.md` (nächste offene Aufgabe)
+3. Darin steht: "Kontaktformular in HTML schreiben, Felder: Name, E-Mail, Nachricht"
+4. Ein Agent (oder Sie) öffnet `src/components/ContactForm.jsx` und schreibt den Code
+5. Der Agent speichert das mit Git
+6. `./scripts/verify.sh` läuft: "Baut alles? Ja." → `verification/latest.md` wird grün
+7. Status in `docs/tasks/004.md` wechselt zu `done`
+8. Der nächste Zettel wird angeschaut — Aufgabe 005
+
+### Das Geheimnis: Schichten, nicht Chaos
+
+**Jede Datei hat genau eine Aufgabe:**
+
+- `goal.md` antwortet auf: "Was ist das Projekt?"
+- `plan.md` antwortet auf: "Was sind die Schritte?"
+- `tasks/*.md` antwortet auf: "Was ist konkret zu tun?"
+- `decisions.md` antwortet auf: "Warum haben wir so entschieden?"
+- `verify.sh` antwortet auf: "Hat es funktioniert?"
+- `handoff.md` antwortet auf: "Wo machen wir morgen weiter?"
+
+**Das ist nicht chaotisch wie ein Chat — es ist strukturiert wie ein Rezeptbuch.** Jeder weiß, wo die Information ist, und jeder kann sie verstehen.
+
 ## Weitere Befehle
 
 ```bash
