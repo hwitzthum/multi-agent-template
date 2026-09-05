@@ -67,15 +67,19 @@ assert_has "Initializer legt Run-Ledger an" docs/templates/initializer-prompt.md
 assert_has "Initializer fragt nur zerlegungsrelevante Fragen" docs/templates/initializer-prompt.md 'Zerlegung tatsächlich ändern würde'
 assert_has "Initializer verbietet zweite Taskquelle" docs/templates/initializer-prompt.md 'paralleles `tasks.json`'
 
-for phrase in \
-  'Das bestehende Task-System bleibt die einzige Aufgabenquelle' \
-  'Statuswechsel brauchen einen überprüfbaren Beleg' \
-  'Zusätzliche Agentenarbeit wird nach Risiko gewählt' \
-  'Offene Aufgaben bleiben menschlich beaufsichtigt' \
-  'Fresh Worker sieht bewusst weder frühere Notizen' \
-  'Modellaufrufe und lokale Logs haben sichtbare Kostenfolgen'; do
-  assert_has "Entscheidungen dokumentieren: $phrase" docs/state/decisions.md "$phrase"
-done
+# docs/state/ ist Projektzustand, kein Vorlageninhalt. Solange docs/tasks/ leer
+# ist, gilt der Auslieferungsstand: Ein neues Projekt darf keine fremden
+# Einträge erben. Nach der Initialisierung entfällt die Prüfung, weil dann
+# echter Projektzustand in diesen Dateien steht.
+if [ -z "$(find "$project_dir/docs/tasks" -maxdepth 1 -name '*.md' -print -quit 2>/dev/null)" ]; then
+  assert_has "Startzustand: decisions.md ohne Einträge" docs/state/decisions.md 'Noch keine Entscheidungen festgehalten.'
+  assert_has "Startzustand: goal.md ohne Projektziel" docs/state/goal.md 'Noch kein Projektziel festgelegt.'
+  assert_has "Startzustand: plan.md ohne Strategie" docs/state/plan.md 'Noch keine Strategie festgelegt.'
+  assert_has "Startzustand: handoff.md verweist auf die Initialisierung" docs/state/handoff.md 'noch nicht initialisiert'
+  for state_file in decisions.md goal.md plan.md handoff.md; do
+    assert_lacks "Startzustand: keine Bau-Historie in $state_file" "docs/state/$state_file" '2026-09-04'
+  done
+fi
 
 expect_help "orchestrate --help" "$project_dir/scripts/orchestrate.sh"
 expect_help "next-tasks --help" "$project_dir/scripts/next-tasks.sh"
