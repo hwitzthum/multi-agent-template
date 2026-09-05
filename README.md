@@ -181,166 +181,189 @@ Sagen Sie, Sie wollen eine Webseite bauen. Das könnte so laufen:
 
 ## So würde man die App selbst bauen: Von der ersten Datei zum fertigen System
 
-Stellen Sie sich vor, Sie wollen diese Anwendung von Grund auf selbst entwickeln. Welche Datei würden Sie zuerst anlegen? Und welche bauen darauf auf? So funktioniert es:
+Die Vorlage kommt bewusst leer an: In `docs/state/` stehen nur Platzhalter, in
+`docs/tasks/` liegt noch keine Aufgabe. Dieser Abschnitt zeigt, in welcher
+Reihenfolge sich diese Dateien füllen, was jede leistet und warum sie
+aufeinander aufbauen.
 
-### Schicht 1: Das Fundament — Das Ziel (Startpunkt)
+**Wichtig vorweg:** Sie schreiben diese Dateien nicht von Hand. Sie schreiben
+einen Brief in Alltagssprache — die Initialisierung erzeugt daraus den ganzen
+Satz. Die Dateien zu verstehen lohnt sich trotzdem: Es ist der Arbeitsstand, den
+Sie später lesen, prüfen und korrigieren.
 
-**Erste Datei: `docs/state/goal.md`**
+### Schicht 0: Der Brief — Ihr einziger Handschlag am Anfang
 
-Hier schreiben Sie auf, was das Projekt überhaupt soll. Nicht technisch — einfach:
+**Erste Datei: `docs/briefs/<ihr-projekt>.md`**
 
-> "Wir wollen eine Landingpage, auf der Kunden mehr über uns erfahren und uns eine Nachricht schicken können."
+Hier beschreiben Sie in normalen Sätzen, was entstehen soll:
 
-**Warum das die erste Datei ist:**
+> "Wir wollen eine Landingpage, auf der Kunden mehr über uns erfahren und uns
+> eine Nachricht schicken können."
 
-- Ohne klares Ziel weiß niemand, was gelungen ist und wann man fertig ist
-- Alle anderen Dateien orientieren sich danach
-- Wenn später etwas unklar ist, schauen alle hier nach, was eigentlich geplant war
+Danach starten Sie die Initialisierung nach
+`docs/templates/initializer-prompt.md`. Sie stellt Rückfragen — aber nur solche,
+die die Zerlegung in Aufgaben tatsächlich ändern würden — und legt daraus alle
+folgenden Dateien an.
 
-### Schicht 2: Die Arbeitsplanung — Aufgaben und Plan
+**Warum das der Startpunkt ist:** Der Brief ist das Einzige, was nur ein Mensch
+liefern kann. Alles Weitere ist Übersetzungsarbeit.
 
-**Aufbauend darauf: `docs/state/plan.md`**
+### Schicht 1: Das Ziel — der Maßstab für alles
 
-Jetzt zerlegen Sie das Ziel in Schritte:
+**Erzeugt: `docs/state/goal.md`**
 
-- Aufgabe 1: Design der Seite festlegen
-- Aufgabe 2: Header und Navigation bauen
-- Aufgabe 3: Kontaktformular programmieren
-- Aufgabe 4: Formularversand testen
-- ...und so weiter
+Aus dem Brief wird ein prüfbares Ziel mit vier Pflichtteilen:
 
-Der Plan sagt: "Insgesamt 12 Aufgaben, in dieser Reihenfolge, und Aufgabe 5 hängt von Aufgabe 3 ab."
+- **Ergebnis** — was am Ende dasteht
+- **Muss** — was zwingend erfüllt sein muss
+- **Nicht Teil** — was bewusst wegbleibt (verhindert ausuferndes Projekt)
+- **Globale Abnahme** — woran man objektiv misst, dass es fertig ist
 
-**Dann: `docs/tasks/001.md`, `docs/tasks/002.md`, ... (viele Dateien)**
+**Warum diese Datei zuerst kommt:** Ohne klares Ziel weiß niemand, wann etwas
+gelungen ist. Alle folgenden Dateien orientieren sich daran, und bei
+Unklarheiten schaut jeder hier nach.
 
-Jede Aufgabe bekommt ihre eigene Datei:
+### Schicht 2: Die Zerlegung — Anforderungen, Plan und Aufgaben
 
+**Erzeugt: `docs/state/features.md`**
+
+Alle Anforderungen als einzeln prüfbare Punkte. Diese Datei ist der Grund, warum
+später niemand behaupten kann, etwas sei fertig, obwohl es fehlt.
+
+**Erzeugt: `docs/state/plan.md`**
+
+Die knappe Gesamtstrategie plus Meilensteine und offene Risiken. Der Plan sagt,
+in welcher Reihenfolge gearbeitet wird und was voneinander abhängt.
+
+**Erzeugt: `docs/tasks/001.md`, `docs/tasks/002.md`, …**
+
+Jede Aufgabe bekommt eine eigene Datei — wie ein Zettel für einen Arbeiter:
+
+```yaml
+id: 002
+title: "Header und Navigation bauen"
+depends_on: []
+status: todo
+class: patterned
+acceptance:
+  - "./scripts/verify.sh"
 ```
-Titel: Header und Navigation bauen
-Beschreibung: Ein Header mit Logo und Navigation oben auf jeder Seite
-Status: offen
-```
 
-Das ist wie ein Zettel für einen Arbeiter — präzise, konkret, prüfbar.
+Die Statuswerte sind `todo`, `review`, `done` und `blocked`. Welche Aufgabe
+gerade dran ist, rechnet `./scripts/next-tasks.sh` aus den Abhängigkeiten aus —
+das steht bewusst in keiner Datei, damit es nicht veralten kann.
 
-**Warum diese Reihenfolge:**
+Dazu kommen Steuerfelder, die der Router liest: `class`, `orchestration`,
+`touches`, `risk_flags`, `max_attempts`, `human_review`. Genau diese Felder
+entscheiden später, ob eine Aufgabe mit einem Worker läuft oder einen Manager
+braucht. Die vollständige Vorlage steht in `docs/templates/task-template.md`.
 
-- Der Plan weiß, in welcher Reihenfolge die Aufgaben kommen
-- Jede Aufgabe weiß, was sie soll
-- Ein neuer Agent kann die Aufgabe später lesen und sofort anfangen
+**Warum diese Reihenfolge:** Der Plan kennt die Abfolge, die einzelne Aufgabe
+kennt ihren Umfang. Ein Agent kann eine Aufgabendatei lesen und sofort anfangen —
+ohne den bisherigen Chatverlauf.
 
 ### Schicht 3: Entscheidungen festhalten
 
-**Parallel dazu: `docs/state/decisions.md`**
+**Erzeugt und laufend ergänzt: `docs/state/decisions.md`**
 
-Wenn Sie sich während der Arbeit für etwas Wichtiges entscheiden, schreiben Sie es hier auf:
+Jede technische Entscheidung nach demselben Muster: Was / Warum in
+Alltagssprache / Folge für den Auftraggeber.
 
-> "Warum verwenden wir React statt Vue?
-> — Grund: Der Entwickler kennt React besser und die Seite braucht viele interaktive Elemente."
+> "Warum eine statische Seite statt eines Baukastens?
+> — Weil keine laufenden Lizenzkosten anfallen und die Seite schneller lädt.
+> Folge: Änderungen laufen über das Projekt, nicht über einen Web-Editor."
 
-**Warum das wichtig ist:**
+**Warum das wichtig ist:** In zwei Monaten fragt jemand „warum eigentlich so?" —
+und die Antwort steht da, in Sätzen, die kein Fachwissen verlangen.
 
-- In zwei Monaten fragt jemand: "Warum haben wir das so gemacht?" Antwort ist sofort da.
-- Neue Entwickler verstehen die Logik, nicht nur den Code.
+### Schicht 4: Die Arbeit selbst — der Produktcode
 
-### Schicht 4: Die Arbeit selbst — Code und Dateien
+Jetzt erst entsteht das eigentliche Produkt. Ein Worker liest die Aufgabendatei,
+ändert die dazugehörigen Dateien und speichert sie versioniert in Git.
 
-**Dann, wenn die Aufgaben laufen: Der eigentliche Code**
-
-Ein Agent (oder Sie selbst) bearbeitet die Aufgabe und:
-
-- Ändert `src/components/Header.jsx` — oder erstellt es neu
-- Ändert `index.html`
-- Vielleicht `styles/header.css`
-- Alles wird in Git versioniert
-
-**Hier passiert der Kern der Arbeit:**
-
-- Der Entwickler liest die Aufgabendatei
-- Programmiert, was darin steht
-- Speichert die Änderungen mit Git-Commit
+Welche Dateien das sind, legt das Profil unter `docs/profil/` fest — die Vorlage
+selbst bringt bewusst keinen Produktcode mit. Ein Worker darf dabei nur den
+Umfang seiner eigenen Aufgabe anfassen, nichts daneben.
 
 ### Schicht 5: Automatische Prüfung
 
-**Nach jeder Aufgabe: `./scripts/verify.sh` läuft automatisch**
+**Läuft nach jeder Aufgabe: `scripts/verify-task.sh`**
 
-Dieses Skript prüft:
+Dieses Prüftor führt die Akzeptanzbefehle der Aufgabe aus und hängt dabei immer
+die globale Projektprüfung `./scripts/verify.sh` an. Das Ergebnis landet in
+`docs/verification/latest.md`.
 
-- "Baut der Code noch?" (Keine Syntaxfehler)
-- "Funktionieren alle Links?" (Keine 404-Fehler)
-- "Sind die Tests grün?" (Kein Rückschritt)
+**Warum das der Kern des Systems ist:** Eine Aufgabe darf nur über dieses Tor auf
+`done` wechseln. Die Behauptung eines Agenten, etwas sei fertig, zählt nicht —
+nur ein frischer grüner Beleg zählt. Bei Aufgaben mit `human_review: true` führt
+ein grüner Maschinencheck bewusst nur zu `review`, nie direkt zu `done`.
 
-Das Ergebnis landet in `docs/verification/latest.md`:
+Solange das Projekt nicht initialisiert ist, ist `./scripts/verify.sh` ein
+Platzhalter und meldet immer GREEN — der erste echte Inhalt kommt aus dem Profil.
 
-```
-Build:  ✅ erfolgreich
-Links:  ✅ alle funktionstüchtig
-Tests:  ✅ 24/24 grün
-```
+### Schicht 6: Die Übergabe — für die nächste Sitzung
 
-**Warum das genial ist:**
+**Erzeugt und laufend aktualisiert: `docs/state/handoff.md`**
 
-- Fehler werden sofort sichtbar, nicht erst später
-- Man sieht objektiv: "Hat es funktioniert oder nicht?"
-- Keine versteckten Probleme
+Am Ende jedes Laufs steht dort der letzte grüne Stand, was zuletzt passiert ist,
+der erste offene Fehler und genau ein nächster Schritt.
 
-### Schicht 6: Die Übergabe — Für den nächsten
-
-**Zum Abschluss: `docs/state/handoff.md`**
-
-Wenn Sie die Arbeit unterbrechen (zum Abendessen, bis morgen, oder ein anderer übernimmt), schreiben Sie:
-
-> "Aufgabe 003 fertig, Test grün. Nächster: Aufgabe 004 starten mit `./scripts/orchestrate.sh --next`."
-
-**Das ist wie eine Notiz an Sie selbst (oder einen Kollegen):**
-
-- Wo bin ich?
-- Ist der Stand sauber?
-- Was kommt nächstes?
+**Warum das nötig ist:** Eine neue Sitzung hat keinen Chatverlauf. Das Handoff
+ist die Brücke — ohne sie beginnt jedes Mal Rätselraten.
 
 ### Die ganze Kette zusammen
 
 ```
-goal.md (Ziel)
-    ↓
-plan.md (Reihenfolge)
-    ↓
-tasks/001.md, tasks/002.md, ... (Was ist zu tun?)
-    ↓
-decisions.md (Warum diese Entscheidungen?)
-    ↓
-Echter Code: src/, styles/, index.html, ... (Die Umsetzung)
-    ↓
-verify.sh (Hat es funktioniert?)
-    ↓
-verification/latest.md (Prüfergebnis)
-    ↓
-handoff.md (Was kommt nächstes?)
+docs/briefs/<projekt>.md        Ihr Brief in Alltagssprache
+        ↓  (Initialisierung nach docs/templates/initializer-prompt.md)
+docs/state/goal.md              Ziel, Nicht-Ziele, Abnahmekriterien
+        ↓
+docs/state/features.md          alle Anforderungen, einzeln prüfbar
+docs/state/plan.md              Strategie, Meilensteine, Risiken
+docs/tasks/001.md, 002.md, …    was konkret zu tun ist
+        ↓
+docs/state/decisions.md         warum es so gebaut wird
+        ↓
+Produktcode (Profil bestimmt den Stack)
+        ↓
+scripts/verify-task.sh          Prüftor: Akzeptanz + ./scripts/verify.sh
+        ↓
+docs/verification/latest.md     der Beleg, der `done` überhaupt erst erlaubt
+        ↓
+docs/state/handoff.md           wo es morgen weitergeht
 ```
 
-### Ein echtes Beispiel: Sie starten eine Aufgabe
+### Ein echter Durchlauf
 
-1. Sie rufen auf: `./scripts/orchestrate.sh --next`
-2. Das System liest `docs/tasks/004.md` (nächste offene Aufgabe)
-3. Darin steht: "Kontaktformular in HTML schreiben, Felder: Name, E-Mail, Nachricht"
-4. Ein Agent (oder Sie) öffnet `src/components/ContactForm.jsx` und schreibt den Code
-5. Der Agent speichert das mit Git
-6. `./scripts/verify.sh` läuft: "Baut alles? Ja." → `verification/latest.md` wird grün
-7. Status in `docs/tasks/004.md` wechselt zu `done`
-8. Der nächste Zettel wird angeschaut — Aufgabe 005
+1. Sie rufen `./scripts/orchestrate.sh --next` auf.
+2. Der Router liest die nächste ausführbare Aufgabe und entscheidet nach Klasse,
+   Risiko und bisherigen Fehlversuchen, wie viel Begleitung sie braucht.
+3. Der gewählte Modus läuft: ein Worker allein, Worker mit Korrekturschleife,
+   Manager-Worker-Loop oder zwei unabhängige Lösungen mit Reviewer.
+4. Der Worker ändert die Produktdateien, Git hält jede Änderung fest.
+5. `scripts/verify-task.sh` prüft: Akzeptanzbefehle plus `./scripts/verify.sh`.
+6. Nur bei grünem Beleg setzt das Status-Gate die Aufgabe auf `done` — sonst auf
+   `review`, oder zurück in einen weiteren Versuch.
+7. Das Handoff wird aktualisiert, die nächste Aufgabe wird frei.
 
-### Das Geheimnis: Schichten, nicht Chaos
+Vorher ansehen, ohne etwas zu verändern: `./scripts/orchestrate.sh --next --dry-run`.
 
-**Jede Datei hat genau eine Aufgabe:**
+### Das Prinzip dahinter: eine Datei, eine Frage
 
-- `goal.md` antwortet auf: "Was ist das Projekt?"
-- `plan.md` antwortet auf: "Was sind die Schritte?"
-- `tasks/*.md` antwortet auf: "Was ist konkret zu tun?"
-- `decisions.md` antwortet auf: "Warum haben wir so entschieden?"
-- `verify.sh` antwortet auf: "Hat es funktioniert?"
-- `handoff.md` antwortet auf: "Wo machen wir morgen weiter?"
+| Datei                         | beantwortet                           |
+| ----------------------------- | ------------------------------------- |
+| `docs/briefs/*.md`            | Was wollen wir überhaupt?             |
+| `docs/state/goal.md`          | Woran messen wir Erfolg?              |
+| `docs/state/features.md`      | Welche Anforderungen gibt es einzeln? |
+| `docs/state/plan.md`          | In welcher Reihenfolge?               |
+| `docs/tasks/*.md`             | Was ist jetzt konkret zu tun?         |
+| `docs/state/decisions.md`     | Warum haben wir so entschieden?       |
+| `docs/verification/latest.md` | Hat es nachweislich funktioniert?     |
+| `docs/state/handoff.md`       | Wo machen wir weiter?                 |
 
-**Das ist nicht chaotisch wie ein Chat — es ist strukturiert wie ein Rezeptbuch.** Jeder weiß, wo die Information ist, und jeder kann sie verstehen.
+Keine dieser Fragen wird in einem Chat beantwortet, der später niemandem mehr
+zugänglich ist. Jede hat einen festen Ort, den auch ein Mensch ohne
+Programmierkenntnisse öffnen und lesen kann.
 
 ## Weitere Befehle
 
