@@ -106,6 +106,43 @@ wiederverwendbar.
   Fehlversuche) — nicht alle Aufgaben brauchen fünf Agenten, nur die, die es
   brauchen
 
+**Wie der Router konkret entscheidet:**
+
+Der Router wird aktiv, sobald Sie `./scripts/orchestrate.sh --next` aufrufen (oder
+eine bestimmte Aufgabe mit `--task 017` starten). Er schaut sich die Aufgabe an
+und fragt:
+
+1. **Welche Art Aufgabe ist das?**
+   - _Mechanisch_ (z.B. Variablenname umbenennen) → Braucht nur einen Worker
+   - _Gemustert_ (z.B. neue Seite nach bestehendem Muster) → Braucht einen Worker
+     - einen Korrekturversuch, wenn es beim ersten Mal nicht klappt
+   - _Offen_ (z.B. „Schreib einen überzeugende Hero-Text") → Braucht einen Manager
+     zum Planen, dann einen Worker, dann Überprüfung — kann mehrfach wiederholt
+     werden
+   - _Festgefahren_ (Task ist 3x gescheitert, oder Sie haben explizit „braucht
+     frische Perspektive" angekreuzt) → Braucht zwei vollständig unabhängige
+     Lösungen + einen Reviewer, der die beste wählt
+
+2. **Gibt es Risikosignale?**
+   - _Authentifizierung, Berechtigungen, Zahlungen, Datenmigration?_ → Hochrisiko,
+     braucht mindestens einen Manager
+   - _Mehrere verschiedene Bereiche gleichzeitig?_ (Frontend + Backend + Datenbank)
+     → Cross-Component, braucht mindestens einen Manager
+   - _Andere Fehler haben sich bei dieser Sache schon einmal widersprochen?_ →
+     Ledger-Konflikt, braucht zwei unabhängige Lösungen
+
+3. **Wie oft ist diese Aufgabe schon gescheitert?**
+   - Beim ersten Versuch: nach Plan
+   - Beim zweiten Versuch: eskaliert um eine Stufe (z.B. von „verified" zu
+     „managed")
+   - Beim dritten Versuch: blockiert (wird ein Entscheidungs-Fall für Sie)
+
+Die Entscheidung wird _sofort_ ausgeführt — Sie sehen sie mit `--dry-run` vorher
+ohne etwas zu verändern. Sie können den Router auch übersteuern: `--mode managed`
+sagt dem Router „auf dieser Aufgabe trotzdem ein Manager, bitte"; unter das
+Sicherheitsminimum (Auth, mehrere Komponenten, offene Aufgaben) lässt sich aber
+nicht senken.
+
 #### 4. **Vollständige Nachvollziehbarkeit**
 
 - Warum wurde diese Design-Entscheidung getroffen? Steht in
