@@ -183,7 +183,6 @@ agent_product_manifest() {
       ! -path './.agent-runs/*' \
       ! -path './.agent/*' \
       ! -path './.claude/*' \
-      ! -path './plans/*' \
       ! -path './docs/state/*' \
       ! -path './docs/tasks/*' \
       ! -path './docs/verification/*' \

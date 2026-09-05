@@ -4,6 +4,8 @@
 # Shellcode ausgewertet; insbesondere werden weder source noch eval verwendet.
 set -uo pipefail
 
+. "$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
 ledger_error() {
   echo "ledger: $1" >&2
   return 1
@@ -11,14 +13,14 @@ ledger_error() {
 
 ledger_known_scalar() {
   case "$1" in
-    id|title|status|class|orchestration|fresh_perspective|attempts|max_attempts|last_verification|human_review|blocked_reason|run_id|task_id|mode|phase|iteration|attempt|last_progress_fingerprint|started_at|route_rule_version|route_reason_code|route_human_gate|result|finished_at|candidate_fingerprint|verifier_version|failure_kind|log_path|date|source|confidence|evidence|finding) return 0 ;;
+    id|title|status|class|orchestration|fresh_perspective|attempts|max_attempts|last_verification|human_review|blocked_reason|run_id|task_id|mode|phase|iteration|attempt|last_progress_fingerprint|started_at|route_rule_version|route_reason_code|route_human_gate|result|candidate_fingerprint|verifier_version|failure_kind) return 0 ;;
     *) return 1 ;;
   esac
 }
 
 ledger_known_list() {
   case "$1" in
-    depends_on|features|acceptance|tasks|touches|risk_flags|route_signals) return 0 ;;
+    depends_on|features|acceptance|touches|risk_flags|route_signals) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -148,13 +150,6 @@ ledger_markdown_has_section() {
   grep -Fqx "$heading" "$file"
 }
 
-ledger_copy_mode() {
-  source_file=$1
-  target_file=$2
-  mode=$(stat -f '%Lp' "$source_file" 2>/dev/null || stat -c '%a' "$source_file" 2>/dev/null) || return 0
-  chmod "$mode" "$target_file"
-}
-
 ledger_task_files() {
   tasks_dir=$1
   find "$tasks_dir" -maxdepth 1 -type f -name '*.md' -print 2>/dev/null | LC_ALL=C sort
@@ -200,7 +195,6 @@ ledger_candidate_fingerprint() {
       ! -path './.ruff_cache/*' \
       ! -path './__pycache__/*' \
       ! -path '*/__pycache__/*' \
-      ! -path './plans/*' \
       ! -path './docs/state/*' \
       ! -path './docs/verification/*' \
       ! -path './docs/tasks/*' \
@@ -328,7 +322,7 @@ ledger_atomic_replace_scalar() {
     ledger_error "Aenderung an $file wurde vor dem Ersetzen abgewiesen"
     return 1
   fi
-  ledger_copy_mode "$file" "$tmp" || { rm -f "$tmp"; trap - HUP INT TERM; return 1; }
+  agent_copy_mode "$file" "$tmp" || { rm -f "$tmp"; trap - HUP INT TERM; return 1; }
   mv -f "$tmp" "$file"
   trap - HUP INT TERM
 }

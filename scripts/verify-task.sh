@@ -273,7 +273,7 @@ if [ "$ledger_result" = GREEN ] && [ -n "$touches" ] && git -C "$project_dir" re
     [ -n "$status_line" ] || continue
     changed=${status_line#???}
     case "$changed" in *' -> '*) changed=${changed##* -> } ;; esac
-    case "$changed" in .agent-runs/*|docs/verification/*|docs/state/*|docs/tasks/*|plans/*) continue ;; esac
+    case "$changed" in .agent-runs/*|docs/verification/*|docs/state/*|docs/tasks/*) continue ;; esac
     allowed=false
     while IFS= read -r permitted; do
       permitted=${permitted%/}

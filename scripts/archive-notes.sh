@@ -72,7 +72,7 @@ if ! grep -q '^## N-' "$archive_tmp"; then
   exit 0
 fi
 grep -Fqx '# Notizen' "$notes_tmp" || { echo "archive-notes: neuer Notizstand waere ungueltig" >&2; exit 1; }
-ledger_copy_mode "$notes" "$notes_tmp" || exit 1
+agent_copy_mode "$notes" "$notes_tmp" || exit 1
 archive_file="$archive_dir/$(date -u +%Y%m%dT%H%M%SZ)-notes.md"
 mv -f "$archive_tmp" "$archive_file"
 mv -f "$notes_tmp" "$notes"

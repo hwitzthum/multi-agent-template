@@ -61,7 +61,7 @@ expect_failure "unbekannte Rolle" "$policy" role-write unknown src/app.ts
 
 expect_success "Runner-Vertrag" "$runner" --contract
 expect_success "lokaler Agenten-CLI" "$runner" --check
-expect_failure "Runner startet in Phase 01 keinen Agenten" "$runner" invoke_role worker prompt.md "$project_dir" result.md
+expect_failure "Runner weist unbekannte Rolle vor jedem Modellaufruf ab" "$runner" run_agent unknown "$tmp_dir/prompt.md" "$project_dir" "$tmp_dir/raw.md" "$tmp_dir/meta.env"
 
 expect_success "Bash-Guard lässt Statusprüfung zu" sh -c "printf '%s' '{\"command\":\"git status\"}' | '$project_dir/scripts/bash-guard.sh'"
 expect_failure "Bash-Guard blockiert Push" sh -c "printf '%s' '{\"command\":\"git push origin main\"}' | '$project_dir/scripts/bash-guard.sh'"

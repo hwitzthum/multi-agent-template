@@ -115,13 +115,14 @@ und fragt:
 1. **Welche Art Aufgabe ist das?**
    - _Mechanisch_ (z.B. Variablenname umbenennen) → Braucht nur einen Worker
    - _Gemustert_ (z.B. neue Seite nach bestehendem Muster) → Braucht einen Worker
-     - einen Korrekturversuch, wenn es beim ersten Mal nicht klappt
+     plus einen Korrekturversuch, wenn es beim ersten Mal nicht klappt
    - _Offen_ (z.B. „Schreib einen überzeugende Hero-Text") → Braucht einen Manager
      zum Planen, dann einen Worker, dann Überprüfung — kann mehrfach wiederholt
      werden
-   - _Festgefahren_ (Task ist 3x gescheitert, oder Sie haben explizit „braucht
-     frische Perspektive" angekreuzt) → Braucht zwei vollständig unabhängige
-     Lösungen + einen Reviewer, der die beste wählt
+   - _Festgefahren_ (im Task ist `repeated-failure` oder `conflicting-ledger`
+     als Risikosignal eingetragen, oder Sie haben „braucht frische Perspektive"
+     angekreuzt) → Braucht zwei vollständig unabhängige Lösungen + einen
+     Reviewer, der die beste wählt
 
 2. **Gibt es Risikosignale?**
    - _Authentifizierung, Berechtigungen, Zahlungen, Datenmigration?_ → Hochrisiko,
@@ -133,9 +134,9 @@ und fragt:
 
 3. **Wie oft ist diese Aufgabe schon gescheitert?**
    - Beim ersten Versuch: nach Plan
-   - Beim zweiten Versuch: eskaliert um eine Stufe (z.B. von „verified" zu
-     „managed")
-   - Beim dritten Versuch: blockiert (wird ein Entscheidungs-Fall für Sie)
+   - Nach einem Fehlschlag: eskaliert um genau eine Stufe (z.B. von „verified"
+     zu „managed"); ab zwei Fehlschlägen ist der Manager-Loop das Minimum
+   - Beim dritten Fehlschlag: blockiert (wird ein Entscheidungs-Fall für Sie)
 
 Die Entscheidung wird _sofort_ ausgeführt — Sie sehen sie mit `--dry-run` vorher
 ohne etwas zu verändern. Sie können den Router auch übersteuern: `--mode managed`
@@ -152,7 +153,7 @@ nicht senken.
 
 #### 5. **Sicherheit von Anfang an**
 
-- Agenten führen niemals ungepfüften Code aus
+- Agenten führen niemals ungeprüften Code aus
 - Eingaben werden validiert, bevor etwas passiert
 - Wie eine Bank mit mehreren Unterschriften, nicht ein Vertrauensvorschuss
 
@@ -177,6 +178,20 @@ Sagen Sie, Sie wollen eine Webseite bauen. Das könnte so laufen:
 | 4. Agent arbeitet          | Agentenlauf, Datei wird geändert      | Nachvollziehbar, git-versioniert                         |
 | 5. Automatisch testen      | `./scripts/verify.sh` läuft           | Seite baut? Typos? Links kaputt?                         |
 | 6. Übergabe festhalten     | `docs/state/handoff.md` aktualisiert  | Nächster kann nahtlos weitermachen                       |
+
+## Weitere Befehle
+
+```bash
+./scripts/orchestrate.sh --next --dry-run   # Route, Limits und geplante Rollen ohne Änderung
+./scripts/orchestrate.sh --resume           # pausierten oder fehlgeschlagenen Lauf fortsetzen
+./scripts/validate-ledger.sh                # Task-Graph, Laufstand und Prüfbelege prüfen
+./scripts/agent-metrics.sh summary          # finalisierte Läufe nach Klasse und Modus
+./scripts/archive-notes.sh                  # erledigte/verworfene Notizen oberhalb der Quote archivieren
+./scripts/migrate-tasks.sh                  # Tasks eines älteren Schemas um fehlende Felder ergänzen
+```
+
+Archivierung und Migration laufen nie automatisch; beide Befehle werden
+bewusst von Hand gestartet.
 
 ## Wo der Stand liegt
 

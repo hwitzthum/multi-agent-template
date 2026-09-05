@@ -31,7 +31,7 @@ context_path_allowed() {
 worker_path_allowed() {
   path=$1
   case "$path" in
-    .agent|.agent/*|.agent-runs|.agent-runs/*|.claude|.claude/*|plans|plans/*|docs/state|docs/state/*|docs/tasks|docs/tasks/*|docs/verification|docs/verification/*|scripts/agent|scripts/agent/*|scripts/bash-guard.sh|scripts/commit-gate.sh|.git|.git/*|.gitignore) return 1 ;;
+    .agent|.agent/*|.agent-runs|.agent-runs/*|.claude|.claude/*|docs/state|docs/state/*|docs/tasks|docs/tasks/*|docs/verification|docs/verification/*|scripts/agent|scripts/agent/*|scripts/bash-guard.sh|scripts/commit-gate.sh|.git|.git/*|.gitignore) return 1 ;;
     *) context_path_allowed "$path" ;;
   esac
 }

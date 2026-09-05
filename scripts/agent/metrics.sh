@@ -112,7 +112,7 @@ metrics_record_route() {
 }
 
 metrics_append_unique() (
-  project_dir=$1 run_id=$2 task_id=$3 line=$4
+  project_dir=$1 run_id=$2 line=$3
   file="$project_dir/docs/state/metrics.csv"
   lock="$project_dir/docs/state/.metrics-write-lock"
   mkdir "$lock" 2>/dev/null || { metrics_fail 'metrics.csv wird bereits geschrieben'; return 1; }
@@ -120,7 +120,7 @@ metrics_append_unique() (
   cleanup_metrics() { rm -f "$tmp"; rmdir "$lock" 2>/dev/null || true; }
   trap cleanup_metrics EXIT HUP INT TERM
   [ "$(sed -n '1p' "$file")" = "$METRICS_HEADER" ] || { metrics_fail 'metrics.csv hat ein unbekanntes Schema'; return 1; }
-  existing=$(awk -F, -v run="$run_id" -v task="$task_id" '$1 == run || ($1 == run && $2 == task) { print; exit }' "$file")
+  existing=$(awk -F, -v run="$run_id" '$1 == run { print; exit }' "$file")
   if [ -n "$existing" ]; then
     [ "$existing" = "$line" ] && return 0
     metrics_fail "Run-ID $run_id wurde bereits mit anderen Werten finalisiert"
@@ -202,8 +202,7 @@ metrics_finalize() {
   if [ -f "$summary_file" ]; then
     line=$(sed -n '1p' "$summary_file")
     run_id=$(metrics_value "$run_file" run_id) || return 1
-    task_id=$(metrics_value "$run_file" task_id) || return 1
-    metrics_append_unique "$project_dir" "$run_id" "$task_id" "$line" || return 1
+    metrics_append_unique "$project_dir" "$run_id" "$line" || return 1
     metrics_set_value "$run_file" finalized true
     return
   fi
@@ -293,7 +292,7 @@ metrics_finalize() {
   printf '%s\n' "$line" > "$tmp"
   agent_atomic_write "$summary_file" "$tmp"
   rm -f "$tmp"
-  metrics_append_unique "$project_dir" "$run_id" "$task_id" "$line" || return 1
+  metrics_append_unique "$project_dir" "$run_id" "$line" || return 1
   metrics_set_value "$run_file" finalized true
 }
 

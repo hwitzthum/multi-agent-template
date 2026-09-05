@@ -19,8 +19,7 @@ known_key() {
 }
 
 valid_value() {
-  key=$1
-  value=$2
+  value=$1
   case "$value" in
     ''|*[!0-9]*|0) return 1 ;;
     *) return 0 ;;
@@ -49,7 +48,7 @@ validate_config() {
     case "$seen" in
       *"|$key|"*) fail "doppelter Schlüssel $key"; return 1 ;;
     esac
-    valid_value "$key" "$value" || { fail "ungültiger Wert für $key"; return 1; }
+    valid_value "$value" || { fail "ungültiger Wert für $key"; return 1; }
     seen="${seen}${key}|"
   done < "$config_file"
 

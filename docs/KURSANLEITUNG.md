@@ -69,18 +69,18 @@ Wichtig: **Nicht als ZIP herunterladen.** Die ZIP-Variante hat keine Projekt-His
 
 Sie müssen nicht jede Datei kennen. Diese vier Orte sind für Sie wichtig:
 
-| Ort | Was dort ist | Wer schreibt dort |
-| --- | --- | --- |
-| `docs/briefs/` | Ein Brief pro Landingpage: Ihr Auftrag in Ihren Worten | **Sie** mit Claudes Hilfe |
-| `docs/tasks/` | Das Ledger der Aufgaben, Abhängigkeiten und Status | Status-Gate und zuständige Rollen |
-| `docs/state/handoff.md` | Übergabe mit Run-ID, letztem grünen Stand und menschlicher Entscheidung | Finalizer oder Claude beim Abschluss |
-| `docs/state/decisions.md` | Technische Entscheidungen in Alltagssprache | zuständige Rolle |
-| `docs/state/features.md` | Sichtbare Eigenschaften, jeweils offen oder erledigt | Claude |
-| `docs/verification/` | Aktueller und historische maschinelle Prüfbelege | Verifier |
+| Ort                       | Was dort ist                                                            | Wer schreibt dort                    |
+| ------------------------- | ----------------------------------------------------------------------- | ------------------------------------ |
+| `docs/briefs/`            | Ein Brief pro Landingpage: Ihr Auftrag in Ihren Worten                  | **Sie** mit Claudes Hilfe            |
+| `docs/tasks/`             | Das Ledger der Aufgaben, Abhängigkeiten und Status                      | Status-Gate und zuständige Rollen    |
+| `docs/state/handoff.md`   | Übergabe mit Run-ID, letztem grünen Stand und menschlicher Entscheidung | Finalizer oder Claude beim Abschluss |
+| `docs/state/decisions.md` | Technische Entscheidungen in Alltagssprache                             | zuständige Rolle                     |
+| `docs/state/features.md`  | Sichtbare Eigenschaften, jeweils offen oder erledigt                    | Claude                               |
+| `docs/verification/`      | Aktueller und historische maschinelle Prüfbelege                        | Verifier                             |
 
 Dazu gibt es zwei Ordner mit Vorlagen und fertigen Texten, die Sie in Claude Code einfügen: `docs/profil/` (alles, was speziell für Landingpages ist: Brief-Vorlage, Design-Regeln, Fragen) und `docs/templates/` (die allgemeinen Vorlagen, u.a. der Initialisierungs-Text). Die brauchen Sie in den Schritten unten.
 
-Alles andere (`scripts/`, `src/`, `.claude/`) ist Claudes Werkstatt. Sie müssen dort nichts anfassen.
+Alles andere (`scripts/`, `.claude/` und der bei der Initialisierung entstehende Produktordner, z.B. `src/`) ist Claudes Werkstatt. Sie müssen dort nichts anfassen.
 
 # Die Schritte
 
@@ -152,12 +152,12 @@ Der Router entscheidet, und seine Entscheidung wird direkt ausgeführt. Einen an
 
 ### Die vier Arbeitsmodi
 
-| Anzeige | Bedeutung im Alltag | Typischer Einsatz |
-| --- | --- | --- |
-| `single` | Ein Worker setzt um, danach wird geprüft | kleine Routineänderung |
-| `verified` | Ein Worker setzt um; bei Rot folgt ein begrenzter Korrekturversuch | Fachlogik nach bekanntem Muster |
-| `managed` | Ein Manager wählt je Runde genau den nächsten Schritt | mehrere Komponenten oder offene Risiken |
-| `managed-fresh` | Zwei isolierte Lösungen werden unabhängig geprüft und verglichen | festgefahrene oder besonders riskante Aufgabe |
+| Anzeige         | Bedeutung im Alltag                                                | Typischer Einsatz                             |
+| --------------- | ------------------------------------------------------------------ | --------------------------------------------- |
+| `single`        | Ein Worker setzt um, danach wird geprüft                           | kleine Routineänderung                        |
+| `verified`      | Ein Worker setzt um; bei Rot folgt ein begrenzter Korrekturversuch | Fachlogik nach bekanntem Muster               |
+| `managed`       | Ein Manager wählt je Runde genau den nächsten Schritt              | mehrere Komponenten oder offene Risiken       |
+| `managed-fresh` | Zwei isolierte Lösungen werden unabhängig geprüft und verglichen   | festgefahrene oder besonders riskante Aufgabe |
 
 Mehr Agenten bedeuten mehr Zeit und meist höhere Kosten. Darum verwendet das System sie nicht für jede Aufgabe. Die Klasse im Task beschreibt die Ausgangslage: `mechanical` ist Routine, `patterned` folgt einem bekannten Muster, `open` braucht fachliches Urteil und menschliche Aufsicht.
 
@@ -206,7 +206,7 @@ Für jede weitere Landingpage: Schritt 2 (neuer Brief), dann eine kurze Initiali
 
 # Bestehendes Projekt umstellen
 
-Ein bestehendes Projekt wird schrittweise und additiv migriert: zuerst Git-Ausgangsstand und die bisherigen Ausgaben von `./scripts/verify.sh` sowie `./scripts/next-tasks.sh` sichern, dann Ledger-Felder ergänzen und validieren. Danach Single plus Verify produktiv schalten, den Manager-Loop mit einem Fake Runner prüfen und einen echten Managed-Lauf nur für einen ungefährlichen Task ausdrücklich freigeben. Fresh Worker folgen erst, wenn isolierte Git-Arbeitskopien und die erneute Prüfung nach der Übernahme nachweislich funktionieren. Alte Task-Dateien und die bisherige Einzelsitzung bleiben währenddessen nutzbar; `features.md`, `decisions.md`, `handoff.md` und das Profil werden nicht ersetzt.
+Ein bestehendes Projekt wird schrittweise und additiv migriert: zuerst Git-Ausgangsstand und die bisherigen Ausgaben von `./scripts/verify.sh` sowie `./scripts/next-tasks.sh` sichern, dann Ledger-Felder ergänzen und validieren. Danach Single plus Verify produktiv schalten, den Manager-Loop mit einem Fake Runner prüfen (`ORCHESTRATOR_RUNNER=tests/orchestrator/fake-runner.sh`, ohne Modellkosten) und einen echten Managed-Lauf nur für einen ungefährlichen Task ausdrücklich freigeben. Fresh Worker folgen erst, wenn isolierte Git-Arbeitskopien und die erneute Prüfung nach der Übernahme nachweislich funktionieren. Alte Task-Dateien und die bisherige Einzelsitzung bleiben währenddessen nutzbar; `features.md`, `decisions.md`, `handoff.md` und das Profil werden nicht ersetzt.
 
 # Was Sie wissen sollten
 
@@ -243,19 +243,19 @@ Falls ein Dienst (z.B. für Formulare) einen Zugangsschlüssel braucht, legt Cla
 
 # Kleines Glossar
 
-| Begriff | Bedeutung |
-| --- | --- |
-| Brief | Ihr Auftrag für eine Seite, in Ihren Worten. Liegt in `docs/briefs/`. |
-| Initialisierung | Einmalige Vorbereitung: Ziel, Ledger, Technik, Plan und Prüfungen einrichten. |
-| Ledger | Das gemeinsame Arbeitsbuch aus Ziel, Tasks, Notizen, Lauf- und Prüfstatus. |
-| Router | Die feste Auswahlregel, die aus Klasse und Risiko einen Modus empfiehlt. |
-| Fresh Worker | Ein unabhängiger neuer Versuch ohne frühere Lösungsnotizen in einer isolierten Git-Arbeitskopie. |
-| Feature | Eine Eigenschaft, die ein Besucher bemerkt. Status: offen (FAILING) oder erledigt (PASSING). |
-| Aufgabe (Task) | Ein Arbeitspaket mit Umfang, Nicht-Zielen, Akzeptanz, Abhängigkeiten und Status. |
-| Handoff | Übergabe mit Run-ID, letztem grünen Stand, Fehler und nächster Entscheidung. |
-| Verify | Automatische Prüfung. `GREEN` ist bestanden, `RED` zeigt einen Fehler. |
-| Review | Maschinell grün, aber noch nicht menschlich freigegeben. |
-| Blocked | Kontrollierter Halt wegen Limit, Stillstand oder fehlender Entscheidung. |
-| Commit | Ein gespeicherter Stand des Projekts, auf den sichere Vergleiche aufbauen. |
-| Skill | Eine Regel-Datei, die Claude bei Bedarf liest, zum Beispiel Ihre Design-Regeln. |
-| Klasse | Ausgangsart einer Aufgabe: `mechanical`, `patterned` oder `open`. |
+| Begriff         | Bedeutung                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------------------ |
+| Brief           | Ihr Auftrag für eine Seite, in Ihren Worten. Liegt in `docs/briefs/`.                            |
+| Initialisierung | Einmalige Vorbereitung: Ziel, Ledger, Technik, Plan und Prüfungen einrichten.                    |
+| Ledger          | Das gemeinsame Arbeitsbuch aus Ziel, Tasks, Notizen, Lauf- und Prüfstatus.                       |
+| Router          | Die feste Auswahlregel, die aus Klasse und Risiko einen Modus empfiehlt.                         |
+| Fresh Worker    | Ein unabhängiger neuer Versuch ohne frühere Lösungsnotizen in einer isolierten Git-Arbeitskopie. |
+| Feature         | Eine Eigenschaft, die ein Besucher bemerkt. Status: offen (FAILING) oder erledigt (PASSING).     |
+| Aufgabe (Task)  | Ein Arbeitspaket mit Umfang, Nicht-Zielen, Akzeptanz, Abhängigkeiten und Status.                 |
+| Handoff         | Übergabe mit Run-ID, letztem grünen Stand, Fehler und nächster Entscheidung.                     |
+| Verify          | Automatische Prüfung. `GREEN` ist bestanden, `RED` zeigt einen Fehler.                           |
+| Review          | Maschinell grün, aber noch nicht menschlich freigegeben.                                         |
+| Blocked         | Kontrollierter Halt wegen Limit, Stillstand oder fehlender Entscheidung.                         |
+| Commit          | Ein gespeicherter Stand des Projekts, auf den sichere Vergleiche aufbauen.                       |
+| Skill           | Eine Regel-Datei, die Claude bei Bedarf liest, zum Beispiel Ihre Design-Regeln.                  |
+| Klasse          | Ausgangsart einer Aufgabe: `mechanical`, `patterned` oder `open`.                                |

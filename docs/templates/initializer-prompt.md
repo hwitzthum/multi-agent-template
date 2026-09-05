@@ -36,8 +36,8 @@ Erzeuge genau:
    - `docs/verification/latest.md` mit `result: never` sowie die Ordner
      `docs/tasks/`, `docs/verification/history/` und
      `docs/state/notes-archive/`.
-   Nutze die vorhandenen Dateien und Schemata als Vorlage und führe kein
-   paralleles `tasks.json` ein.
+     Nutze die vorhandenen Dateien und Schemata als Vorlage und führe kein
+     paralleles `tasks.json` ein.
 
 1. docs/state/features.md — ALLE Anforderungen als atomare, prüfbare
    Features. Eine Zeile pro Feature, beginnend mit [FAILING]. Test:
@@ -72,18 +72,14 @@ Erzeuge genau:
      in --deep, nicht in die Standard-Prüfung.
    - Muss HEUTE auf dem Skelett grün laufen.
 
-4. scripts/state-summary.sh — läuft als SessionStart-Hook
-   (.claude/settings.json). Vertrag: höchstens 250 Tokens und genau die drei
-   kompakten Zeilen `run`, `verify` sowie `ready | review | blocked`.
-   docs/state/metrics.csv existiert bereits mit dem verbindlichen
-   Phase-08-Schema; ausschließlich die idempotente Lauf-Finalisierung hängt
-   pro Run genau eine Zeile an. Fehlende Token- oder Kostenwerte bleiben leer.
-
-   scripts/next-tasks.sh — ersetzt den Platzhalter. Liest das
-   Frontmatter in docs/tasks/, gibt Aufgaben mit status: todo aus,
-   deren depends_on alle status: done sind. Eine Zeile pro Aufgabe:
-   "READY: <id> | <titel> | <class>". Nur bash + grep/awk/sed,
-   keine Abhängigkeiten.
+4. NICHT anfassen: scripts/state-summary.sh, scripts/next-tasks.sh,
+   scripts/orchestrate.sh, scripts/route-task.sh, scripts/validate-ledger.sh,
+   scripts/verify-task.sh und alles unter scripts/agent/ sind fertige,
+   getestete Orchestrierung (tests/orchestrator/). Sie lesen das Ledger über
+   scripts/agent/ledger.sh und brauchen keine Anpassung an den Stack.
+   docs/state/metrics.csv existiert bereits mit dem verbindlichen Schema;
+   ausschließlich die idempotente Lauf-Finalisierung hängt pro Run genau eine
+   Zeile an. Fehlende Token- oder Kostenwerte bleiben leer.
 
 5. Skelett: Verzeichnisstruktur, Toolchain, Toolchain-Manifest (z.B.
    package.json) mit den Standard-Befehlen aus technik.md — trage sie

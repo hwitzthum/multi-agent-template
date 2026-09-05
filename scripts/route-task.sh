@@ -109,7 +109,7 @@ record_route() {
     return 1
   fi
   "$validator" --project-dir "$project_dir" --current-run-file "$run_tmp" >/dev/null || return 1
-  ledger_copy_mode "$current_run" "$run_tmp" || return 1
+  agent_copy_mode "$current_run" "$run_tmp" || return 1
 
   metric_run_id=$(ledger_scalar "$current_run" run_id) || return 1
   mv -f "$run_tmp" "$current_run" || return 1
