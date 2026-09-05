@@ -183,3 +183,29 @@ ließ sich nicht automatisch prüfen.
 **Folge für den Auftraggeber:** Die Vorlage enthält nur noch, was für den
 Betrieb gebraucht wird. Eine Word-Fassung der Kursanleitung wird bei Bedarf mit
 einem Befehl aus dem Markdown erzeugt und nicht mehr versioniert.
+
+## 2026-09-04 — Der Router entscheidet und führt aus; Rollout-Stufen und Pilot entfernt
+
+**Was:** Die Rollout-Stufen (`shadow`, `single-verify`, `managed-opt-in`,
+`adaptive-recommendation`, `adaptive-execution`), die Schalter `DEFAULT_MODE`
+und `ROUTER_ENABLED` sowie die vorbereitete Pilot-Evaluation
+(`docs/evaluation/`, `agent-metrics.sh compare`, eingefrorene Rohzahl-Schwellen)
+wurden entfernt. Der deterministische Router wählt weiterhin nach Klasse,
+Risiko und Fehlversuchen zwischen `single`, `verified`, `managed` und
+`managed-fresh` — seine Entscheidung wird jetzt direkt ausgeführt, statt als
+Empfehlung neben einer Basisvariante protokolliert zu werden.
+
+**Warum:** Die Stufen und der Pilot dienten dazu, den Wert der Manager-Modi
+erst zu beweisen, bevor sie automatisch laufen. Für ein Ein-Personen-Template,
+das am lebenden Ablauf gelernt werden soll, war das ein zweiter Steuerkreis um
+den ersten herum: mehr Konfiguration, mehr Codepfade, mehr Tests, ohne dass je
+ein Lauf davon profitiert hätte. Die Klassen- und Risikoregeln des Routers sind
+die eigentliche Entscheidung; sie bleiben vollständig erhalten.
+
+**Folge für den Auftraggeber:** Eine offene, riskante oder wiederholt
+gescheiterte Aufgabe löst ab sofort ohne weitere Freigabe den Manager-Loop
+beziehungsweise zwei isolierte Worker aus — das kostet dort mehr
+Modellaufrufe als bisher. Routineaufgaben bleiben bei einem Worker. Wer einen
+anderen Modus will, gibt ihn pro Aufgabe mit `--mode` oder `orchestration:`
+vor. Die Metriktabelle zeigt weiterhin pro Klasse und Modus, was ein Lauf
+gekostet hat. Am Datenschutz ändert sich nichts: Rohdaten bleiben lokal.

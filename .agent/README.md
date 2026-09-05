@@ -90,17 +90,15 @@ Verworfene Notizen liefert der Ledger-Leser nie als aktive Fakten aus.
 
 ## Router-Vertrag
 
-`scripts/route-task.sh <task-id>` liefert maschinenlesbar `MODE`,
-`RECOMMENDED_MODE`, `REASON_CODE`, `ROLLOUT_STAGE` und `HUMAN_GATE`. Das
-Ausgangsmapping lautet `mechanical ->
-single`, `patterned -> verified` und `open -> managed`. Authentifizierung,
+`scripts/route-task.sh <task-id>` liefert maschinenlesbar `MODE`, `REASON_CODE`
+und `HUMAN_GATE`; der Orchestrator führt `MODE` direkt aus. Das Ausgangsmapping
+lautet `mechanical -> single`, `patterned -> verified` und `open -> managed`. Authentifizierung,
 Berechtigungen, Zahlungen, Migrationen, Secrets, Deployment, mehrere explizite
 Komponenten sowie wiederholte Fehler dürfen einen Modus nur verschärfen.
 
 Eine Task-Vorgabe über `orchestration` oder ein bewusster Einmallauf über
-`--mode` wird innerhalb der aktiven Rollout-Stufe respektiert; ein
-menschliches Gate bleibt bestehen. `ROUTER_ENABLED=false` deaktiviert die automatische
-Klassenzuordnung; harte Sicherheitsregeln bleiben trotzdem aktiv. Ein
+`--mode` wird respektiert, solange sie keine harte Sicherheitsregel
+unterschreitet; ein menschliches Gate bleibt bestehen. Ein
 Fehlschlag wird mit `--escalate-from` genau eine Stufe weitergereicht und über
 `--expected-attempts` gegen parallele oder veraltete Aufrufe geschützt.
 
@@ -110,8 +108,7 @@ diese Freigabe wird abgewiesen.
 
 `--record` ist nur bei einem passenden aktiven Lauf zulässig. Es schreibt
 Regelversion, Eingabesignale und den ausgeführten Modus atomar nach
-`current-run.md`; Empfehlung und Rollout-Stufe landen in den lokalen
-Laufmetadaten. Der Router ändert nie den
+`current-run.md` und in die lokalen Laufmetadaten. Der Router ändert nie den
 Task-Status und startet weder Worker noch Modelle.
 
 ## Prompt-, Kontext- und Ausgabevertrag
@@ -141,7 +138,7 @@ Ausgabefelder ab. Große Worker-Antworten können begrenzt und redigiert lokal
 zusammengefasst werden; der unveränderte Rohoutput bleibt im Laufordner und wird
 nicht automatisch zu einem Ledger-Fakt.
 
-## Metrik- und Rollout-Vertrag
+## Metrik-Vertrag
 
 `docs/state/metrics.csv` enthält pro finalisiertem Lauf genau eine kompakte
 Zeile. `scripts/agent/metrics.sh` führt die vollständigen lokalen Metadaten unter
@@ -150,14 +147,9 @@ idempotent. Nicht verfügbare Token-, Kosten- oder Qualitätswerte bleiben leer;
 sie werden nie geschätzt. Infrastrukturfehler, Verifierfehler, No-Progress,
 menschliches Review und fachlicher Erfolg sind getrennte Outcomes.
 
-`ROLLOUT_STAGE` kann ohne Datenmigration zwischen `shadow`, `single-verify`,
-`managed-opt-in`, `adaptive-recommendation` und `adaptive-execution` wechseln.
-Der ausgelieferte Stand ist `shadow`: automatische Routerentscheidungen werden
-als Empfehlung protokolliert, ausgeführt wird ohne explizite Vorgabe die
-Verified-Baseline. `scripts/orchestrate.sh --dry-run` schreibt nur lokale,
-eindeutig als `dry_run=true` markierte Metadaten und niemals eine Erfolgszeile.
-`scripts/agent-metrics.sh` zeigt Rohzahlen; `compare` akzeptiert Pilotpaare nur
-bei identischem Basis-Fingerprint.
+`scripts/orchestrate.sh --dry-run` schreibt nur lokale, eindeutig als
+`dry_run=true` markierte Metadaten und niemals eine Erfolgszeile.
+`scripts/agent-metrics.sh summary` zeigt Rohzahlen nach Klasse und Modus.
 
 ## Runner-Grenze
 
@@ -179,8 +171,9 @@ Befehl `claude` nicht direkt aufrufen.
 ## Orchestrator-Vertrag
 
 `scripts/orchestrate.sh` wählt genau einen bereiten Task, sperrt den Ledger-
-Zustand, protokolliert Route und Checkpoints und führt `single`, `verified`,
-`managed` oder `managed-fresh` innerhalb der konfigurierten Grenzen aus. `--dry-run` zeigt Route,
+Zustand, protokolliert Route und Checkpoints und führt den vom Router gewählten Modus
+(`single`, `verified`, `managed` oder `managed-fresh`) innerhalb der
+konfigurierten Grenzen aus. `--dry-run` zeigt Route,
 Budgets und geplante Rollen ohne Schreibzugriff; `--resume` akzeptiert nur
 `paused`/`failed` und weist fremde Änderungen seit dem letzten vollständigen
 Schritt ab. Ein absichtlich schmutziger Git-Stand benötigt `--allow-dirty`.

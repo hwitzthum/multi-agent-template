@@ -24,8 +24,6 @@ new_fixture() {
   fixture=$(mktemp -d "$tmp_root/case.XXXXXX") || exit 1
   mkdir -p "$fixture/.agent" "$fixture/docs/tasks" "$fixture/docs/state/notes-archive" "$fixture/docs/verification/history" "$fixture/docs/templates" "$fixture/src" "$fixture/.agent-runs/fake/responses" "$fixture/.agent-runs/fake/actions" "$fixture/scripts"
   cp "$project_dir/.agent/config.env" "$fixture/.agent/config.env"
-  sed 's/ROLLOUT_STAGE=shadow/ROLLOUT_STAGE=adaptive-execution/' "$fixture/.agent/config.env" > "$fixture/.agent/config.tmp"
-  mv "$fixture/.agent/config.tmp" "$fixture/.agent/config.env"
   cp -R "$project_dir/docs/templates/agents" "$fixture/docs/templates/agents"
   cp "$project_dir/docs/state/goal.md" "$fixture/docs/state/goal.md"
   cp "$project_dir/docs/state/plan.md" "$fixture/docs/state/plan.md"

@@ -38,7 +38,7 @@ expect_failure "unbekannter Schlüssel" "$config" --check "$tmp_dir/unknown.env"
 sed 's/MAX_TASK_ATTEMPTS=3/MAX_TASK_ATTEMPTS=-1/' "$project_dir/.agent/config.env" > "$tmp_dir/negative.env"
 expect_failure "negatives Limit" "$config" --check "$tmp_dir/negative.env"
 
-sed 's/DEFAULT_MODE=auto/DEFAULT_MODE=auto;touch_x/' "$project_dir/.agent/config.env" > "$tmp_dir/shell.env"
+sed 's/MAX_NO_PROGRESS=1/MAX_NO_PROGRESS=1;touch_x/' "$project_dir/.agent/config.env" > "$tmp_dir/shell.env"
 expect_failure "Shellsyntax" "$config" --check "$tmp_dir/shell.env"
 
 expect_success "normaler Kontextpfad" "$policy" context-path src/app.ts

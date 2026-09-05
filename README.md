@@ -37,14 +37,16 @@ Word-Fassung lässt sich bei Bedarf daraus erzeugen, zum Beispiel mit
 ```
 
 Vor einem echten Lauf zeigt `./scripts/orchestrate.sh --next --dry-run` ohne
-Produktänderung den ausgeführten und den empfohlenen Modus. Eine bestimmte
+Produktänderung den vom Router gewählten Modus und die geplanten Rollen. Eine bestimmte
 Aufgabe startet mit `./scripts/orchestrate.sh --task 017`. Die globale
 Projektprüfung bleibt immer `./scripts/verify.sh`.
 
-Der ausgelieferte Rollout steht auf `shadow`: Empfehlungen werden sichtbar,
-automatisch ausgeführt wird zunächst die geprüfte Basisvariante. Managed- oder
-Fresh-Modi werden nur nach ausdrücklicher Wahl beziehungsweise einer späteren
-Pilotentscheidung verwendet. Offene Aufgaben sowie Text, Optik und Rechtliches
+Der Router entscheidet pro Aufgabe, wie viel Begleitung sie braucht, und diese
+Entscheidung wird direkt ausgeführt: Routine läuft mit einem Worker, Fachlogik
+mit Korrekturschleife, offene oder riskante Aufgaben im Manager-Worker-Loop,
+festgefahrene mit zwei unabhängigen Lösungen. Eine bewusste Vorgabe ist über
+`--mode` oder `orchestration:` im Task möglich, kann aber nie unter das
+Sicherheitsminimum senken. Offene Aufgaben sowie Text, Optik und Rechtliches
 bleiben unter menschlicher Aufsicht.
 
 ## So funktioniert die Architektur (verständlich erklärt)
@@ -95,12 +97,14 @@ wiederverwendbar.
 - Fehler werden sofort sichtbar, nicht erst in der Produktion
 - Wie eine Fabrik mit Qualitätskontrolle statt "hoffen, dass es funktioniert"
 
-#### 3. **Adaptive Arbeitsmodi**
+#### 3. **Der Router entscheidet, wie viel Begleitung eine Aufgabe braucht**
 
-- Kleine Aufgaben? Schnelle, direkte Lösung
-- Komplexe Aufgaben? Erst planen, dann arbeiten, dann prüfen
-- Festgefahrene Probleme? Unabhängige zweite Lösung
-- Nicht alle Aufgaben brauchen 5 Agenten — nur wenn nötig
+- Kleine Aufgaben? Ein Worker, dann prüfen — schnell und günstig
+- Komplexe oder offene Aufgaben? Manager plant, Worker setzt um, Prüfung, Wiederholung
+- Festgefahrene Probleme? Zwei unabhängige Lösungen, ein Reviewer wählt
+- Die Entscheidung ist deterministisch und nachvollziehbar (Klasse, Risiko,
+  Fehlversuche) — nicht alle Aufgaben brauchen fünf Agenten, nur die, die es
+  brauchen
 
 #### 4. **Vollständige Nachvollziehbarkeit**
 
