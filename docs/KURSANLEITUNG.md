@@ -146,7 +146,7 @@ Ab jetzt läuft das Projekt in Schichten. Jede Sitzung bearbeitet genau eine Auf
 1. Lassen Sie mit `./scripts/state-summary.sh` den Stand erklären. Die drei Zeilen nennen den laufenden Task, das letzte Prüfergebnis sowie die Zahl bereiter, zu prüfender und blockierter Aufgaben.
 2. Lassen Sie mit `./scripts/next-tasks.sh` die ausführbaren Aufgaben anzeigen. `READY` bedeutet: Alle echten technischen Abhängigkeiten sind abgeschlossen.
 3. Lassen Sie mit `./scripts/orchestrate.sh --next --dry-run` den vorgeschlagenen Modus erklären. Der Dry Run verändert keinen Produktcode. Er zeigt den vom Router gewählten Modus, seinen Grund und die geplanten Rollen.
-4. Sind Aufgabe und Modus plausibel, starten Sie `./scripts/orchestrate.sh --next`. Für eine bestimmte Aufgabe verwenden Sie zum Beispiel `./scripts/orchestrate.sh --task 017`.
+4. Sind Aufgabe und Modus plausibel, starten Sie `./scripts/orchestrate.sh --next`. Für eine bestimmte Aufgabe verwenden Sie zum Beispiel `./scripts/orchestrate.sh --task 017`. Ein echter Lauf dauert oft länger als zehn Minuten; so lange darf ein Befehl, den Claude für Sie ausführt, nicht laufen. Starten Sie den Lauf deshalb in einem zweiten Terminalfenster selbst, oder sagen Sie Claude ausdrücklich: «Starte den Lauf im Hintergrund und melde dich, wenn er fertig ist.»
 
 Der Router entscheidet, und seine Entscheidung wird direkt ausgeführt. Einen anderen Modus dürfen Sie bewusst vorgeben, etwa mit `--mode managed`; unter das Sicherheitsminimum (offene, riskante oder wiederholt gescheiterte Aufgaben) lässt sich dabei nicht senken. Ein echter Lauf kann Modellkosten verursachen; der Dry Run nicht.
 
@@ -197,7 +197,7 @@ Wenn eine Seite fertig ist oder ein grösserer Abschnitt abgeschlossen, machen S
 
 1. **Übergabenotiz aufräumen.** Bitten Sie Claude: «Lies docs/state/handoff.md. Welche Fallen oder Regeln sind mehr als einmal aufgetreten? Schlage vor, wohin sie gehören (CLAUDE.md, eine Skill, oder ein Mechanismus), und lösche, was sich nicht wiederholt hat.» Sie entscheiden, was Claude vorschlägt.
 2. **CLAUDE.md prüfen.** Diese Datei liest Claude in jeder Sitzung — jede Zeile kostet. Fragen Sie: «Welche Zeile in CLAUDE.md hast du in den letzten zehn Sitzungen nicht gebraucht?» Was nicht gebraucht wurde, kommt raus.
-3. **Zahlen anschauen.** `./scripts/agent-metrics.sh summary` fasst die versionierten Läufe nach Klasse und Modus zusammen. Fehlende Token- oder Kostenwerte bleiben leer und werden nicht geschätzt. Fragen Sie bei auffälligen Runden, Blockaden oder Kosten nach dem Grund; oft war der Task zu gross oder zu vage.
+3. **Zahlen anschauen.** `./scripts/agent-metrics.sh summary` fasst die versionierten Läufe nach Klasse und Modus zusammen. Token- und Kostenwerte stammen aus der Antwort von Claude Code (eine clientseitige Schätzung, die von der Rechnung abweichen kann); liefert ein Lauf keine, bleiben die Felder leer. Fragen Sie bei auffälligen Runden, Blockaden oder Kosten nach dem Grund; oft war der Task zu gross oder zu vage.
 4. **Router-Entscheidungen hinterfragen.** Die Spalten `class` und `mode` in der Metriktabelle zeigen, welche Aufgabenart wie oft welchen Modus bekam. Landen viele `patterned`-Aufgaben nach Eskalation im Manager-Loop, war die Klasse zu optimistisch gewählt; blockieren `open`-Aufgaben häufig, fehlten Business-Antworten im Brief.
 
 ## Weitere Seiten

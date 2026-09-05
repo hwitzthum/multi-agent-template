@@ -18,7 +18,7 @@ set -uo pipefail
 cmd=""
 [ -t 0 ] || cmd=$(sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"//p' | head -n 1)
 cmd=${cmd%%'","'*}            # alles ab dem nächsten JSON-Feld abschneiden
-cmd=$(printf '%s' "$cmd" | sed 's/\\n/;/g')   # JSON-Zeilenumbrüche = Befehlstrenner
+cmd=$(printf '%s' "$cmd" | sed 's/\\n/;/g; s/\\[tr]/ /g')   # JSON \n = Befehlstrenner; \t und \r = Leerzeichen
 [ -n "$cmd" ] || exit 0
 
 hit() { printf '%s' "$cmd" | grep -Eq "$1"; }
@@ -40,4 +40,5 @@ hit "${W}git${S}[[:space:]]clean[[:space:]]${S}(-[[:alnum:]]*f|--force)" \
 hit "${W}git${S}[[:space:]]checkout([[:space:]]+[^|;&[:space:]]+)*[[:space:]]+(--|\.|-f|--force)([[:space:]]|$)" \
                                                             && block "git checkout -- / . / -f (verwirft ungespeicherte Arbeit)"
 hit "${W}git${S}[[:space:]]restore([^[:alnum:]_-]|$)"       && block "git restore (verwirft ungespeicherte Arbeit; zum Entstagen: git reset <datei>)"
+hit "${W}git${S}[[:space:]]--no-verify([^[:alnum:]_-]|$)"   && block "git --no-verify (umgeht Prüf-Hooks)"
 exit 0

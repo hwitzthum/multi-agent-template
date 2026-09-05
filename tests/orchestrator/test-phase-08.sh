@@ -25,7 +25,8 @@ mkdir -p "$fixture/.agent" "$fixture/docs/tasks" "$fixture/docs/state/notes-arch
   "$fixture/.agent-runs/fake/responses" "$fixture/.agent-runs/fake/actions" "$fixture/scripts"
 cp "$project_dir/.agent/config.env" "$fixture/.agent/config.env"
 cp -R "$project_dir/docs/templates/agents" "$fixture/docs/templates/agents"
-for file in goal.md plan.md notes.md decisions.md handoff.md current-run.md metrics.csv; do cp "$project_dir/docs/state/$file" "$fixture/docs/state/$file"; done
+for file in goal.md notes.md decisions.md handoff.md current-run.md metrics.csv; do cp "$project_dir/docs/state/$file" "$fixture/docs/state/$file"; done
+sed 's/Noch keine Strategie festgelegt\./Teststrategie: die Pilotaufgabe im Manager-Loop umsetzen./' "$project_dir/docs/state/plan.md" > "$fixture/docs/state/plan.md"
 cp "$project_dir/docs/verification/latest.md" "$fixture/docs/verification/latest.md"
 : > "$fixture/docs/state/notes-archive/.gitkeep"
 : > "$fixture/docs/verification/history/.gitkeep"

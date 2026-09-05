@@ -115,8 +115,23 @@ agent_atomic_write() (
 
 agent_acquire_lock() {
   lock_dir=$1
+  label=${2:-ein Orchestrator-Lauf}
   if ! mkdir "$lock_dir" 2>/dev/null; then
-    echo "agent-common: ein Orchestrator-Lauf ist bereits aktiv" >&2
+    # Eine Sperre mit toter PID stammt von einem abgestuerzten Lauf (kill -9,
+    # Stromausfall) und wuerde sonst jeden weiteren Start dauerhaft blockieren.
+    # Ohne PID-Datei gilt die Sperre als gehalten (Inhaber schreibt sie gerade).
+    stale_pid=$(sed -n '1p' "$lock_dir/pid" 2>/dev/null || true)
+    case "$stale_pid" in
+      ''|*[!0-9]*) ;;
+      *)
+        if ! kill -0 "$stale_pid" 2>/dev/null; then
+          echo "agent-common: verwaiste Sperre von PID $stale_pid wird entfernt" >&2
+          rm -f "$lock_dir/pid"
+          rmdir "$lock_dir" 2>/dev/null || true
+          mkdir "$lock_dir" 2>/dev/null && { printf '%s\n' "$$" > "$lock_dir/pid"; return 0; }
+        fi ;;
+    esac
+    echo "agent-common: $label ist bereits aktiv" >&2
     return 1
   fi
   printf '%s\n' "$$" > "$lock_dir/pid"

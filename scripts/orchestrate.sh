@@ -648,8 +648,16 @@ switch_to_task() {
   update_run_field task_id "$task_id"
 }
 
+plan_is_placeholder() {
+  # Der Plan gilt als Platzhalter, solange der Abschnitt "Aktuelle Strategie"
+  # leer ist oder noch den Starttext der Vorlage traegt.
+  strategy=$(awk '$0 == "## Aktuelle Strategie" { inside=1; next } inside && /^## / { exit } inside { print }' "$project_dir/docs/state/plan.md")
+  [ -n "$(printf '%s' "$strategy" | tr -d '[:space:]')" ] || return 0
+  printf '%s\n' "$strategy" | grep -q 'Noch keine Strategie festgelegt'
+}
+
 managed_loop() {
-  if ! grep -qvE '^(#|[[:space:]]*$|.*Initialisierung.*|.*noch nicht.*|.*Platzhalter.*)$' "$project_dir/docs/state/plan.md"; then
+  if plan_is_placeholder; then
     run_role manager-plan '' plan || return 1
   fi
   if [ ! -f "$run_dir/brainstorm.done" ]; then
@@ -849,6 +857,9 @@ case "$mode" in
       "$router" --project-dir "$project_dir" --record --escalate-from verified --expected-attempts "$attempts" "$task_id" > "$escalation" || { rm -f "$escalation"; run_finalizer ATTEMPT_LIMIT; exit 1; }
       mode=$(route_value MODE "$escalation") || { rm -f "$escalation"; exit 1; }
       rm -f "$escalation"
+      # Der Router hat den zweiten Fehlversuch gezaehlt; der Laufzaehler folgt.
+      attempts=$(ledger_scalar "$task_file" attempts) || exit 1
+      update_run_field attempt "$((attempts + 1))" || exit 1
       if [ "$mode" = managed ]; then managed_loop; else run_finalizer ATTEMPT_LIMIT; exit 1; fi
     else
       run_finalizer ATTEMPT_LIMIT

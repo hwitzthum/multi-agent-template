@@ -7,7 +7,9 @@
   `docs/verification/`. Kein paralleles `tasks.json` führen.
 - Kontrollierte Arbeit startet ausschließlich über
   `./scripts/orchestrate.sh`. Router, Rollen-Runner, Verifier und Status-Gate
-  nicht von Hand zu einer zweiten Ablaufsteuerung verketten.
+  nicht von Hand zu einer zweiten Ablaufsteuerung verketten. Ein echter Lauf
+  überschreitet leicht das Zeitlimit des Bash-Werkzeugs; aus einer Sitzung nur
+  im Hintergrund starten oder dem Menschen für ein eigenes Terminal überlassen.
 - `./scripts/verify.sh` ist die einzige globale Projektprüfung. `done` oder
   `review` darf ausschließlich das Status-Gate mit einem aktuellen grünen
   Prüfbeleg setzen. Eine Worker-Aussage ist kein Beleg.
