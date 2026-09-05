@@ -18,6 +18,7 @@ npm-debug.log*
 # Python
 __pycache__/
 *.pyc
+.venv/
 
 # Claude Code lokal
 .claude/settings.local.json

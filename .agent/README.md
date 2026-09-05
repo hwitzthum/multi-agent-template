@@ -5,26 +5,32 @@ Fake Runner; echte Aufrufe bleiben hinter dem Runner-Adapter gekapselt.
 
 ## Verbindliche Zuständigkeiten
 
-| Information               | Verbindliche Quelle              | Darf schreiben                               |
-| ------------------------- | -------------------------------- | -------------------------------------------- |
-| ursprüngliches Ziel       | `docs/state/goal.md`             | Nutzer/Initializer, später kontrolliert      |
-| Gesamtstrategie           | `docs/state/plan.md`             | Manager                                      |
-| Task-Inhalt/Zerlegung     | `docs/tasks/*.md`                | Manager                                      |
-| Task-Status               | `docs/tasks/*.md`                | ausschließlich Status-Gate                   |
-| Task-Versuchszähler       | `docs/tasks/*.md`                | Router bei bestätigtem Fehlschlag            |
-| Erkenntnisse und Fehler   | `docs/state/notes.md`            | Rollen über Ledger-Funktion                  |
-| technische Entscheidungen | `docs/state/decisions.md`        | zuständiger Agent, in Alltagssprache         |
-| aktueller Lauf            | `docs/state/current-run.md`      | Orchestrator                                 |
-| Laufmetrik                | `docs/state/metrics.csv`         | Orchestrator bei genau einem finalen Outcome |
-| lokale Laufdetails        | `.agent-runs/<run-id>/metadata/` | Runner, Router und Orchestrator              |
-| Prüfurteil                | `docs/verification/`             | Verifier                                     |
-| Feature-Status            | `docs/state/features.md`         | vorhandener Verify-Ablauf                    |
-| Betriebsübergabe          | `docs/state/handoff.md`          | Finalizer/Sitzungsabschluss                  |
+| Information               | Verbindliche Quelle              | Darf schreiben                                           |
+| ------------------------- | -------------------------------- | -------------------------------------------------------- |
+| ursprüngliches Ziel       | `docs/state/goal.md`             | Nutzer/Initializer, später kontrolliert                  |
+| Gesamtstrategie           | `docs/state/plan.md`             | Manager                                                  |
+| Task-Inhalt/Zerlegung     | `docs/tasks/*.md`                | Manager                                                  |
+| Task-Status               | `docs/tasks/*.md`                | ausschließlich Status-Gate                               |
+| Task-Versuchszähler       | `docs/tasks/*.md`                | Router bei Eskalation, Orchestrator bei roter Prüfung    |
+| Erkenntnisse und Fehler   | `docs/state/notes.md`            | Rollen im Schreibbereich, Orchestrator bei roter Prüfung |
+| technische Entscheidungen | `docs/state/decisions.md`        | zuständiger Agent, in Alltagssprache                     |
+| aktueller Lauf            | `docs/state/current-run.md`      | Orchestrator                                             |
+| Laufmetrik                | `docs/state/metrics.csv`         | Orchestrator bei genau einem finalen Outcome             |
+| lokale Laufdetails        | `.agent-runs/<run-id>/metadata/` | Runner, Router und Orchestrator                          |
+| Prüfurteil                | `docs/verification/`             | Verifier                                                 |
+| Feature-Status            | `docs/state/features.md`         | Claude beim Sitzungsabschluss, nur mit grünem Prüfbeleg  |
+| Betriebsübergabe          | `docs/state/handoff.md`          | Finalizer/Sitzungsabschluss                              |
 
 `docs/tasks/*.md` ist die einzige Aufgabenquelle; es gibt kein paralleles
 `tasks.json`. `scripts/validate-ledger.sh` prüft Task-Graph, Laufzustand und
 Prüfbelege. `scripts/agent/status.sh` ist der einzige maschinelle Schreibweg für
 Statusübergänge und weist veraltete Schreibversuche ab.
+
+Zwei Wartungsbefehle laufen nie automatisch: `scripts/archive-notes.sh`
+verschiebt erledigte oder verworfene Notizen oberhalb von `NOTES_MAX_CHARS`
+nach `docs/state/notes-archive/`; `scripts/migrate-tasks.sh` ergänzt Tasks
+eines älteren Schemas additiv um fehlende Pflichtfelder. Zum Nachsehen einzelner
+Ledger-Werte dient `scripts/agent/ledger.sh scalar|list|active-notes`.
 
 ## Rollenmatrix
 
@@ -133,9 +139,10 @@ Fehler. Die erzeugten Pakete liegen schreibgeschützt und inhaltsadressiert unte
 Prompt- und Kontext-Hash bleiben lokal nachvollziehbar; Zwischenereignisse
 erzeugen keine halben CSV-Laufzeilen.
 
-`scripts/agent/output.sh` weist fehlende, zusätzliche oder mehrdeutige
-Ausgabefelder ab. Große Worker-Antworten können begrenzt und redigiert lokal
-zusammengefasst werden; der unveränderte Rohoutput bleibt im Laufordner und wird
+`scripts/agent/output.sh validate` weist fehlende, zusätzliche oder mehrdeutige
+Ausgabefelder ab. `scripts/agent/output.sh summarize` ist ein manuelles
+Werkzeug: Es kürzt und redigiert eine große Rohantwort lokal; der Orchestrator
+ruft es nicht auf. Der unveränderte Rohoutput bleibt im Laufordner und wird
 nicht automatisch zu einem Ledger-Fakt.
 
 ## Metrik-Vertrag
@@ -167,6 +174,19 @@ Der Adapter liegt allein in `scripts/agent/runner.sh` und setzt das CLI
 `claude` voraus. Pfad und Version werden nicht fest in die Architektur
 geschrieben; der Adapter erkennt sie zur Laufzeit. Andere Skripte dürfen den
 Befehl `claude` nicht direkt aufrufen.
+
+Drei Umgebungsvariablen steuern den Adapter; keine davon steht in
+`.agent/config.env`:
+
+| Variable                | Wirkung                                                                     | Standard  |
+| ----------------------- | --------------------------------------------------------------------------- | --------- |
+| `AGENT_MODEL`           | Modellname, der in den Laufmetadaten protokolliert wird                     | `default` |
+| `AGENT_TIMEOUT_SECONDS` | Zeitlimit eines einzelnen Modellaufrufs in Sekunden                         | `900`     |
+| `ORCHESTRATOR_RUNNER`   | Pfad zu einem alternativen Runner, z.B. `tests/orchestrator/fake-runner.sh` | Adapter   |
+
+Die Skripte brauchen außer Bash nur `git`, `awk`, `sed`, `shasum` und `perl`
+(für Zeitlimits und Laufdauern). Unter macOS, Linux und Git Bash sind sie
+vorhanden.
 
 ## Orchestrator-Vertrag
 

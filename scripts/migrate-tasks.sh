@@ -57,7 +57,7 @@ while IFS= read -r file; do
     echo "Migration abgebrochen: Ergebnis fuer $file ist nicht gueltig; Original blieb erhalten" >&2
     exit 1
   fi
-  ledger_copy_mode "$file" "$tmp" || { rm -f "$tmp"; exit 1; }
+  agent_copy_mode "$file" "$tmp" || { rm -f "$tmp"; exit 1; }
   mv -f "$tmp" "$file"
   migrated=$((migrated + 1))
 done <<EOF

@@ -14,8 +14,10 @@ Markdown-Dateien geplant, ausgeführt und nachvollziehbar geprüft werden.
 
 ## Nicht Teil
 
-- Ein anbieterspezifischer Agenten-Loop oder Router in dieser Ausbauphase.
+- Produktcode oder ein Produkt-Stack; beides legt erst der Initializer nach
+  dem Profil an.
 - Produktentscheidungen für ein später aus dem Template erzeugtes Projekt.
+- Ein direkter Anbieteraufruf außerhalb von `scripts/agent/runner.sh`.
 
 ## Globale Abnahme
 

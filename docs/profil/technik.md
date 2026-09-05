@@ -16,7 +16,8 @@
 - Test "ist es ein Feature": Merkt ein Besucher der Seite das?
 - Gruppierung in features.md: "Fabrik" (gilt für alle Seiten) und je
   eine Gruppe pro Brief.
-- Erster Meilenstein (docs/state/current-milestone): "## Fabrik".
+- Erster Meilenstein: die Gruppe "## Fabrik" in features.md, danach die
+  Gruppe des ersten Briefs.
 
 ## Akzeptanz — Profilbeispiel
 

@@ -132,8 +132,17 @@ if [ "$include_plan" = true ]; then
   {
     sed -n '1,220p' "$project_dir/docs/state/plan.md"
     echo
-    echo '### Relevante Entscheidungen'
-    sed -n '1,240p' "$project_dir/docs/state/decisions.md"
+    echo '### Relevante Entscheidungen (neueste zuerst)'
+    # Entscheidungen werden chronologisch angehaengt; die juengsten stehen am
+    # Ende. Damit die Zeichenbudgets (die den Anfang behalten) nicht gerade die
+    # aktuellsten Eintraege verwerfen, werden die Bloecke in umgekehrter
+    # Reihenfolge ausgegeben.
+    awk '
+      /^## / { if (block != "") blocks[++count]=block; block=$0 ORS; started=1; next }
+      !started { print; next }
+      { block=block $0 ORS }
+      END { if (block != "") blocks[++count]=block; for (i=count; i>=1; i--) printf "%s", blocks[i] }
+    ' "$project_dir/docs/state/decisions.md"
   } | agent_redact > "$plan_raw"
 fi
 
@@ -183,7 +192,7 @@ if [ "$include_code" = true ]; then
   removed=false
   for candidate in "${includes[@]}"; do
     case "$candidate" in
-      *$'\n'*|*$'\r'*|.agent/*|.claude/*|plans/*|docs/state/*|docs/tasks/*|docs/verification/*|docs/templates/*|scripts/agent/*)
+      *$'\n'*|*$'\r'*|.agent/*|.claude/*|docs/state/*|docs/tasks/*|docs/verification/*|docs/templates/*|scripts/agent/*)
         removed=true
         continue ;;
     esac

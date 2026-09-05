@@ -2,23 +2,24 @@
 
 ## Aktuelle Strategie
 
-Das bestehende dateibasierte Task-System wird schrittweise um validierte
-Zustände, einen deterministischen Router und klar getrennte Agentenrollen
-erweitert. Jede Ausbauphase wird einzeln geprüft und übergeben.
+Die Orchestrierung ist vollständig: validiertes Ledger, deterministischer
+Router, sieben getrennte Rollen, Verification Gateway, Fresh-Kandidaten und
+lokale Metriken sind umgesetzt und durch `tests/orchestrator/` abgedeckt. Die
+Vorlage wartet auf die Initialisierung eines ersten Projekts aus einem Brief.
 
 ## Meilensteine
 
-- Ledger und Task-Schema sicher les- und schreibbar machen.
-- Ausführungsmodus deterministisch wählen.
-- Rollenbezogene Kontextpakete und Prompts bereitstellen.
-- Manager–Worker-Schleife mit Verifikation und Fehlerbehandlung ergänzen.
-- Metriken auswerten und den Betrieb dokumentieren.
+- Erledigt: Ledger, Router, Kontextpakete, Manager–Worker-Loop, Fresh-Kandidaten,
+  Metriken und Betriebsdokumentation.
+- Offen: Initialisierung des ersten Projekts nach
+  `docs/templates/initializer-prompt.md`; danach werden die ersten Tasks frei.
 
 ## Offene Risiken
 
-- Das Zielprojekt besitzt noch kein eigenes Git-Repository; frische Worktrees
-  sind deshalb erst nach einer späteren Initialisierung möglich.
-- Die zentrale Produktprüfung ist bis zur Initialisierung ein Platzhalter.
+- Die zentrale Produktprüfung `scripts/verify.sh` ist bis zur Initialisierung
+  ein Platzhalter und meldet immer GREEN.
+- Ein erster echter Lauf verursacht Modellkosten; offene oder riskante Tasks
+  starten ohne weitere Freigabe den Manager-Loop.
 
 ## Änderungsverlauf
 

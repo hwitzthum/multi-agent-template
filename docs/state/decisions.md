@@ -110,6 +110,9 @@ kontrolliert zum Finalizer; der letzte konsistente Stand bleibt fortsetzbar.
 
 ## 2026-09-04 — Rollout-Schwellen werden vor dem Pilot eingefroren
 
+**Aufgehoben** durch den Eintrag „Der Router entscheidet und führt aus;
+Rollout-Stufen und Pilot entfernt“ (2026-09-04). Bleibt nur als Historie stehen.
+
 **Was:** Der Pilot umfasst 20 gepaarte Aufgaben: sechs mechanische, acht
 regelbasierte und sechs offene. Die Manager-Variante wird für `patterned` nur
 freigegeben, wenn sie mindestens zwei zusätzliche grüne Paare erreicht oder bei
