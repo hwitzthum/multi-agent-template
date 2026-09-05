@@ -26,7 +26,8 @@ new_fixture() {
   cp "$project_dir/.agent/config.env" "$fixture/.agent/config.env"
   cp -R "$project_dir/docs/templates/agents" "$fixture/docs/templates/agents"
   cp "$project_dir/docs/state/goal.md" "$fixture/docs/state/goal.md"
-  cp "$project_dir/docs/state/plan.md" "$fixture/docs/state/plan.md"
+  # Ein ausgefuellter Plan; der Platzhalter der Vorlage wuerde Manager-Plan starten.
+  sed 's/Noch keine Strategie festgelegt\./Teststrategie: die Fixture-Aufgabe direkt umsetzen./' "$project_dir/docs/state/plan.md" > "$fixture/docs/state/plan.md"
   cp "$project_dir/docs/state/decisions.md" "$fixture/docs/state/decisions.md"
   cp "$project_dir/docs/state/current-run.md" "$fixture/docs/state/current-run.md"
   cp "$project_dir/docs/state/metrics.csv" "$fixture/docs/state/metrics.csv"
@@ -120,6 +121,36 @@ expect_success "Runner akzeptiert vollständige Metadaten" "$project_dir/scripts
 printf '%s\n' 'model=fake' > "$tmp_root/bad-metadata"
 expect_failure "Runner lehnt unvollständige Metadaten ab" "$project_dir/scripts/agent/runner.sh" validate_metadata "$tmp_root/bad-metadata"
 
+# Uebertragung der claude-JSON-Antwort (--output-format json --json-schema) ins Zeilenformat.
+cat > "$tmp_root/claude-worker.json" <<'EOF'
+{"type":"result","subtype":"success","is_error":false,"num_turns":4,"total_cost_usd":0.0416537,
+ "usage":{"input_tokens":9,"cache_creation_input_tokens":19547,"cache_read_input_tokens":17957,"output_tokens":151},
+ "modelUsage":{"claude-haiku-4-5-20251001":{"inputTokens":9,"outputTokens":151}},
+ "result":"```text\nRESULT=implemented\n```",
+ "structured_output":{"RESULT":"implemented","CHANGED_PATHS":"src/app.txt","TESTS_RUN":"./scripts/verify.sh","NOTES_ADDED":"-"}}
+EOF
+expect_success "Runner rendert strukturierte Worker-Antwort" "$project_dir/scripts/agent/runner.sh" render_result worker-task "$tmp_root/claude-worker.json" "$tmp_root/worker.raw" "$tmp_root/worker.values"
+expect_success "gerenderte Worker-Antwort besteht den Output-Validator" "$project_dir/scripts/agent/output.sh" validate worker-task "$tmp_root/worker.raw"
+assert_eq "Rohantwort folgt der Vertragsreihenfolge" 'RESULT=implemented' "$(sed -n '1p' "$tmp_root/worker.raw")"
+assert_file_has "Tokens werden aus der Antwort uebernommen" "$tmp_root/worker.values" 'tokens_in=37513'
+assert_file_has "Ausgabetokens werden uebernommen" "$tmp_root/worker.values" 'tokens_out=151'
+assert_file_has "Kosten werden aus der Antwort uebernommen" "$tmp_root/worker.values" 'cost_estimate=0.041654'
+assert_file_has "Modell wird aus der Antwort uebernommen" "$tmp_root/worker.values" 'model=claude-haiku-4-5-20251001'
+cat > "$tmp_root/claude-manage.json" <<'EOF'
+{"type":"result","subtype":"success","is_error":false,"structured_output":{"action":"dispatch","task_id":"017","worker_kind":"normal","reason_code":"NEXT_HIGHEST_VALUE"}}
+EOF
+expect_success "Runner rendert Manager-Entscheidung als Frontmatter" "$project_dir/scripts/agent/runner.sh" render_result manager-manage "$tmp_root/claude-manage.json" "$tmp_root/manage.raw" "$tmp_root/manage.values"
+expect_success "gerenderte Manager-Entscheidung besteht den Output-Validator" "$project_dir/scripts/agent/output.sh" validate manager-manage "$tmp_root/manage.raw"
+cat > "$tmp_root/claude-error.json" <<'EOF'
+{"type":"result","subtype":"error_max_turns","is_error":true,"num_turns":60,"result":"abgebrochen"}
+EOF
+expect_success "Runner rendert Fehlerantwort ohne Schema-Objekt" "$project_dir/scripts/agent/runner.sh" render_result worker-task "$tmp_root/claude-error.json" "$tmp_root/error.raw" "$tmp_root/error.values"
+assert_file_has "Fehlerantwort wird als Fehler gekennzeichnet" "$tmp_root/error.values" 'is_error=true'
+assert_file_has "Fehlerantwort nennt den Abbruchgrund" "$tmp_root/error.values" 'subtype=error_max_turns'
+[ ! -s "$tmp_root/error.raw" ] && ok || bad "Fehlerantwort erzeugt keinen Rollenoutput"
+printf '%s\n' 'kein json' > "$tmp_root/claude-garbage.json"
+expect_failure "Runner weist Nicht-JSON ab" "$project_dir/scripts/agent/runner.sh" render_result worker-task "$tmp_root/claude-garbage.json" "$tmp_root/garbage.raw" "$tmp_root/garbage.values"
+
 new_fixture
 before=$(find "$fixture" -type f ! -path '*/.agent-runs/*' -exec shasum -a 256 {} \; | shasum -a 256 | awk '{print $1}')
 dry_output=$(ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017 --dry-run)
@@ -169,6 +200,57 @@ expect_success "Managed-Modus führt Manager-Worker-Runde aus" env ORCHESTRATOR_
 assert_eq "Managed startet einen Worker pro Runde" 1 "$(sed -n '1p' "$fixture/.agent-runs/fake/worker-task.count")"
 assert_eq "Managed ruft Brainstorm genau einmal" 1 "$(sed -n '1p' "$fixture/.agent-runs/fake/worker-brainstorm.count")"
 assert_eq "Managed hält offenen grünen Task im Review" review "$(ledger_scalar "$fixture/docs/tasks/017.md" status)"
+
+[ ! -f "$fixture/.agent-runs/fake/manager-plan.count" ] && ok || bad "Ausgefuellter Plan startet keinen Manager-Plan"
+
+new_fixture
+sed 's/class: mechanical/class: open/' "$fixture/docs/tasks/017.md" > "$fixture/docs/tasks/.tmp" && mv "$fixture/docs/tasks/.tmp" "$fixture/docs/tasks/017.md"
+cp "$project_dir/docs/state/plan.md" "$fixture/docs/state/plan.md"
+printf 'PLAN_UPDATED=no\nTASKS_CREATED=-\nOPEN_RISK=-\n' > "$fixture/.agent-runs/fake/responses/manager-plan-1.out"
+brainstorm_response; manager_response 1; worker_response 1
+echo write-good > "$fixture/.agent-runs/fake/actions/worker-task-1"
+expect_success "Platzhalter-Plan startet Manager-Plan vor dem Loop" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
+assert_eq "Manager-Plan laeuft bei Platzhalter genau einmal" 1 "$(sed -n '1p' "$fixture/.agent-runs/fake/manager-plan.count")"
+
+new_fixture
+cat > "$fixture/docs/tasks/018.md" <<'EOF'
+---
+id: 018
+title: "Zweite App-Datei"
+depends_on: [017]
+features: [F-018]
+status: todo
+class: mechanical
+orchestration: auto
+fresh_perspective: auto
+touches: [src/app.txt]
+risk_flags: []
+attempts: 0
+max_attempts: 3
+last_verification: never
+human_review: false
+acceptance: ["./scripts/verify.sh"]
+blocked_reason: ""
+---
+# Kontext
+Folgeaufgabe.
+# Umfang
+- `src/app.txt` erneut bearbeiten.
+# Nicht Teil dieser Aufgabe
+- Steuerungsdateien ändern.
+# Akzeptanzkriterien (über die acceptance-Befehle hinaus)
+- Die Datei enthält `good`.
+EOF
+worker_response 1; worker_response 2
+echo write-good > "$fixture/.agent-runs/fake/actions/worker-task-1"
+echo write-good > "$fixture/.agent-runs/fake/actions/worker-task-2"
+expect_success "Erster Task einer Folge wird done" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
+printf '%s\n' 'unabhaengige Aenderung' > "$fixture/src/other.txt"
+expect_success "Ledger bleibt gueltig, obwohl das Produkt sich nach done weiterentwickelt" "$project_dir/scripts/validate-ledger.sh" --project-dir "$fixture"
+expect_success "Folgetask wird trotz erledigtem Vorgaenger frei" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --next
+assert_eq "Erster Task bleibt done" done "$(ledger_scalar "$fixture/docs/tasks/017.md" status)"
+assert_eq "Zweiter Task wird done" done "$(ledger_scalar "$fixture/docs/tasks/018.md" status)"
+expect_success "Ledger ist nach zwei Laeufen gueltig" "$project_dir/scripts/validate-ledger.sh" --project-dir "$fixture"
 
 new_fixture
 sed 's/class: mechanical/class: open/' "$fixture/docs/tasks/017.md" > "$fixture/docs/tasks/.tmp" && mv "$fixture/docs/tasks/.tmp" "$fixture/docs/tasks/017.md"

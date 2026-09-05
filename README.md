@@ -249,7 +249,7 @@ acceptance:
   - "./scripts/verify.sh"
 ```
 
-Die Statuswerte sind `todo`, `review`, `done` und `blocked`. Welche Aufgabe
+Die Statuswerte sind `todo`, `in_progress`, `review`, `done` und `blocked`. Welche Aufgabe
 gerade dran ist, rechnet `./scripts/next-tasks.sh` aus den Abhängigkeiten aus —
 das steht bewusst in keiner Datei, damit es nicht veralten kann.
 
@@ -435,10 +435,11 @@ Versuche oder Fehler zu sehen.
 Einziges Ziel: Zwei unabhängige Kandidaten anhand der Akzeptanzkriterien vergleichen und
 die bessere wählen.
 
-**Schreibbereich:** `docs/verification/` (Prüfbericht) und `docs/state/notes.md` (Erkenntnisse)
+**Schreibbereich:** keiner. Die Empfehlung geht als strukturiertes Ergebnis an den
+Orchestrator; die Prüfberichte stammen vom Verifier, nicht vom Reviewer.
 
-**Wann läuft es:** Nach zwei Fresh-Worker-Versuchen, um eine objektive Wahl zu treffen.
-Darf keinen Produktcode ändern.
+**Wann läuft es:** Wenn beide isolierten Kandidaten grün sind, um eine objektive Wahl zu treffen.
+Der Runner nimmt dem Reviewer die Schreibwerkzeuge ab; er darf keinen Produktcode ändern.
 
 ### Finalizer — Der sichere Übergabe-Agent
 
@@ -458,8 +459,10 @@ Hinter den Rollen laufen mehrere Skripte, die den Betriebsverkehr regeln:
 
 ### `scripts/agent/runner.sh` — Der Modell-Adapter
 
-Wird von `orchestrate.sh` aufgerufen. Nimmt Prompt + Kontext, ruft Claude auf, validiert
-die Antwort gegen ein erwartetes Schema und speichert sie lokal. Ein neuer
+Wird von `orchestrate.sh` aufgerufen. Nimmt das Kontextpaket, ruft `claude -p` mit dem
+JSON-Schema der Rolle auf (das Modell muss exakt die Vertragsfelder liefern), überträgt
+das Ergebnis ins geprüfte Zeilenformat und protokolliert Modell, Tokens und Kosten aus
+der Antwort. Die vollständige Antwort bleibt lokal als `.json` im Laufordner. Ein neuer
 Anbieter-Aufruf würde nur diesen Adapter ändern — die Orchestrierung bleibt gleich.
 
 ### `scripts/agent/context.sh` — Der Kontext-Bauer
@@ -471,10 +474,11 @@ verbleibenden Platz. Ein Fresh Worker bekommt bewusst keine Notes oder früheren
 Kontexte sind schreibgeschützt und inhaltsadressiert — derselbe Inhalt erzeugt dieselbe
 Datei. Das ist die Basis für zuverlässiges Caching und Reproduzierbarkeit.
 
-### `scripts/agent/policy.sh` — Der Router
+### `scripts/route-task.sh` — Der Router
 
 Entscheidet pro Task: `single` (Worker allein), `verified` (Worker + Korrektur),
 `managed` (Manager-Worker-Loop), oder `managed-fresh` (zwei isolierte Worker + Reviewer).
+Daneben erzwingt `scripts/agent/policy.sh` nur die Pfad- und Schreibgrenzen der Rollen.
 
 Eingaben: Task-Klasse (`mechanical`, `patterned`, `open`), Risiko-Signale (`high-risk-domain`,
 `repeated-failure`, `cross-component`), bisherige Versuche.
@@ -536,16 +540,15 @@ Das Template hat eingebaute Sperren. Claude (oder jeder Agent) darf **nicht**:
   `git clean`, `git restore` sind blockiert.  
   Ein Agent könnte sonst versehentlich einen Entwurf löschen.
 
-- **Repository-Sicherheit umgehen** — `--no-verify`, `--no-gpg-sign` sind blockiert.  
-  Pre-Commit-Hooks und Commit-Signing bleiben aktiv.
+- **Prüf-Hooks umgehen** — `git … --no-verify` ist blockiert, und vor jedem
+  `git commit` muss `./scripts/verify.sh --quick` grün sein.
 
-- **Shellcode aus Repository-Inhalten ausführen** — `source` oder `eval` von
-  Dateien, die der Agent selbst geschrieben hat, sind blockiert.  
-  Nur signierte Skripte unter `scripts/` und `.agent/` dürfen ausgeführt werden.
-
-Diese Grenzen sind im `scripts/bash-guard.sh` definiert und greifen bei jedem
-Befehl. Sie verhindern versehentliche Verluste und unerwartetes Hochladen — aber
-du behältst die volle Kontrolle: Ein `git push` führst du selbst aus.
+Diese Grenzen sind in `scripts/bash-guard.sh` und `scripts/commit-gate.sh`
+definiert und greifen bei jedem Befehl, auch versteckt in einem längeren Befehl
+oder hinter JSON-Steuerzeichen. Sie sind ein Stolperdraht, kein Sandkasten: Dinge
+wie `node -e "fetch(…)"` oder ein git-Alias erfassen sie nicht. Die Skripte selbst
+laden Ledger- und Agententext nie mit `source` oder `eval`. Du behältst die volle
+Kontrolle: Ein `git push` führst du selbst aus.
 
 ## Weitere Befehle
 

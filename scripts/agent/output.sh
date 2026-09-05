@@ -93,7 +93,52 @@ validate_manager_manage() {
   ' "$file"
 }
 
+# Feldreihenfolge je Rolle; identisch mit den Vorlagen unter docs/templates/agents/.
+role_fields() {
+  case "$1" in
+    manager-plan) echo 'PLAN_UPDATED TASKS_CREATED OPEN_RISK' ;;
+    worker-brainstorm) echo 'NOTES_ADDED RISKS TEST_IDEAS' ;;
+    manager-manage) echo 'action task_id worker_kind reason_code' ;;
+    worker-task|worker-fresh) echo 'RESULT CHANGED_PATHS TESTS_RUN NOTES_ADDED' ;;
+    reviewer) echo 'RECOMMENDATION REASON_CODE REPORTS' ;;
+    finalizer) echo 'OUTCOME BEST_GREEN_REF OPEN_ERROR HUMAN_DECISION' ;;
+    *) return 1 ;;
+  esac
+}
+
+# JSON Schema fuer `claude -p --json-schema`. Alle Werte sind Zeichenketten, damit
+# der Runner sie verlustfrei in das gepruefte Zeilenformat (KEY=WERT bzw. das
+# Manager-Frontmatter) uebertragen kann; "-" steht fuer "keine".
+role_schema() {
+  dash='-'
+  case "$1" in
+    manager-plan)
+      printf '{"type":"object","additionalProperties":false,"required":["PLAN_UPDATED","TASKS_CREATED","OPEN_RISK"],"properties":{"PLAN_UPDATED":{"type":"string","enum":["yes","no"]},"TASKS_CREATED":{"type":"string","minLength":1,"description":"Kommagetrennte Task-IDs oder %s"},"OPEN_RISK":{"type":"string","minLength":1,"description":"Ein kurzer Satz oder %s"}}}\n' "$dash" "$dash" ;;
+    worker-brainstorm)
+      printf '{"type":"object","additionalProperties":false,"required":["NOTES_ADDED","RISKS","TEST_IDEAS"],"properties":{"NOTES_ADDED":{"type":"string","minLength":1,"description":"Kommagetrennte Notiz-IDs oder %s"},"RISKS":{"type":"string","minLength":1,"description":"Kurze Liste oder %s"},"TEST_IDEAS":{"type":"string","minLength":1,"description":"Kurze Liste oder %s"}}}\n' "$dash" "$dash" "$dash" ;;
+    manager-manage)
+      printf '{"type":"object","additionalProperties":false,"required":["action","task_id","worker_kind","reason_code"],"properties":{"action":{"type":"string","enum":["dispatch","done","blocked","request_human"]},"task_id":{"type":"string","pattern":"^(-|[0-9]+)$","description":"Numerische Task-ID; bei dispatch Pflicht, sonst %s erlaubt"},"worker_kind":{"type":"string","enum":["normal","fresh"]},"reason_code":{"type":"string","pattern":"^[A-Z][A-Z0-9_]*$"}}}\n' "$dash" ;;
+    worker-task)
+      printf '{"type":"object","additionalProperties":false,"required":["RESULT","CHANGED_PATHS","TESTS_RUN","NOTES_ADDED"],"properties":{"RESULT":{"type":"string","enum":["implemented","partial","blocked"]},"CHANGED_PATHS":{"type":"string","minLength":1,"description":"Kommagetrennte Repository-Pfade oder %s"},"TESTS_RUN":{"type":"string","minLength":1,"description":"Nur tatsaechlich ausgefuehrte Befehle, kommagetrennt, oder %s"},"NOTES_ADDED":{"type":"string","minLength":1,"description":"Kommagetrennte Notiz-IDs oder %s"}}}\n' "$dash" "$dash" "$dash" ;;
+    worker-fresh)
+      printf '{"type":"object","additionalProperties":false,"required":["RESULT","CHANGED_PATHS","TESTS_RUN","NOTES_ADDED"],"properties":{"RESULT":{"type":"string","enum":["implemented","partial","blocked"]},"CHANGED_PATHS":{"type":"string","minLength":1,"description":"Kommagetrennte Repository-Pfade oder %s"},"TESTS_RUN":{"type":"string","minLength":1,"description":"Nur tatsaechlich ausgefuehrte Befehle, kommagetrennt, oder %s"},"NOTES_ADDED":{"type":"string","enum":["-"],"description":"Fresh Worker schreiben keine Notes"}}}\n' "$dash" "$dash" ;;
+    reviewer)
+      printf '{"type":"object","additionalProperties":false,"required":["RECOMMENDATION","REASON_CODE","REPORTS"],"properties":{"RECOMMENDATION":{"type":"string","enum":["candidate-a","candidate-b","neither","human"]},"REASON_CODE":{"type":"string","pattern":"^[A-Z][A-Z0-9_]*$"},"REPORTS":{"type":"string","minLength":1,"description":"Verwendete Pruefberichte, kommagetrennt"}}}\n' ;;
+    finalizer)
+      printf '{"type":"object","additionalProperties":false,"required":["OUTCOME","BEST_GREEN_REF","OPEN_ERROR","HUMAN_DECISION"],"properties":{"OUTCOME":{"type":"string","enum":["done","blocked","budget_exhausted"]},"BEST_GREEN_REF":{"type":"string","minLength":1,"description":"Git-Referenz, Pruefsumme oder %s"},"OPEN_ERROR":{"type":"string","minLength":1,"description":"Kurzer Fehler oder %s"},"HUMAN_DECISION":{"type":"string","minLength":1,"description":"Naechste menschliche Entscheidung oder %s"}}}\n' "$dash" "$dash" "$dash" ;;
+    *) return 1 ;;
+  esac
+}
+
 case "${1:-}" in
+  fields)
+    [ "$#" -eq 2 ] || { echo "Verwendung: $0 fields ROLLE" >&2; exit 2; }
+    known_role "$2" || { fail "unbekannte Rolle '$2'"; exit 1; }
+    role_fields "$2" ;;
+  schema)
+    [ "$#" -eq 2 ] || { echo "Verwendung: $0 schema ROLLE" >&2; exit 2; }
+    known_role "$2" || { fail "unbekannte Rolle '$2'"; exit 1; }
+    role_schema "$2" ;;
   validate)
     [ "$#" -eq 3 ] || { echo "Verwendung: $0 validate ROLLE DATEI" >&2; exit 2; }
     role=$2; file=$3
@@ -140,5 +185,5 @@ case "${1:-}" in
     mv -f "$tmp" "$output" || { rm -f "$tmp"; exit 1; }
     echo "role-output: SUMMARY $output"
     ;;
-  *) echo "Verwendung: $0 validate ... | summarize ..." >&2; exit 2 ;;
+  *) echo "Verwendung: $0 validate ... | summarize ... | schema ROLLE | fields ROLLE" >&2; exit 2 ;;
 esac

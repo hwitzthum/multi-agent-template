@@ -37,11 +37,8 @@ case "$task_id" in ''|*[!0-9]*) echo "status-gate: ungueltige Task-ID" >&2; exit
 case "$new_status" in todo|in_progress|review|done|blocked) ;; *) echo "status-gate: unbekannter Zielstatus '$new_status'" >&2; exit 1 ;; esac
 
 lock_dir="$tasks_dir/.status-lock"
-if ! mkdir "$lock_dir" 2>/dev/null; then
-  echo "status-gate: ein anderer Statuswechsel laeuft bereits" >&2
-  exit 1
-fi
-trap 'rmdir "$lock_dir" 2>/dev/null || true' EXIT HUP INT TERM
+agent_acquire_lock "$lock_dir" "ein anderer Statuswechsel" || exit 1
+trap 'agent_release_lock "$lock_dir"' EXIT HUP INT TERM
 
 task_file=$(ledger_task_path_by_id "$tasks_dir" "$task_id") || exit 1
 actual_status=$(ledger_scalar "$task_file" status) || exit 1

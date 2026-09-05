@@ -150,8 +150,10 @@ nicht automatisch zu einem Ledger-Fakt.
 `docs/state/metrics.csv` enthält pro finalisiertem Lauf genau eine kompakte
 Zeile. `scripts/agent/metrics.sh` führt die vollständigen lokalen Metadaten unter
 `.agent-runs/<run-id>/metadata/`, sperrt den CSV-Schreibvorgang und finalisiert
-idempotent. Nicht verfügbare Token-, Kosten- oder Qualitätswerte bleiben leer;
-sie werden nie geschätzt. Infrastrukturfehler, Verifierfehler, No-Progress,
+idempotent. Token- und Kostenwerte übernimmt der Runner aus der JSON-Antwort von
+Claude Code (clientseitige Schätzung laut Anthropic-Dokumentation); nicht
+gelieferte Token-, Kosten- oder Qualitätswerte bleiben leer und werden nie
+selbst geschätzt. Infrastrukturfehler, Verifierfehler, No-Progress,
 menschliches Review und fachlicher Erfolg sind getrennte Outcomes.
 
 `scripts/orchestrate.sh --dry-run` schreibt nur lokale, eindeutig als
@@ -171,17 +173,32 @@ Er beweist nicht, dass die Aufgabe korrekt oder vollständig ist. Fachliche
 Freigabe erfolgt ausschließlich über den späteren Verifier und das Status-Gate.
 
 Der Adapter liegt allein in `scripts/agent/runner.sh` und setzt das CLI
-`claude` voraus. Pfad und Version werden nicht fest in die Architektur
-geschrieben; der Adapter erkennt sie zur Laufzeit. Andere Skripte dürfen den
-Befehl `claude` nicht direkt aufrufen.
+`claude` mit Unterstützung für `--json-schema` voraus (`runner.sh --check`
+prüft das). Pfad und Version werden nicht fest in die Architektur geschrieben;
+der Adapter erkennt sie zur Laufzeit. Andere Skripte dürfen den Befehl `claude`
+nicht direkt aufrufen.
 
-Drei Umgebungsvariablen steuern den Adapter; keine davon steht in
+Der Aufruf folgt dem dokumentierten Headless-Betrieb von Claude Code: `claude -p`
+mit `--output-format json` und dem JSON-Schema der Rolle (`output.sh schema`),
+`--no-session-persistence`, `--max-turns`, optional `--max-budget-usd` und
+`--model`, sowie `--permission-prompts none`, sobald das CLI die Option kennt.
+Ein kurzer Systemprompt-Anhang erklärt dem Modell den nicht-interaktiven Rahmen;
+die persönliche `~/.claude/CLAUDE.md` und persönliche Regeln des Bedieners werden
+über `claudeMdExcludes` ausgeschlossen, Auto-Memory bleibt aus. Der Reviewer
+erhält keine Schreibwerkzeuge (`--disallowedTools Edit,Write,NotebookEdit`). Das
+Ergebnisobjekt wird in das geprüfte Zeilenformat übertragen; die vollständige
+Antwort bleibt als `<rohdaten>.json` neben dem Rohoutput. Modell, Tokens und
+Kosten in den Metadaten stammen aus dieser Antwort.
+
+Fünf Umgebungsvariablen steuern den Adapter; keine davon steht in
 `.agent/config.env`:
 
 | Variable                | Wirkung                                                                     | Standard  |
 | ----------------------- | --------------------------------------------------------------------------- | --------- |
-| `AGENT_MODEL`           | Modellname, der in den Laufmetadaten protokolliert wird                     | `default` |
+| `AGENT_MODEL`           | Modell für `--model`; `default` überlässt die Wahl der CLI-Einstellung      | `default` |
 | `AGENT_TIMEOUT_SECONDS` | Zeitlimit eines einzelnen Modellaufrufs in Sekunden                         | `900`     |
+| `AGENT_MAX_TURNS`       | Obergrenze agentischer Runden eines Modellaufrufs (`--max-turns`)           | `60`      |
+| `AGENT_MAX_BUDGET_USD`  | Kostenobergrenze eines Modellaufrufs (`--max-budget-usd`); leer = keine     | leer      |
 | `ORCHESTRATOR_RUNNER`   | Pfad zu einem alternativen Runner, z.B. `tests/orchestrator/fake-runner.sh` | Adapter   |
 
 Die Skripte brauchen außer Bash nur `git`, `awk`, `sed`, `shasum` und `perl`
@@ -246,9 +263,12 @@ diese Befehle dürfen keine Shell-Metazeichen oder Pfadtraversierung enthalten.
 
 Der Bericht unter `docs/verification/latest.md` und `history/` gilt nur für den
 exakten Kandidaten- und Verifier-Fingerprint. Änderungen an Produkt, Tests,
-Task-Akzeptanz oder Prüflogik machen ihn ungültig. Der vollständige lokale Log
-liegt unter `.agent-runs/<run-id>/verify/`. Das Status-Gate lässt `review` und
-`done` nur mit dem aktuellen grünen Beleg zu.
+Task-Akzeptanz oder Prüflogik machen ihn für den Statusübergang ungültig. Der
+vollständige lokale Log liegt unter `.agent-runs/<run-id>/verify/`. Das
+Status-Gate lässt `review` und `done` nur mit dem aktuellen grünen Beleg zu. Ein
+einmal erreichtes `done` bleibt gültig, wenn spätere Tasks das Produkt
+weiterentwickeln; der Validator verlangt dafür nur noch einen grünen Bericht zum
+Task, nicht den damaligen Fingerprint.
 
 ## Produkt-Stack
 

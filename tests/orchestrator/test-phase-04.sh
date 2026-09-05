@@ -289,6 +289,19 @@ HUMAN_DECISION=Umfang klaeren
 EOF
 expect_success "gueltiger Finalizer-Output" "$output_tool" validate finalizer "$valid_finalizer"
 
+for role in $roles; do
+  schema=$("$output_tool" schema "$role") || { bad "Schema fuer $role fehlt"; continue; }
+  fields=$("$output_tool" fields "$role") || { bad "Feldliste fuer $role fehlt"; continue; }
+  printf '%s' "$schema" | perl -MJSON::PP -e '
+    local $/; my $s = JSON::PP->new->decode(<STDIN>);
+    my @fields = split / /, $ARGV[0];
+    exit 1 unless $s->{type} eq "object" && !$s->{additionalProperties};
+    exit 1 unless join(" ", @{ $s->{required} }) eq join(" ", @fields);
+    for (@fields) { exit 1 unless ref $s->{properties}{$_} eq "HASH" && $s->{properties}{$_}{type} eq "string" }
+    exit 0
+  ' "$fields" && ok || bad "Schema fuer $role ist gueltiges JSON mit exakt den Vertragsfeldern"
+done
+
 raw="$fixture/.agent-runs/large/raw.txt"
 summary="$fixture/.agent-runs/large/summary.md"
 mkdir -p "$(dirname "$raw")"
