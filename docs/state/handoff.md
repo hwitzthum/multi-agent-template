@@ -1,4 +1,4 @@
-# Handoff — 2026-09-05 00:30
+# Handoff — Startzustand
 
 ## Laufbeleg
 
@@ -6,42 +6,21 @@
 - Modus: keiner
 - Verifierstatus: NEVER — noch keine Task-Prüfung; `./scripts/verify.sh` ist bis
   zur Initialisierung ein Platzhalter und meldet GREEN
-- Letzter grüner Stand: `main` bei `68d85df` (Merge von
-  `refactor/manager-worker-standard`, Commit `a3f94ab`); alle neun Testsuiten
-  unter `tests/orchestrator/` GREEN, `validate-ledger.sh` GREEN
+- Letzter grüner Stand: keiner
 
 ## Letzte Sitzung
 
-- Vereinfachung der Vorlage (kein Task, keine Initialisierung): Der Router
-  entscheidet weiterhin nach Klasse, Risiko und Fehlversuchen — seine
-  Entscheidung wird jetzt direkt ausgeführt.
-  - Entfernt: `ROLLOUT_STAGE` mit allen fünf Stufen, `DEFAULT_MODE`,
-    `ROUTER_ENABLED`, Router-Option `--execution`, Ausgabefelder
-    `RECOMMENDED_MODE`/`ROLLOUT_STAGE`, Metadatenfelder `recommended_mode`/
-    `rollout_stage`, `agent-metrics.sh compare`, `docs/evaluation/pilot-v1/`.
-  - Unverändert: alle vier Modi, beide Loops, harte Sicherheitsregeln,
-    Eskalation um eine Stufe, menschliches Gate, Profil-System, CSV-Schema.
-  - Tests angepasst (phase-01/03/05/08/09), nicht gelöscht. Dry-Run-Demo auf
-    Wegwerf-Fixture: mechanical → single, patterned → verified, open →
-    managed, fresh_perspective:required → managed-fresh, Auth-Umfang → managed.
-  - Begründung in `docs/state/decisions.md` (Eintrag „Der Router entscheidet
-    und führt aus"), Doku in README, KURSANLEITUNG, `.agent/README.md`,
-    Task-Vorlage nachgezogen.
+- Keine. Die Vorlage wurde noch nicht initialisiert.
 
 ## Achtung nächste Sitzung
 
-- Ein offener, riskanter oder wiederholt gescheiterter Task startet jetzt ohne
-  weitere Freigabe den Manager-Loop bzw. zwei isolierte Worker — das kostet
-  echte Modellaufrufe. Vor dem ersten echten Lauf `--dry-run` ansehen.
-- Der Schutz-Hook blockiert rekursives Löschen, auch als Text in Heredocs;
-  Demo-Fixtures unter `$TMPDIR/pilot-demo.*` und versionierte Ordner räumt der
-  Auftraggeber auf.
+- Ein offener, riskanter oder wiederholt gescheiterter Task startet ohne weitere
+  Freigabe den Manager-Loop bzw. zwei isolierte Worker — das kostet echte
+  Modellaufrufe. Vor dem ersten echten Lauf `--dry-run` ansehen.
 
 ## Für den Auftraggeber zu prüfen
 
-- Entscheidung: bestätigt (Commit und Merge freigegeben und ausgeführt;
-  Branch gelöscht, kein Remote konfiguriert, nichts gepusht)
-- Demo-Fixture `$TMPDIR/pilot-demo.*` löschen (vom Agenten nicht erlaubt).
+- Entscheidung: nicht erforderlich
 
 ## Fehler und Wiederaufnahme
 
@@ -51,5 +30,5 @@
 
 ## Vorgeschlagene nächste Aufgabe
 
-- Initialisierung des ersten Projekts aus einem Brief in `docs/briefs/`; danach
-  werden die ersten Tasks unter `docs/tasks/` frei.
+- Projekt aus einem Brief in `docs/briefs/` initialisieren; danach werden die
+  ersten Tasks unter `docs/tasks/` frei.
