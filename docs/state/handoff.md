@@ -6,9 +6,9 @@
 - Modus: keiner
 - Verifierstatus: NEVER — noch keine Task-Prüfung; `./scripts/verify.sh` ist bis
   zur Initialisierung ein Platzhalter und meldet GREEN
-- Letzter grüner Stand: Branch `refactor/manager-worker-standard` (noch nicht
-  committet), Basis `main` bei `c783a3d`; alle neun Testsuiten unter
-  `tests/orchestrator/` GREEN, `validate-ledger.sh` GREEN
+- Letzter grüner Stand: `main` bei `68d85df` (Merge von
+  `refactor/manager-worker-standard`, Commit `a3f94ab`); alle neun Testsuiten
+  unter `tests/orchestrator/` GREEN, `validate-ledger.sh` GREEN
 
 ## Letzte Sitzung
 
@@ -39,16 +39,15 @@
 
 ## Für den Auftraggeber zu prüfen
 
-- Entscheidung: offen — Commit und Merge des Branches
-  `refactor/manager-worker-standard` in `main` freigeben.
+- Entscheidung: bestätigt (Commit und Merge freigegeben und ausgeführt;
+  Branch gelöscht, kein Remote konfiguriert, nichts gepusht)
 - Demo-Fixture `$TMPDIR/pilot-demo.*` löschen (vom Agenten nicht erlaubt).
 
 ## Fehler und Wiederaufnahme
 
 - Erster offener Fehler: keiner
-- Nächster Schritt: nach Freigabe committen und mit Merge-Commit in `main`
-  übernehmen; danach Initialisierung nach
-  `docs/templates/initializer-prompt.md` auf einem neuen Branch ab `main`.
+- Nächster Schritt: Initialisierung nach `docs/templates/initializer-prompt.md`
+  auf einem neuen Branch ab `main`.
 
 ## Vorgeschlagene nächste Aufgabe
 
