@@ -66,6 +66,29 @@ fi
 # Geprueft wird nur der Runner, der laut Konfiguration laufen wuerde. Ein
 # fehlerhaft installiertes CLI beantwortet `--version` nicht; genau das ist
 # hier der Befund.
+# Fragt eine einzelne Option beim CLI nach, ohne ein Modell zu rufen: der
+# Aufruf bricht am leeren Prompt ab, und eine unbekannte Option meldet das CLI
+# schon davor. Werte kommen in der Form, die scripts/agent/runner.sh benutzt.
+claude_option_state() {
+  local option=$1 settings output
+  local extra=()
+  case "$option" in
+    --json-schema) extra=(--json-schema '{}') ;;
+    --tools) extra=(--tools Read) ;;
+    --settings) extra=() ;;
+    *) extra=("$option") ;;
+  esac
+  settings=$(mktemp "${TMPDIR:-/tmp}/doctor-settings.XXXXXX") || { echo unklar; return; }
+  printf '{}\n' > "$settings"
+  output=$(agent_run_with_timeout 15 claude --settings "$settings" ${extra[@]+"${extra[@]}"} -p </dev/null 2>&1)
+  rm -f "$settings"
+  case "$output" in
+    *"unknown option '$option'"*) echo unbekannt ;;
+    *'Input must be provided'*) echo bekannt ;;
+    *) echo unklar ;;
+  esac
+}
+
 check_claude() {
   command -v claude >/dev/null 2>&1 || {
     finding "claude wurde nicht gefunden; AGENT_RUNNER=claude braucht das Claude-Code-CLI"; return; }
@@ -76,16 +99,24 @@ check_claude() {
   # Der Adapter reicht diese Optionen bei jedem Rollenaufruf durch: das
   # Rollenschema und die Sicherheitshuelle. Fehlt eine, bricht jeder Lauf mit
   # einem CLI-Fehler ab — das gehoert hierher, vor den Lauf.
+  #
+  # Die Hilfe allein entscheidet das nicht: sie ist nachweislich unvollstaendig
+  # (`--max-turns` wird unterstuetzt und steht nicht darin). Was dort fehlt,
+  # wird deshalb einzeln nachgefragt, bevor es ein Befund wird.
   help=$(claude --help 2>/dev/null)
   missing=''
+  unclear=''
   for option in --json-schema --restricted --strict-mcp-config --tools --settings; do
-    printf '%s\n' "$help" | grep -q -- "$option" || missing="$missing $option"
+    printf '%s\n' "$help" | grep -q -- "$option" && continue
+    case "$(claude_option_state "$option")" in
+      bekannt) ;;
+      unbekannt) missing="$missing $option" ;;
+      *) unclear="$unclear $option" ;;
+    esac
   done
-  if [ -z "$missing" ]; then
-    ok "claude einsatzbereit ($(printf '%s' "$version" | head -n 1))"
-  else
-    finding "claude kennt nicht:$missing ($(printf '%s' "$version" | head -n 1)); bitte aktualisieren"
-  fi
+  [ -z "$missing" ] || finding "claude kennt nicht:$missing ($(printf '%s' "$version" | head -n 1)); bitte aktualisieren"
+  [ -z "$unclear" ] || finding "claude bestätigt diese Optionen nicht:$unclear ($(printf '%s' "$version" | head -n 1)); bitte prüfen"
+  [ -n "$missing$unclear" ] || ok "claude einsatzbereit ($(printf '%s' "$version" | head -n 1))"
 }
 
 check_codex() {
