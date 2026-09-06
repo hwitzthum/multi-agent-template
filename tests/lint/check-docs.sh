@@ -10,7 +10,7 @@ project_dir=$(CDPATH= cd -- "$tests_dir/.." && pwd) || exit 1
 begin_suite check-docs
 
 for path in \
-  README.md CLAUDE.md docs/KURSANLEITUNG.md \
+  README.md CLAUDE.md docs/ARCHITECTURE.md \
   docs/templates/task-template.md docs/templates/handoff-template.md \
   docs/templates/initializer-prompt.md docs/state/decisions.md \
   docs/state/goal.md docs/state/plan.md docs/state/notes.md \
@@ -37,11 +37,8 @@ assert_file_has "CLAUDE verlangt Handoff" "$project_dir/CLAUDE.md" 'braucht ein 
 assert_file_has "CLAUDE hat einen Orchestrierungseinstieg" "$project_dir/CLAUDE.md" '`./scripts/orchestrate.sh`'
 assert_file_lacks "CLAUDE behauptet nicht mehr, Orchestrierung fehle" "$project_dir/CLAUDE.md" 'Orchestrierung ist noch nicht implementiert'
 
-for term in 'Ledger' 'Router' 'Fresh Worker' '`GREEN`' '`RED`' '`review`' '`blocked`' '--resume' 'No-Progress' 'agent-metrics.sh summary'; do
-  assert_file_has "Kursanleitung erklärt $term" "$project_dir/docs/KURSANLEITUNG.md" "$term"
-done
-for flow in 'Normal:' 'Prüfung rot:' 'Menschlich:' 'Blockade:' 'Unterbruch:'; do
-  assert_file_has "Kursanleitung dokumentiert Bedienfall $flow" "$project_dir/docs/KURSANLEITUNG.md" "$flow"
+for term in 'Ledger' 'Router' 'Fresh Worker' 'Status-Gate' 'Runner' 'Verifier'; do
+  assert_file_has "ARCHITECTURE erklärt $term" "$project_dir/docs/ARCHITECTURE.md" "$term"
 done
 
 for field in 'orchestration: auto' 'fresh_perspective: auto' 'touches: []' 'risk_flags: []' 'max_attempts: 3' 'human_review: false'; do
@@ -57,7 +54,7 @@ done
 assert_file_has "Initializer legt Goal an" "$project_dir/docs/templates/initializer-prompt.md" '`docs/state/goal.md`'
 assert_file_has "Initializer legt Run-Ledger an" "$project_dir/docs/templates/initializer-prompt.md" '`docs/state/current-run.md`'
 assert_file_has "Initializer fragt nur zerlegungsrelevante Fragen" "$project_dir/docs/templates/initializer-prompt.md" 'Zerlegung tatsächlich ändern würde'
-assert_file_has "Initializer verbietet zweite Taskquelle" "$project_dir/docs/templates/initializer-prompt.md" 'paralleles `tasks.json`'
+assert_file_has "Initializer verbietet zweite Taskquelle" "$project_dir/docs/templates/initializer-prompt.md" 'zweite Aufgabenquelle neben `docs/tasks/`'
 
 # docs/state/ ist Projektzustand, kein Vorlageninhalt. Solange docs/tasks/ leer
 # ist, gilt der Auslieferungsstand: Ein neues Projekt darf keine fremden
@@ -77,7 +74,6 @@ expect_contains "orchestrate --help" 'Verwendung:' "$project_dir/scripts/orchest
 expect_contains "next-tasks --help" 'Verwendung:' "$project_dir/scripts/next-tasks.sh" --help
 expect_contains "state-summary --help" 'Verwendung:' "$project_dir/scripts/state-summary.sh" --help
 expect_contains "verify --help" 'Verwendung:' "$project_dir/scripts/verify.sh" --help
-expect_contains "agent-metrics --help" 'Verwendung:' "$project_dir/scripts/agent-metrics.sh" --help
 expect_contains "route-task --help" 'Verwendung:' "$project_dir/scripts/route-task.sh" --help
 expect_contains "verify-task --help" 'Verwendung:' "$project_dir/scripts/verify-task.sh" --help
 expect_contains "validate-ledger --help" 'Verwendung:' "$project_dir/scripts/validate-ledger.sh" --help

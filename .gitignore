@@ -1,7 +1,6 @@
-# Node
+# Build- und Abhaengigkeitsordner
 node_modules/
 dist/
-.astro/
 .cache/
 npm-debug.log*
 

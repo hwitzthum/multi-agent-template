@@ -1,6 +1,8 @@
 # Architektur- und Sicherheitsvertrag der Agenten-Orchestrierung
 
-Kontrollflusstests unter `tests/orchestrator/` verwenden ausschließlich einen
+Rohfassung: mit F9 wird diese Datei die normative Beschreibung.
+
+Kontrollflusstests unter `tests/` verwenden ausschließlich einen
 Fake Runner; echte Aufrufe bleiben hinter dem Runner-Adapter gekapselt.
 
 ## Verbindliche Zuständigkeiten
@@ -18,19 +20,16 @@ Fake Runner; echte Aufrufe bleiben hinter dem Runner-Adapter gekapselt.
 | Laufmetrik                | `docs/state/metrics.csv`         | Orchestrator bei genau einem finalen Outcome             |
 | lokale Laufdetails        | `.agent-runs/<run-id>/metadata/` | Runner, Router und Orchestrator                          |
 | Prüfurteil                | `docs/verification/`             | Verifier                                                 |
-| Feature-Status            | `docs/state/features.md`         | Claude beim Sitzungsabschluss, nur mit grünem Prüfbeleg  |
 | Betriebsübergabe          | `docs/state/handoff.md`          | Finalizer/Sitzungsabschluss                              |
 
-`docs/tasks/*.md` ist die einzige Aufgabenquelle; es gibt kein paralleles
-`tasks.json`. `scripts/validate-ledger.sh` prüft Task-Graph, Laufzustand und
-Prüfbelege. `scripts/agent/status.sh` ist der einzige maschinelle Schreibweg für
-Statusübergänge und weist veraltete Schreibversuche ab.
+`docs/tasks/*.md` ist die einzige Aufgabenquelle; eine zweite Aufgabenquelle
+daneben gibt es nicht. `scripts/validate-ledger.sh` prüft Task-Graph,
+Laufzustand und Prüfbelege. `scripts/agent/status.sh` ist der einzige
+maschinelle Schreibweg für Statusübergänge und weist veraltete Schreibversuche
+ab.
 
-Zwei Wartungsbefehle laufen nie automatisch: `scripts/archive-notes.sh`
-verschiebt erledigte oder verworfene Notizen oberhalb von `NOTES_MAX_CHARS`
-nach `docs/state/notes-archive/`; `scripts/migrate-tasks.sh` ergänzt Tasks
-eines älteren Schemas additiv um fehlende Pflichtfelder. Zum Nachsehen einzelner
-Ledger-Werte dient `scripts/agent/ledger.sh scalar|list|active-notes`.
+Zum Nachsehen einzelner Ledger-Werte dient
+`scripts/agent/ledger.sh scalar|list|active-notes`.
 
 ## Rollenmatrix
 
@@ -158,7 +157,6 @@ menschliches Review und fachlicher Erfolg sind getrennte Outcomes.
 
 `scripts/orchestrate.sh --dry-run` schreibt nur lokale, eindeutig als
 `dry_run=true` markierte Metadaten und niemals eine Erfolgszeile.
-`scripts/agent-metrics.sh summary` zeigt Rohzahlen nach Klasse und Modus.
 
 ## Runner-Grenze
 
@@ -253,7 +251,7 @@ fester Reihenfolge aus. Das globale `scripts/verify.sh` bleibt immer Pflicht.
 Alle vorgesehenen Checks laufen auch nach einem Produktfehler weiter; Timeout,
 fehlende Programme und interne Verifierfehler werden getrennt ausgewiesen.
 
-Akzeptanzbefehle werden nie als Shelltext ausgewertet. Ohne Projektprofil sind
+Akzeptanzbefehle werden nie als Shelltext ausgewertet. Ohne eigene Allowlist sind
 nur `./scripts/verify.sh`, `npm test`, `npm run`, `pytest`, `ruff`, `mypy` und
 die entsprechenden `python[3] -m`-Formen erlaubt. Eine optionale
 `.agent/verification-allowlist` ersetzt diese Präfixliste vollständig und kann
@@ -273,8 +271,8 @@ Task, nicht den damaligen Fingerprint.
 ## Produkt-Stack
 
 Die Orchestrierung ist stackneutral. Das Repository enthält keinen Produktcode;
-Stack und Skelett legt erst der Initializer nach dem Profil unter
-`docs/profil/` an.
+Stack und Skelett legt erst der Initializer nach der Projektbeschreibung in
+`docs/templates/initializer-prompt.md` an.
 
 ## Unveränderliche Sicherheitsregeln
 

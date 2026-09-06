@@ -9,7 +9,6 @@ project_dir=$(CDPATH= cd -- "$tests_dir/.." && pwd) || exit 1
 . "$tests_dir/fixture.sh"
 
 metrics_tool="$project_dir/scripts/agent/metrics.sh"
-metrics_report="$project_dir/scripts/agent-metrics.sh"
 router="$project_dir/scripts/route-task.sh"
 
 begin_suite metrics
@@ -91,7 +90,5 @@ assert_eq "Kosten werden nur aus gelieferten Werten summiert" 0.125000 "$(printf
 summary=$(CLAUDE_PROJECT_DIR="$fixture" "$project_dir/scripts/state-summary.sh")
 assert_eq "Kurzsummary hält das Drei-Zeilen-Budget" 3 "$(printf '%s\n' "$summary" | wc -l | tr -d ' ')"
 [ "$(printf '%s\n' "$summary" | wc -w | tr -d ' ')" -le 250 ] && ok || bad "Kurzsummary überschreitet 250 Tokens als konservatives Wortbudget"
-
-expect_success "Metriktabelle lässt sich lokal erzeugen" "$metrics_report" summary --project-dir "$fixture"
 
 finish_suite

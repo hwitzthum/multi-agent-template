@@ -2,7 +2,7 @@
 id: <NNN>
 title: "<Verb + Objekt, konkret>"
 depends_on: [<ids — nur technische Unmöglichkeit, keine Reihenfolge-Präferenz>]
-features: [<ids aus features.md, die diese Aufgabe erfüllt>]
+features: [<Anforderungs-IDs, die diese Aufgabe erfüllt>]
 status: todo
 class: patterned # mechanical | patterned | open — siehe Test unten
 orchestration: auto # auto | single | verified | managed | managed-fresh

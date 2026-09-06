@@ -17,8 +17,9 @@ Gesamtstrategie des Projekts ein.
 
 ## Offene Risiken
 
-- Die zentrale Produktprüfung `scripts/verify.sh` ist bis zur Initialisierung
-  ein Platzhalter und meldet immer GREEN.
+- Die zentrale Prüfung `scripts/verify.sh` prüft bis zur Initialisierung das
+  Starterkit selbst (die Testsuite), nicht das Produkt. Die Initialisierung
+  ersetzt sie durch die Produktprüfung.
 - Ein erster echter Lauf verursacht Modellkosten; offene oder riskante Tasks
   starten ohne weitere Freigabe den Manager-Loop.
 

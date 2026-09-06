@@ -1,10 +1,10 @@
-# project-template (aktives Profil: landingpage-fabrik)
+# project-template
 
 ## Dauerhafte Betriebsregeln
 
 - `docs/tasks/*.md` ist die einzige Aufgabenquelle. Ziel, Plan, Notizen,
   Laufstand und Übergabe liegen unter `docs/state/`; Prüfbelege unter
-  `docs/verification/`. Kein paralleles `tasks.json` führen.
+  `docs/verification/`. Keine zweite Aufgabenquelle daneben führen.
 - Kontrollierte Arbeit startet ausschließlich über
   `./scripts/orchestrate.sh`. Router, Rollen-Runner, Verifier und Status-Gate
   nicht von Hand zu einer zweiten Ablaufsteuerung verketten. Ein echter Lauf

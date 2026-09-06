@@ -11,7 +11,7 @@
 # Exit 2 = blockiert (stderr geht an den Agenten), Exit 0 = frei.
 # Grenze: Stolperdraht, kein Sandkasten — `node -e "fetch(…)"` oder ein
 # git-Alias wären nicht erfasst. Echte Isolation bietet die Sandbox von
-# Claude Code (/sandbox), sobald sie auf allen Kursrechnern läuft.
+# Claude Code (/sandbox).
 set -uo pipefail
 
 # Befehl aus dem Hook-JSON auf stdin lesen (kein jq — nicht überall vorhanden).
@@ -23,7 +23,7 @@ cmd=$(printf '%s' "$cmd" | sed 's/\\n/;/g; s/\\[tr]/ /g')   # JSON \n = Befehlst
 
 hit() { printf '%s' "$cmd" | grep -Eq "$1"; }
 block() {
-  echo "Blockiert durch scripts/bash-guard.sh: $1. Das darf der Agent nicht — der Auftraggeber macht es selbst (KURSANLEITUNG, «Was Claude nicht darf»)." >&2
+  echo "Blockiert durch scripts/bash-guard.sh: $1. Das darf der Agent nicht — der Auftraggeber macht es selbst." >&2
   exit 2
 }
 

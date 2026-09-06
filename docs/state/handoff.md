@@ -4,8 +4,8 @@
 
 - Run-ID: `none`
 - Modus: keiner
-- Verifierstatus: NEVER — noch keine Task-Prüfung; `./scripts/verify.sh` ist bis
-  zur Initialisierung ein Platzhalter und meldet GREEN
+- Verifierstatus: NEVER — noch keine Task-Prüfung; `./scripts/verify.sh` prüft
+  bis zur Initialisierung das Starterkit selbst (die Testsuite), nicht das Produkt
 - Letzter grüner Stand: keiner
 
 ## Letzte Sitzung
@@ -30,5 +30,5 @@
 
 ## Vorgeschlagene nächste Aufgabe
 
-- Projekt aus einem Brief in `docs/briefs/` initialisieren; danach werden die
-  ersten Tasks unter `docs/tasks/` frei.
+- Projekt nach `docs/templates/initializer-prompt.md` initialisieren; danach
+  werden die ersten Tasks unter `docs/tasks/` frei.
