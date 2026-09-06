@@ -6,7 +6,8 @@ Diesen Abschnitt schreibt `scripts/orchestrate.sh` bei jedem Laufende selbst.
 
 - Run-ID: <Run-ID oder `none`>
 - Modus: <single | verified | managed | keiner>
-- Ergebnis: <success | review | blocked | ask_human | no_progress | keiner>
+- Ergebnis: <success | review | blocked | ask_human | no_progress |
+  verification_error | infrastructure_error | cancelled | failed | keiner>
 - Task: <id und Status oder `keiner`>
 - Verifierstatus: <GREEN | RED | NEVER> — <Berichtspfad oder Grund>
 - Letzter grüner Stand: <Berichtspfad oder `keiner`>

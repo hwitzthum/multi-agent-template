@@ -1,6 +1,6 @@
 # Plan
 
-<!-- Wird von der Initialisierung (docs/templates/initializer-prompt.md) gefüllt.
+<!-- Wird von der Initialisierung (docs/prompts/init.md) gefüllt.
      Die vier Abschnitte sind Pflicht und werden von ./scripts/validate-ledger.sh
      geprüft. -->
 
@@ -11,9 +11,8 @@ Gesamtstrategie des Projekts ein.
 
 ## Meilensteine
 
-- Offen: Initialisierung des Projekts nach
-  `docs/templates/initializer-prompt.md`; danach werden die ersten Tasks unter
-  `docs/tasks/` frei.
+- Offen: Initialisierung des Projekts nach `docs/prompts/init.md`; danach
+  werden die ersten Tasks unter `docs/tasks/` frei.
 
 ## Offene Risiken
 

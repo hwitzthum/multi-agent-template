@@ -1,156 +1,85 @@
-# Adaptives Agentensystem für Projektarbeit
+  # Adaptives Agentensystem für Projektarbeit
 
 Dieses Template hält Ziel, Aufgaben, Prüfungen und Übergaben in Dateien fest.
 Es wählt für jede Aufgabe den kleinsten sicheren Arbeitsmodus: eine einfache
 Änderung kann direkt bearbeitet werden, eine komplexe oder festgefahrene
-Aufgabe erhält zusätzliche Planung, Prüfung oder eine unabhängige zweite
-Lösung. Mehrere Agenten sind deshalb eine Möglichkeit, nicht der Standard für
-jede Aufgabe.
+Aufgabe erhält zusätzliche Planung, Prüfung oder einen zweiten Anlauf ohne
+Vorgeschichte. Mehrere Agenten sind deshalb eine Möglichkeit,
+nicht der Standard für jede Aufgabe.
+
+Der technische Betriebs- und Sicherheitsvertrag steht in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Dieses README ist die
+Bedienanleitung.
 
 ## Vor dem ersten Lauf
 
 Das Projekt braucht ein eigenes Git-Repository mit einem ersten Commit. Wer die
 GitHub-Vorlage verwendet und sie klont, hat diesen Ausgangsstand bereits. Ein
 ZIP-Download genügt nicht: Manifeste, Snapshot-Rücksetzung und die
-Fresh-Versuche benötigen die Git-Historie.
+Fresh-Versuche beziehen Dateiliste und Hashes von Git. Ausser Bash brauchen die
+Skripte nur `git`, `awk`, `sed`, `shasum`, `jq` und `perl`; dazu das CLI des
+gewählten Runners (`claude` oder `codex`).
 
-`./scripts/doctor.sh` sagt in einem Durchlauf, ob die Umgebung trägt:
-Werkzeuge, Konfiguration, der gewählte Agenten-Runner und der
-Repository-Zustand. Jede Zeile ist `OK`, `BEFUND` (behebbar und blockierend)
-oder `HINWEIS`. Ein kaputt installiertes CLI erscheint dort als Befund mit
-Text, nicht als Absturz.
+```bash
+./scripts/doctor.sh    # Werkzeuge, Konfiguration, Runner, Repository-Zustand
+```
 
-Danach wird das Projekt einmalig mit
-`docs/templates/initializer-prompt.md` eingerichtet: Projektbeschreibung
-eintragen, Prompt in eine eigene Sitzung kopieren.
+Jede Zeile ist `OK`, `BEFUND` (behebbar und blockierend) oder `HINWEIS`; ein
+kaputt installiertes CLI erscheint als Befund mit Text, nicht als Absturz.
+
+Danach wird das Projekt einmalig mit [`docs/prompts/init.md`](docs/prompts/init.md)
+eingerichtet: Projektbeschreibung unten in die Datei eintragen, dann den ganzen
+Prompt in eine eigene Sitzung kopieren. Der Initializer legt Ziel, Plan, die
+ersten Aufgaben und das Projektskelett an — und ersetzt `scripts/verify.sh`
+durch die Prüfung des Produkts.
 
 ## Die drei Hauptbefehle
 
 ```bash
-# 1. Nächste ausführbare Aufgaben anzeigen
-./scripts/next-tasks.sh
-
-# 2. Die nächste Aufgabe kontrolliert bearbeiten
-./scripts/orchestrate.sh --next
-
-# 3. Projektstand und nächsten Handlungsbedarf erklären
-./scripts/state-summary.sh
+./scripts/next-tasks.sh          # 1. Nächste ausführbare Aufgaben anzeigen
+./scripts/orchestrate.sh --next  # 2. Die nächste Aufgabe kontrolliert bearbeiten
+./scripts/state-summary.sh       # 3. Prüfstand und offene Arbeit in zwei Zeilen
 ```
 
 Vor einem echten Lauf zeigt `./scripts/orchestrate.sh --next --dry-run` ohne
-Produktänderung den vom Router gewählten Modus und die geplanten Rollen. Eine bestimmte
-Aufgabe startet mit `./scripts/orchestrate.sh --task 017`. Die globale
-Projektprüfung bleibt immer `./scripts/verify.sh`.
+jeden Schreibzugriff den vom Router gewählten Modus, die Limits und die
+geplanten Rollen. Eine bestimmte Aufgabe startet mit
+`./scripts/orchestrate.sh --task 017`; ein bewusst schmutziger Arbeitsbaum
+braucht zusätzlich `--allow-dirty`. Die globale Projektprüfung bleibt immer
+`./scripts/verify.sh` (`--quick` für den Commit-Hook, `--deep` für alles).
 
 Der Router entscheidet pro Aufgabe, wie viel Begleitung sie braucht, und diese
-Entscheidung wird direkt ausgeführt: Routine läuft mit einem Worker, Fachlogik
-mit Korrekturschleife, offene oder riskante Aufgaben im Manager-Worker-Loop,
-festgefahrene mit zwei unabhängigen Lösungen. Eine bewusste Vorgabe ist über
-`--mode` oder `orchestration:` im Task möglich, kann aber nie unter das
-Sicherheitsminimum senken. Offene Aufgaben sowie Text, Optik und Rechtliches
-bleiben unter menschlicher Aufsicht.
+Entscheidung wird sofort ausgeführt: Routine läuft mit einem Worker (`single`),
+Fachlogik mit Korrekturschleife (`verified`), offene oder riskante Aufgaben im
+Manager-Worker-Loop (`managed`). Jede rote Prüfung hebt die Stufe um genau eine
+Position; der letzte erlaubte Versuch läuft ohne Vorgeschichte. Eine bewusste
+Vorgabe ist über `--mode` oder `orchestration:` im Task möglich, kann aber nie
+unter das Sicherheitsminimum senken. Offene Aufgaben sowie Text, Optik und
+Rechtliches bleiben unter menschlicher Aufsicht.
 
-## Die Infrastruktur — wie Rollen zusammenhängen
+## Die zwei menschlichen Statuswechsel
 
-Hinter den Rollen laufen mehrere Skripte, die den Betriebsverkehr regeln:
+```bash
+./scripts/task.sh reopen 017    # blockierte Aufgabe wieder öffnen
+./scripts/task.sh approve 017   # Aufgabe im Review freigeben
+```
 
-### `scripts/agent/runner.sh` — Der Modell-Adapter
+Kein Agent kann diese beiden auslösen. Eine Aufgabe steht auf `blocked`, wenn
+der Lauf eine Entscheidung braucht; die Frage steht dann unter `# Offene Frage`
+in der Task-Datei. Antwort dort hineinschreiben, dann `reopen`, dann wieder
+`./scripts/orchestrate.sh --task 017`. `approve` schliesst eine Aufgabe ab, die
+nach grünen Tests auf `review` wartet, weil sie `human_review: true` oder
+`class: open` trägt.
 
-Wird von `orchestrate.sh` aufgerufen. Nimmt das Kontextpaket, ruft das gewählte CLI mit
-dem JSON-Schema der Rolle auf (das Modell muss exakt die Vertragsfelder liefern), schreibt
-das Ergebnisobjekt als `result.json` und protokolliert Modell, Tokens und Kosten aus
-der Antwort. Die vollständige Antwort bleibt lokal als `.provider.json` im Laufordner.
+## Sicherheit: Was ein Agent nicht darf — mit Absicht
 
-Zwei Runner stehen zur Wahl, `AGENT_RUNNER=claude` oder `AGENT_RUNNER=codex` in
-`.agent/config.env`. Beide liefern denselben Ergebnisvertrag, aber eine andere
-Sicherheitshülle: Claude bekommt rollenabhängige Werkzeuge und eine eigene
-Einstellungsdatei mit Deny-Liste und `bash-guard`-Hook — Manager und Finalizer
-können dort gar keine Befehle ausführen. Codex läuft stattdessen in der Sandbox
-seines CLI (`--sandbox workspace-write`, Netz aus) und kennt keine Werkzeugauswahl
-pro Rolle. Kosten meldet codex nicht. Ein dritter Anbieter würde nur diesen Adapter
-ändern — die Orchestrierung bleibt gleich.
+Das Template hat eingebaute Sperren. Ein Agent darf **nicht**:
 
-### `scripts/agent/context.sh` — Der Kontext-Bauer
-
-Baut für jede Rolle nur die erforderlichen Abschnitte: Headless-Rahmen, Rollenvertrag,
-Goal, Task, Plan, Notes, Verifikation, Dateiliste, Ausgabeformat. Jeder Abschnitt hat
-ein festes Zeichenbudget. Der Worker bekommt die Liste der Pfade, die er anfassen darf,
-nicht deren Inhalt — Dateien liest er mit seinen eigenen Werkzeugen. Ein Fresh-Versuch
-bekommt bewusst keine Notes und keine früheren Fehler.
-
-Kontexte sind schreibgeschützt und inhaltsadressiert — derselbe Inhalt erzeugt dieselbe
-Datei. Das ist die Basis für zuverlässiges Caching und Reproduzierbarkeit.
-
-### `scripts/agent/route.sh` — Der Router
-
-Entscheidet pro Task die Startstufe: `single` (Worker allein), `verified`
-(Worker + Korrektur) oder `managed` (Manager entscheidet vor jeder Runde). Jede
-rote Prüfung hebt die Stufe um genau eine Position; ein ausgeschöpftes
-Versuchslimit ergibt `blocked`. Daneben erzwingt `scripts/agent/policy.sh` nur die Pfad- und
-Schreibgrenzen der Rollen.
-
-Eingaben: Task-Klasse (`mechanical`, `patterned`, `open`), die ausdrückliche
-Vorgabe aus `orchestration` oder `--mode`, die bisherigen Versuche und die
-Risiko-Signale (`high-risk`, `cross-component`, `repeated-failure`).
-
-Ausgabe: der Modus. Es gilt `max(Basis, Rang der Versuche, Risiko-Minimum)`;
-ein gesetztes Risiko-Signal hebt das Minimum auf `managed`.
-
-Der Router wird durch `orchestrate.sh --next` aufgerufen und die Entscheidung **sofort
-ausgeführt** — Sie sehen sie mit `--dry-run` vorher, ohne etwas zu verändern.
-
-### `scripts/agent/ledger.sh` — Der Dateiverwalter
-
-Liest und schreibt Task-Dateien, Goal, Plan, Notes. Eine Datei wird in genau
-einem Durchlauf gelesen; das Ergebnis ist eine Zeile `schlüssel<TAB>wert` je
-Wert. Welche Felder ein Task tragen muss, entscheidet `validate-ledger.sh` —
-der Leser selbst kennt keine Feldnamen und interpretiert nichts als Befehl.
-
-Jede Änderung wird zuerst in einer temporären Datei validiert und dann atomar
-verschoben. Verhindert halbfertige Dateien bei Unterbrechung.
-
-### `scripts/agent/rolecall.sh` — Der bewachte Rollenaufruf
-
-Alles, was um genau einen Modellaufruf herum passieren muss, damit sein Ergebnis
-verwendbar ist: Kontext bauen, Runner rufen (mit begrenztem Infrastruktur-Retry),
-Ergebnis gegen `scripts/agent/schemas/<rolle>.json` prüfen, ein Manifest vor und nach
-dem Aufruf vergleichen und jeden Schreibzugriff ausserhalb des Rollen- und
-Task-Umfangs zurücksetzen. Der Orchestrator behält damit nur seinen Ablauf.
-
-### `scripts/agent/status.sh` — Das Status-Gate
-
-Einziger Schreibweg für Task-Status. Prüft: Alter Status erlaubt? Prüfbericht
-unter `docs/verification/<id>.md` vorhanden und grün, mit passendem Fingerprint?
-`human_review` benötigt explizite Freigabe? `blocked -> todo` gibt es nur
-menschlich über `./scripts/task.sh reopen`.
-
-Verhindert, dass ein Agent nur durch seine eigene Behauptung einen Task auf `done`
-setzt. Status wechseln nur mit einem grünen Beleg.
-
-### `scripts/agent/config.sh` — Die Limits
-
-Lädt und validiert `.agent/config.env` — einfaches Dateiformat, kein Shellskript.
-Bekannte Schlüssel, validierte Werte. Wird nie mit `source` oder `eval` ausgeführt.
-
-Die Limits sind hart: Iterations-, Versuche-, No-Progress-, Kontext-, Timeout- und
-Retry-Grenzen. Kein Agent kann das übergehen. Dort stehen auch die Grenzen eines
-einzelnen Modellaufrufs (`AGENT_TIMEOUT_SECONDS`, `AGENT_MAX_TURNS`) sowie Runner
-und Modell (`AGENT_RUNNER`, `AGENT_MODEL`) — nicht in der Umgebung, damit ein Lauf
-ohne gesetzte Variablen reproduzierbar bleibt.
-
-## Sicherheit: Was Claude nicht darf — mit Absicht
-
-Das Template hat eingebaute Sperren. Claude (oder jeder Agent) darf **nicht**:
-
-- **Etwas ins Internet hochladen** — `git push`, `curl`, `wget` sind blockiert.  
+- **Etwas ins Internet hochladen** — `git push`, `curl`, `wget` sind blockiert.
   Du selbst kontrollierst, was hochgeladen wird.
-
 - **Dateien massenhaft löschen** — `rm -r…` für Ordner ist blockiert.
-
 - **Ungespeicherte Arbeit verwerfen** — `git reset --hard`, `git checkout --`,
-  `git clean`, `git restore` sind blockiert.  
-  Ein Agent könnte sonst versehentlich einen Entwurf löschen.
-
+  `git clean`, `git restore` sind blockiert.
 - **Prüf-Hooks umgehen** — `git … --no-verify` ist blockiert, und vor jedem
   `git commit` muss `./scripts/verify.sh --quick` grün sein.
 
@@ -159,43 +88,42 @@ gelten: `git commit`, `merge`, `rebase`, `stash`, `worktree`, `git branch -D`,
 `pip install` und `npm publish`. Historie und Zweige führt der Orchestrator und
 am Ende du — nicht der Agent.
 
-Diese Grenzen sind in `scripts/bash-guard.sh` und `scripts/commit-gate.sh`
-definiert und greifen bei jedem Befehl, auch versteckt in einem längeren Befehl
-oder hinter JSON-Steuerzeichen. Sie sind ein Stolperdraht, kein Sandkasten: Dinge
-wie `node -e "fetch(…)"` oder ein git-Alias erfassen sie nicht. Die Skripte selbst
-laden Ledger- und Agententext nie mit `source` oder `eval`. Du behältst die volle
-Kontrolle: Ein `git push` führst du selbst aus.
+Diese Grenzen stehen in `scripts/bash-guard.sh` und `scripts/commit-gate.sh`
+und greifen bei jedem Befehl, auch versteckt in einem längeren Befehl oder
+hinter JSON-Steuerzeichen. Sie sind ein Stolperdraht, kein Sandkasten: Dinge wie
+`node -e "fetch(…)"` oder ein git-Alias erfassen sie nicht. Die Skripte selbst
+laden Ledger- und Agententext nie mit `source` oder `eval`.
+
+Ein Agent kann eine Aufgabe auch nicht durch seine eigene Behauptung
+abschliessen: `done` und `review` setzt allein das Status-Gate, und nur mit
+einem aktuellen grünen Prüfbericht. Bei einer Aufgabe mit menschlicher Prüfung
+führt ein grüner Maschinencheck zunächst zu `review`, nie direkt zu `done`.
+
+Zwei Runner stehen zur Wahl, `AGENT_RUNNER=claude` oder `AGENT_RUNNER=codex` in
+`.agent/config.env`. Beide liefern denselben Ergebnisvertrag, aber eine andere
+Sicherheitshülle: Claude bekommt rollenabhängige Werkzeuge und eine eigene
+Einstellungsdatei mit Deny-Liste und `bash-guard`-Hook; Codex läuft in der
+Sandbox seines CLI (`--sandbox workspace-write`, Netz aus). Kosten meldet codex
+nicht. Die Grenzen des Laufs — Iterationen, Versuche, Zeitlimits, Modell —
+stehen ebenfalls in `.agent/config.env`; alle dreizehn Schlüssel sind in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) erklärt.
 
 ## Weitere Befehle
 
 ```bash
-./scripts/doctor.sh                         # Werkzeuge, Runner und Repository-Zustand prüfen
-./scripts/orchestrate.sh --next --dry-run   # Route, Limits und geplante Rollen ohne Änderung
-./scripts/validate-ledger.sh                # Task-Graph und Prüfbelege prüfen
-./scripts/task.sh reopen 017                # blockierte Aufgabe wieder öffnen (nur menschlich)
-./scripts/task.sh approve 017               # Aufgabe im Review freigeben (nur menschlich)
+./scripts/validate-ledger.sh   # Task-Graph, Ledger-Schema und Prüfbelege prüfen
+./scripts/verify-task.sh 017   # nur die Akzeptanzbefehle einer Aufgabe fahren
+./tests/run.sh                 # Testsuite des Kits (--fast lässt e2e weg)
 ```
-
-`reopen` und `approve` sind die beiden Statuswechsel, die kein Agent auslösen
-kann. Eine Aufgabe steht auf `blocked`, wenn der Lauf eine Entscheidung braucht;
-die Frage steht dann unter `# Offene Frage` in der Task-Datei. Antwort dort
-hineinschreiben, dann `reopen`, dann wieder `./scripts/orchestrate.sh --task
-017`. `approve` schliesst eine Aufgabe ab, die nach grünen Tests auf `review`
-wartet, weil sie `human_review: true` oder `class: open` trägt.
 
 ## Wo der Stand liegt
 
-- `docs/tasks/*.md` ist die einzige Aufgabenquelle.
-- `docs/state/` enthält Ziel, Plan, Entscheidungen, Notizen und aktuelle
-  Übergabe.
+- `docs/tasks/*.md` ist die einzige Aufgabenquelle; eine Aufgabe pro Datei, der
+  Dateiname ist die ID. Vorlage: `docs/templates/task.md`.
+- `docs/state/` enthält Ziel, Plan, Entscheidungen, Notizen und die aktuelle
+  Übergabe (Vorlage: `docs/templates/handoff.md`).
 - `docs/verification/<id>.md` ist der Prüfbeleg je Aufgabe; `latest.md` ist die
   Kopie des zuletzt geschriebenen Berichts.
 - `.agent-runs/` enthält Laufzustand, Rohdaten und `metrics.csv` (eine Zeile
   pro Lauf) und wird nicht versioniert. Ein Lauf ist zwischen zwei Aufrufen
   zustandslos; es gibt kein Fortsetzen.
-- `docs/ARCHITECTURE.md` beschreibt den technischen Betriebs- und
-  Sicherheitsvertrag für Maintainer.
-
-`done` ist nur über das Verifikations-Gate möglich. Bei einer Aufgabe mit
-menschlicher Prüfung führt ein grüner Maschinencheck zunächst zu `review`, nie
-direkt zu `done`.

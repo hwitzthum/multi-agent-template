@@ -18,7 +18,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | gemergt   | 547   | 2026-09-06 |
 | F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | gemergt   | 666   | 2026-09-06 |
 | F8  | Prüftor verschlanken                     | `refactor/verify-gate`            | gemergt   | 677   | 2026-09-06 |
-| F9  | Dokumentation                            | `docs/architecture`               | offen     | –     | –          |
+| F9  | Dokumentation                            | `docs/architecture`               | geprüft   | 693   | –          |
 
 Reihenfolge ist verbindlich (jedes Feature setzt auf dem vorigen auf). Vor jedem
 Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Besitzers.
@@ -276,20 +276,24 @@ Orchestrator-Lock (stale-PID-fähig) und Status-Gate-Lock. Sonst keine.
 
 ### Zielstruktur
 
+Nachgeführt mit F9 auf den tatsächlich gebauten Stand; die Zeilenbudgets sind
+die gemessenen Grössen, nicht mehr die ursprünglichen Schätzungen.
+
 ```
 .agent/config.env              MAX_GLOBAL_ITERATIONS MAX_TASK_ATTEMPTS MAX_NO_PROGRESS
                                CONTEXT_MAX_CHARS NOTES_MAX_CHARS VERIFY_TIMEOUT_SECONDS
                                AGENT_TIMEOUT_SECONDS AGENT_MAX_TURNS MAX_INFRA_RETRIES
-                               AGENT_RUNNER AGENT_MODEL FINALIZER
+                               RETRY_BACKOFF_SECONDS AGENT_RUNNER AGENT_MODEL FINALIZER
 .agent/verification-allowlist
 .claude/settings.json          Hooks + Deny-Liste der interaktiven Sitzung
 .claude/plan/umbau-starterkit.md   diese Datei
 scripts/
-  orchestrate.sh (≤400 Z.)  verify-task.sh (≤200)  validate-ledger.sh (≤200)
-  status.sh (≤90)  task.sh (≤60)  next-tasks.sh  state-summary.sh  doctor.sh
+  orchestrate.sh (≤400 Z.)  verify-task.sh (≤200)  validate-ledger.sh (≤260)
+  task.sh (≤60)  next-tasks.sh  state-summary.sh  doctor.sh
   verify.sh (Projekt-Platzhalter)  bash-guard.sh  commit-gate.sh
-  lib/ common.sh (≤150) ledger.sh (≤200) context.sh (≤200) runner.sh (≤300)
-       route.sh (≤40) policy.sh  schemas/*.json
+  agent/ common.sh (≤380) ledger.sh (≤370) context.sh (≤300) runner.sh (≤430)
+         rolecall.sh (≤150) status.sh (≤100) config.sh (≤100)
+         route.sh (≤45) policy.sh  schemas/*.json
 docs/
   ARCHITECTURE.md   README.md (Wurzel)   CLAUDE.md (Wurzel)
   prompts/ manager.md worker.md finalizer.md init.md
@@ -298,6 +302,11 @@ docs/
   tasks/   verification/latest.md
 tests/ run.sh lib.sh fixture.sh fake-runner.sh unit/ integration/ e2e/ lint/
 ```
+
+`scripts/agent/` statt `scripts/lib/` und `status.sh` unterhalb davon: das
+Status-Gate ist Orchestrierung, kein allgemeines Hilfsmittel, und alles, was ein
+Lauf braucht, liegt damit in einem Ordner. `rolecall.sh` kam mit F6 dazu, weil
+der bewachte Rollenaufruf sonst 140 Zeilen in den Orchestrator getragen hätte.
 
 ---
 
@@ -1017,31 +1026,86 @@ Review:
 
 ### F9 · Dokumentation
 
-Branch `docs/architecture` · Status: **offen**
+Branch `docs/architecture` · Status: **geprüft**
 
 Ziel: Eine normative Beschreibung, ein kurzes README, ein CLAUDE.md für die
 interaktive Sitzung, ein generischer Init-Prompt. Vollständigkeit gegen den Code.
 
 Aufgaben:
 
-- [ ] `docs/ARCHITECTURE.md`: Rollenmatrix, Schreibbereiche, Ablauf, Eskalation,
+- [x] `docs/ARCHITECTURE.md`: Rollenmatrix, Schreibbereiche, Ablauf, Eskalation,
       Runner und ihre Sicherheitshüllen, Config-Schlüssel, Schemata, Ledger-Schema,
       Manifest/Snapshot, Sperren
-- [ ] `README.md` (~120 Z.): Zweck, Voraussetzungen, `doctor`, Initialisierung, drei
+- [x] `README.md` (129 Z.): Zweck, Voraussetzungen, `doctor`, Initialisierung, drei
       Hauptbefehle, `task.sh`, Sicherheit, Verweis auf ARCHITECTURE.md
-- [ ] `CLAUDE.md`: Betriebsregeln der interaktiven Sitzung, Zeile 1 korrigiert
-- [ ] `docs/prompts/init.md`: generisch, Projektbeschreibung in der Datei,
+- [x] `CLAUDE.md`: Betriebsregeln der interaktiven Sitzung, Zeile 1 korrigiert
+- [x] `docs/prompts/init.md`: generisch, Projektbeschreibung in der Datei,
       Pflichtüberschriften und erlaubte Werte ausdrücklich
-- [ ] `docs/templates/handoff.md` mit Abschnitt «Laufbeleg»
-- [ ] README-Audit: jedes Skript, jedes Flag, jeder Config-Schlüssel dokumentiert
+- [x] `docs/templates/handoff.md` mit Abschnitt «Laufbeleg»
+- [x] README-Audit: jedes Skript, jedes Flag, jeder Config-Schlüssel dokumentiert
 
 Abnahme:
 
-- [ ] `tests/lint/check-docs.sh`: jeder in README/ARCHITECTURE genannte Pfad und
+- [x] `tests/lint/check-docs.sh`: jeder in README/ARCHITECTURE genannte Pfad und
       jedes Flag existiert; jedes Skript mit `--help` ist genannt
 - [ ] Besitzer liest README und ARCHITECTURE einmal durch
 
-Review: –
+Review:
+
+- Zwei Umbenennungen bringen die Ablage auf die Zielstruktur:
+  `docs/templates/initializer-prompt.md` → `docs/prompts/init.md` und
+  `docs/templates/handoff-template.md` → `docs/templates/handoff.md`; fünfzehn
+  Verweise in README, ARCHITECTURE, `docs/state/*` und der Suite sind
+  nachgezogen. `init.md` liegt damit neben den drei Rollenverträgen, ist aber
+  selbst keine Rolle — `context.sh` kennt weiterhin nur `manager`, `worker` und
+  `finalizer`, und der Kopf der Datei sagt das ausdrücklich.
+- `docs/ARCHITECTURE.md` ist von 401 auf 541 Zeilen gewachsen und trägt jetzt
+  die fünf Dinge, die vorher nur im Code standen: ein **Skriptinventar** mit
+  jedem Skript und jeder Option, die **vollständige Tabelle aller dreizehn
+  Konfigurationsschlüssel** (bisher waren vier davon erklärt), das
+  **Task-Schema** mit erlaubten Werten und Pflichtabschnitten, das
+  **Berichtsschema** des Prüftors und einen Abschnitt **Sperren**. Der Satz
+  «Rohfassung: mit F9 wird diese Datei die normative Beschreibung» ist weg; die
+  Datei ist jetzt die normative Beschreibung.
+- `README.md` ist von 201 auf 129 Zeilen geschrumpft. Weggefallen ist der Block
+  «Die Infrastruktur — wie Rollen zusammenhängen»: er beschrieb sieben Skripte
+  ein zweites Mal, neben ARCHITECTURE, und musste damit doppelt gepflegt
+  werden. Neu sind der Abschnitt zu den zwei menschlichen Statuswechseln und
+  die Liste der Werkzeugvoraussetzungen.
+- Zwei stille Falschaussagen in `CLAUDE.md` sind behoben: der Laufstand liegt
+  seit F4 unversioniert unter `.agent-runs/` und nicht unter `docs/state/`, und
+  `state-summary.sh` gibt zwei Zeilen aus, nicht drei. Zeile 1 heisst nicht mehr
+  `# project-template`.
+- Der mit F1 vorgefundene Verweis auf `tests/orchestrator/` in der
+  Initialisierung ist behoben. Der Prompt zählt jetzt Frontmatterfelder,
+  erlaubte Werte und die vier Pflichtüberschriften einer Task-Datei wörtlich
+  auf, ebenso die Pflichtabschnitte von `goal.md`, `plan.md` und `notes.md`.
+  Neu ist der Hinweis auf `.agent/verification-allowlist`: wer einen Stack mit
+  anderen Prüfwerkzeugen aufsetzt, dessen `acceptance`-Befehle würde das
+  Prüftor sonst schweigend abweisen.
+- `check-docs.sh` prüft jetzt beide Richtungen und ist von 108 auf 191 Zeilen
+  gewachsen (91 → 107 Zusicherungen). Neu sind vier Struktur-Zusicherungen, die
+  nicht auf eine Wortliste setzen: jeder in README/ARCHITECTURE genannte Pfad
+  existiert, jedes dort genannte Flag kommt in einem Skript des Kits vor (auch
+  die der beiden Anbieter-CLIs), jedes Skript unter `scripts/` und `tests/run.sh`
+  ist genannt, und jeder Schlüssel aus `.agent/config.env` ist in ARCHITECTURE
+  erklärt. Alle vier sind negativ getestet: ein erfundener Pfad, ein erfundenes
+  Flag, ein umbenanntes Skript und ein umbenannter Schlüssel machen die Suite
+  jeweils rot.
+- Zwei Ausnahmen trägt die Pfadprüfung, beide kommentiert: `docs/tasks/017.md`
+  ist das laufende Beispiel, `docs/tasks/.status-lock` existiert nur während
+  eines Statuswechsels.
+- Die Zielstruktur oben ist auf den gebauten Stand nachgeführt. Die Budgets sind
+  jetzt die gemessenen Grössen; damit ist auch die aus F7 offene Frage
+  beantwortet: `runner.sh` bleibt mit 428 Zeilen ein Adapter, der Codex-Parser
+  wird nicht ausgelagert. Eine zusätzliche Datei hätte die Zeilen nur verschoben.
+- Zusicherungen 677 → 693.
+- Ein einzelner Suite-Lauf während der Arbeit war rot (1 von 28 Dateien, 641
+  statt 693 Zusicherungen); welche Datei, ist wegen eines abgeschnittenen
+  Protokolls nicht festgehalten. Dreizehn Läufe danach waren grün, reproduzieren
+  liess es sich nicht. Der Punkt bleibt offen und ist nicht behoben.
+- Die letzte Abnahme — der Besitzer liest README und ARCHITECTURE durch — war
+  beim Merge noch offen; der Besitzer hat die Freigabe vorher erteilt.
 
 ---
 
@@ -1058,5 +1122,41 @@ Review: –
 
 ## Abschluss-Review
 
-Wird nach F9 ausgefüllt: Was wurde erreicht, was weicht vom Plan ab und warum,
-Zeilenbilanz vorher/nachher, offene Punkte.
+**Was erreicht wurde.** Aus einem Kit mit Turnier-Modus, zwei Konfigurations-
+formaten, zwei Textparsern und einer kursorientierten Dokumentation ist ein
+Starterkit mit einem Ablauf geworden: ein Router, drei Modelrollen, ein Prüftor,
+ein Status-Gate, zwei austauschbare Runner. Jede Grenze steht an genau einer
+Stelle, und die Suite prüft sie nach Verhalten statt nach Wortlaut.
+
+**Zeilenbilanz** (`.sh`, `.md`, `.json`, ohne diese Plandatei), gemessen gegen
+den Stand vor F0:
+
+| Bereich                   | vorher | nachher |
+| ------------------------- | ------ | ------- |
+| `scripts/`                | 4333   | 3170    |
+| `docs/` + README + CLAUDE | 1668   | 1241    |
+| `tests/`                  | 2045   | 2936    |
+| **gesamt**                | 8367   | 7385    |
+
+Produktcode und Dokumentation sind um rund 1600 Zeilen leichter, die Testsuite
+um 900 Zeilen schwerer — 417 → 693 Zusicherungen. Genau das war die Absicht.
+
+**Abweichungen vom Plan, alle bewusst und in den Feature-Reviews begründet.**
+`scripts/agent/` statt `scripts/lib/`, mit `status.sh` darin (F6). Eine siebte
+Bibliotheksdatei `rolecall.sh` für den bewachten Rollenaufruf (F6). Drei
+Zeilenbudgets über der ursprünglichen Schätzung: `context.sh` 291 statt 200,
+`runner.sh` 428 statt 300, `validate-ledger.sh` 257 statt 200. Die Zielstruktur
+ist mit F9 auf die gemessenen Werte nachgeführt statt weiter danebenzustehen.
+
+**Offene Punkte.**
+
+- Der echte Lauf durch den Besitzer steht aus: `doctor.sh`, dann
+  `orchestrate.sh --task 001` mit `AGENT_RUNNER=claude` auf einem Mini-Projekt.
+  Die Suite fährt ausschliesslich den Fake Runner; kein Test hat je ein echtes
+  Modell gerufen.
+- Der Codex-Weg ist ungeprüft, solange `npm i -g @openai/codex` nicht läuft.
+  `doctor.sh` meldet das als Befund, nicht als Absturz.
+- Codex meldet keine Kosten (`unknown`); wer Budgets braucht, fährt
+  `AGENT_RUNNER=claude` mit `AGENT_MAX_BUDGET_USD`.
+- Der Besitzer hat README und ARCHITECTURE noch nicht durchgelesen; das ist die
+  letzte offene Abnahme von F9.

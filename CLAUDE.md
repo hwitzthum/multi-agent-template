@@ -1,10 +1,16 @@
-# project-template
+# Adaptives Agentensystem — Regeln der interaktiven Sitzung
+
+Diese Datei gilt für die Sitzung, in der ein Mensch mit einem Agenten am Projekt
+arbeitet. Der Headless-Lauf des Orchestrators bekommt seine Regeln nicht von
+hier, sondern aus dem Kontextdokument und der eigenen Einstellungsdatei des
+Runners. Bedienung: `README.md`. Verbindlicher Vertrag: `docs/ARCHITECTURE.md`.
 
 ## Dauerhafte Betriebsregeln
 
 - `docs/tasks/*.md` ist die einzige Aufgabenquelle. Ziel, Plan, Notizen,
-  Laufstand und Übergabe liegen unter `docs/state/`; Prüfbelege unter
-  `docs/verification/`. Keine zweite Aufgabenquelle daneben führen.
+  Entscheidungen und Übergabe liegen unter `docs/state/`; Prüfbelege unter
+  `docs/verification/`; der Laufstand unversioniert unter `.agent-runs/`.
+  Keine zweite Aufgabenquelle daneben führen.
 - Kontrollierte Arbeit startet ausschließlich über
   `./scripts/orchestrate.sh`. Router, Rollen-Runner, Verifier und Status-Gate
   nicht von Hand zu einer zweiten Ablaufsteuerung verketten. Ein echter Lauf
@@ -33,9 +39,12 @@
 
 ## Sitzungsstart und Abschluss
 
-- `./scripts/state-summary.sh` zeigt in drei Zeilen Lauf, Prüfung und offene
-  Arbeit; der SessionStart-Hook spielt ihn automatisch ein.
+- `./scripts/state-summary.sh` zeigt in zwei Zeilen den Prüfstand und die
+  offene Arbeit; der SessionStart-Hook spielt ihn automatisch ein. Einen
+  laufenden Lauf zeigt er nicht — ein Lauf ist zwischen zwei Aufrufen
+  zustandslos.
 - `./scripts/next-tasks.sh` zeigt nur Tasks mit erfüllten Abhängigkeiten.
-- Am Ende `docs/state/handoff.md` nach der Vorlage aktualisieren. Bei
+- Am Ende `docs/state/handoff.md` nach `docs/templates/handoff.md`
+  aktualisieren; den Abschnitt «Laufbeleg» schreibt der Orchestrator selbst. Bei
   Unterbrechung letzten grünen Stand, Fehler und genau den nächsten Schritt
   nennen.
