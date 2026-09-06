@@ -28,4 +28,18 @@ new_project_fixture
 fixture_config MAX_NO_PROGRESS '1;touch_x'
 expect_failure "Shellsyntax" "$config" --check "$fixture/.agent/config.env"
 
+# FINALIZER ist ein Schalter, keine Zahl: der Finalizer kostet einen zusätzlichen
+# Modellaufruf und ist deshalb ausdrücklich abwählbar.
+new_project_fixture
+expect_output "Finalizer ist im Auslieferungsstand aus" off "$config" --get FINALIZER "$fixture/.agent/config.env"
+fixture_config FINALIZER llm
+expect_success "FINALIZER=llm ist gültig" "$config" --check "$fixture/.agent/config.env"
+fixture_config FINALIZER 1
+expect_failure "FINALIZER nimmt keine Zahl" "$config" --check "$fixture/.agent/config.env"
+
+new_project_fixture
+awk '$1 != "FINALIZER=off"' "$fixture/.agent/config.env" > "$fixture/.agent/config.tmp"
+mv "$fixture/.agent/config.tmp" "$fixture/.agent/config.env"
+expect_failure "fehlender Pflichtschlüssel FINALIZER" "$config" --check "$fixture/.agent/config.env"
+
 finish_suite

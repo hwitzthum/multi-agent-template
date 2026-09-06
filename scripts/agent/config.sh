@@ -11,18 +11,22 @@ fail() {
   return 1
 }
 
+required_keys='MAX_GLOBAL_ITERATIONS MAX_TASK_ATTEMPTS MAX_NO_PROGRESS CONTEXT_MAX_CHARS NOTES_MAX_CHARS VERIFY_TIMEOUT_SECONDS MAX_INFRA_RETRIES RETRY_BACKOFF_SECONDS FINALIZER'
+
 known_key() {
-  case "$1" in
-    MAX_GLOBAL_ITERATIONS|MAX_TASK_ATTEMPTS|MAX_NO_PROGRESS|CONTEXT_MAX_CHARS|NOTES_MAX_CHARS|VERIFY_TIMEOUT_SECONDS|MAX_INFRA_RETRIES|RETRY_BACKOFF_SECONDS) return 0 ;;
-    *) return 1 ;;
-  esac
+  for candidate in $required_keys; do [ "$1" = "$candidate" ] && return 0; done
+  return 1
 }
 
+# Alle Grenzen sind positive ganze Zahlen; FINALIZER ist ein Schalter. Der
+# Finalizer ist ein zusaetzlicher Modellaufruf und deshalb ausdruecklich
+# abwaehlbar (`off`), nicht stillschweigend an.
 valid_value() {
-  value=$1
-  case "$value" in
-    ''|*[!0-9]*|0) return 1 ;;
-    *) return 0 ;;
+  key=$1
+  value=$2
+  case "$key" in
+    FINALIZER) case "$value" in off|llm) return 0 ;; *) return 1 ;; esac ;;
+    *) case "$value" in ''|*[!0-9]*|0) return 1 ;; *) return 0 ;; esac ;;
   esac
 }
 
@@ -48,11 +52,11 @@ validate_config() {
     case "$seen" in
       *"|$key|"*) fail "doppelter Schlüssel $key"; return 1 ;;
     esac
-    valid_value "$value" || { fail "ungültiger Wert für $key"; return 1; }
+    valid_value "$key" "$value" || { fail "ungültiger Wert für $key"; return 1; }
     seen="${seen}${key}|"
   done < "$config_file"
 
-  for required in MAX_GLOBAL_ITERATIONS MAX_TASK_ATTEMPTS MAX_NO_PROGRESS CONTEXT_MAX_CHARS NOTES_MAX_CHARS VERIFY_TIMEOUT_SECONDS MAX_INFRA_RETRIES RETRY_BACKOFF_SECONDS; do
+  for required in $required_keys; do
     case "$seen" in
       *"|$required|"*) ;;
       *) fail "Pflichtschlüssel fehlt: $required"; return 1 ;;

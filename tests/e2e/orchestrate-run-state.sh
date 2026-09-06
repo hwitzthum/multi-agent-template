@@ -20,8 +20,8 @@ fixture_workspace
 # --- Ein gruener Lauf beruehrt ausser dem Produkt nur fachliche Belege -------
 new_app_fixture
 fixture_git_init
-fake_response worker-task 1 'RESULT=implemented' 'CHANGED_PATHS=src/app.txt' 'TESTS_RUN=-' 'NOTES_ADDED=-'
-fake_action worker-task 1 write-good
+fake_worker_result 1
+fake_action worker 1 write-good
 expect_success "Gruener Lauf schliesst den Task ab" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
 unexpected=$(git -C "$fixture" status --porcelain \
   | awk '{ print $2 }' \
@@ -52,8 +52,8 @@ case "$dry_output" in *'MODE=single'*) ok ;; *) bad "Dry Run zeigt die Route" ;;
 
 # --- Ein abgebrochener Lauf laesst keinen Task in_progress zurueck ----------
 new_app_fixture
-fake_response worker-task 1 'RESULT=implemented' 'CHANGED_PATHS=src/app.txt' 'TESTS_RUN=-' 'NOTES_ADDED=-'
-fake_action worker-task 1 hang
+fake_worker_result 1
+fake_action worker 1 hang
 ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017 >/dev/null 2>&1 &
 aborted=$!
 tries=0
@@ -75,8 +75,8 @@ new_app_fixture
 mkdir -p "$fixture/.agent-runs/.orchestrator-lock"
 sleep 0 & dead_pid=$!; wait "$dead_pid"
 printf '%s\n' "$dead_pid" > "$fixture/.agent-runs/.orchestrator-lock/pid"
-fake_response worker-task 1 'RESULT=implemented' 'CHANGED_PATHS=src/app.txt' 'TESTS_RUN=-' 'NOTES_ADDED=-'
-fake_action worker-task 1 write-good
+fake_worker_result 1
+fake_action worker 1 write-good
 expect_success "Verwaiste Sperre und Stale-Task werden uebernommen" \
   env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
 assert_eq "Uebernommener Task laeuft bis done durch" done "$(ledger_scalar "$fixture/docs/tasks/017.md" status)"

@@ -32,12 +32,16 @@ expect_failure "nur Orchestrator schreibt Laufdaten" "$policy" role-write finali
 expect_success "Orchestrator darf Laufdaten schreiben" "$policy" role-write orchestrator .agent-runs/run/run.env
 expect_failure "Orchestrator schreibt keinen versionierten Laufzustand" "$policy" role-write orchestrator docs/state/current-run.md
 
-expect_success "Manager-Plan-Alias nutzt Manager-Schreibgrenze" "$policy" role-write manager-plan docs/state/plan.md
-expect_success "Manager-Manage-Alias nutzt Task-Schreibgrenze" "$policy" role-write manager-manage docs/tasks/017.md
-expect_success "Brainstorm-Alias darf Notes schreiben" "$policy" role-write worker-brainstorm docs/state/notes.md
-expect_success "Task-Worker-Alias darf Produktpfad schreiben" "$policy" role-write worker-task src/app.txt
-expect_success "Fresh-Worker-Alias darf Produktpfad schreiben" "$policy" role-write worker-fresh src/app.txt
+expect_success "Manager darf Task-Inhalte schreiben" "$policy" role-write manager docs/tasks/017.md
+expect_success "Finalizer darf Handoff schreiben" "$policy" role-write finalizer docs/state/handoff.md
+expect_success "Finalizer darf Notes schreiben" "$policy" role-write finalizer docs/state/notes.md
+expect_failure "Finalizer darf keinen Plan schreiben" "$policy" role-write finalizer docs/state/plan.md
+expect_failure "Worker darf keinen Plan schreiben" "$policy" role-write worker docs/state/plan.md
 expect_failure "unbekannte Rolle darf nirgends schreiben" "$policy" role-write pruefer docs/verification/latest.md
-expect_failure "Prompt-Rolle erweitert keine Worker-Rechte" "$policy" role-write worker-task docs/state/plan.md
+
+# Die abgeloesten Prompt-Rollen sind keine Schreibbereiche mehr.
+for legacy in manager-plan manager-manage worker-brainstorm worker-task worker-fresh; do
+  expect_failure "abgeloeste Rolle $legacy hat keinen Schreibbereich" "$policy" role-write "$legacy" src/app.txt
+done
 
 finish_suite

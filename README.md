@@ -51,25 +51,29 @@ Hinter den Rollen laufen mehrere Skripte, die den Betriebsverkehr regeln:
 ### `scripts/agent/runner.sh` — Der Modell-Adapter
 
 Wird von `orchestrate.sh` aufgerufen. Nimmt das Kontextpaket, ruft `claude -p` mit dem
-JSON-Schema der Rolle auf (das Modell muss exakt die Vertragsfelder liefern), überträgt
-das Ergebnis ins geprüfte Zeilenformat und protokolliert Modell, Tokens und Kosten aus
-der Antwort. Die vollständige Antwort bleibt lokal als `.json` im Laufordner. Ein neuer
-Anbieter-Aufruf würde nur diesen Adapter ändern — die Orchestrierung bleibt gleich.
+JSON-Schema der Rolle auf (das Modell muss exakt die Vertragsfelder liefern), schreibt
+das Ergebnisobjekt als `result.json` und protokolliert Modell, Tokens und Kosten aus
+der Antwort. Die vollständige Antwort bleibt lokal als `.provider.json` im Laufordner.
+Ein neuer Anbieter-Aufruf würde nur diesen Adapter ändern — die Orchestrierung bleibt
+gleich.
 
 ### `scripts/agent/context.sh` — Der Kontext-Bauer
 
-Baut für jede Rolle nur die erforderlichen Abschnitte: Goal, Task, Plan, Notes,
-Verifikation, Code. Jeder Abschnitt hat ein Zeichenbudget. Code erhält nur den
-verbleibenden Platz. Ein Fresh-Versuch bekommt bewusst keine Notes oder früheren Fehler.
+Baut für jede Rolle nur die erforderlichen Abschnitte: Headless-Rahmen, Rollenvertrag,
+Goal, Task, Plan, Notes, Verifikation, Dateiliste, Ausgabeformat. Jeder Abschnitt hat
+ein festes Zeichenbudget. Der Worker bekommt die Liste der Pfade, die er anfassen darf,
+nicht deren Inhalt — Dateien liest er mit seinen eigenen Werkzeugen. Ein Fresh-Versuch
+bekommt bewusst keine Notes und keine früheren Fehler.
 
 Kontexte sind schreibgeschützt und inhaltsadressiert — derselbe Inhalt erzeugt dieselbe
 Datei. Das ist die Basis für zuverlässiges Caching und Reproduzierbarkeit.
 
 ### `scripts/agent/route.sh` — Der Router
 
-Entscheidet pro Task: `single` (Worker allein), `verified` (Worker + Korrektur)
-oder `managed` (Manager-Worker-Loop). Ein ausgeschöpftes Versuchslimit ergibt
-`blocked`. Daneben erzwingt `scripts/agent/policy.sh` nur die Pfad- und
+Entscheidet pro Task die Startstufe: `single` (Worker allein), `verified`
+(Worker + Korrektur) oder `managed` (Manager entscheidet vor jeder Runde). Jede
+rote Prüfung hebt die Stufe um genau eine Position; ein ausgeschöpftes
+Versuchslimit ergibt `blocked`. Daneben erzwingt `scripts/agent/policy.sh` nur die Pfad- und
 Schreibgrenzen der Rollen.
 
 Eingaben: Task-Klasse (`mechanical`, `patterned`, `open`), die ausdrückliche
@@ -92,10 +96,13 @@ der Leser selbst kennt keine Feldnamen und interpretiert nichts als Befehl.
 Jede Änderung wird zuerst in einer temporären Datei validiert und dann atomar
 verschoben. Verhindert halbfertige Dateien bei Unterbrechung.
 
-### `scripts/agent/output.sh` — Der Output-Validator
+### `scripts/agent/rolecall.sh` — Der bewachte Rollenaufruf
 
-Prüft, dass ein Agenten-Output alle erwarteten Felder hat, keine zusätzlichen, und
-dass der Inhalt nicht mehrdeutig ist. Nur gültige Output-Schemata landen im Ledger.
+Alles, was um genau einen Modellaufruf herum passieren muss, damit sein Ergebnis
+verwendbar ist: Kontext bauen, Runner rufen (mit begrenztem Infrastruktur-Retry),
+Ergebnis gegen `scripts/agent/schemas/<rolle>.json` prüfen, ein Manifest vor und nach
+dem Aufruf vergleichen und jeden Schreibzugriff ausserhalb des Rollen- und
+Task-Umfangs zurücksetzen. Der Orchestrator behält damit nur seinen Ablauf.
 
 ### `scripts/agent/status.sh` — Das Status-Gate
 

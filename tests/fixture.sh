@@ -58,12 +58,12 @@ new_project_fixture() {
   [ -n "$tmp_root" ] || fixture_abort "fixture_workspace wurde nicht aufgerufen"
   fixture=$(mktemp -d "$tmp_root/case.XXXXXX") || fixture_abort "kann Fixture nicht anlegen"
   mkdir -p "$fixture/.agent" "$fixture/docs/tasks" "$fixture/docs/verification" \
-    "$fixture/docs/templates" "$fixture/scripts" \
+    "$fixture/docs/prompts" "$fixture/docs/templates" "$fixture/scripts" \
     "$fixture/src" "$fixture/.agent-runs/fake/responses" "$fixture/.agent-runs/fake/actions" \
     || fixture_abort "kann Fixture-Struktur nicht anlegen"
 
   fixture_copy .agent/config.env
-  fixture_copy docs/templates/agents
+  fixture_copy docs/prompts
   for file in goal.md plan.md decisions.md handoff.md; do
     fixture_copy "docs/state/$file"
   done
@@ -86,6 +86,10 @@ new_project_fixture() {
     done
     for file in "$project_dir"/scripts/agent/*.sh; do
       cp "$file" "$fixture/scripts/agent/${file##*/}" || fixture_abort "kann agent/${file##*/} nicht kopieren"
+    done
+    mkdir -p "$fixture/scripts/agent/schemas"
+    for file in "$project_dir"/scripts/agent/schemas/*.json; do
+      cp "$file" "$fixture/scripts/agent/schemas/${file##*/}" || fixture_abort "kann Schema ${file##*/} nicht kopieren"
     done
     chmod +x "$fixture/scripts/"*.sh "$fixture/scripts/agent/"*.sh
   fi
@@ -146,11 +150,30 @@ EOF
   fixture_git_init
 }
 
-# Eine Antwortdatei für tests/fake-runner.sh: fake_response <rolle> <nummer> <zeile>…
+# Eine Antwortdatei für tests/fake-runner.sh. Sie ist das result.json der Rolle;
+# die Argumente sind Feld-Wert-Paare: fake_response <rolle> <nummer> <feld> <wert>…
 fake_response() {
-  local role=$1 number=$2
+  local role=$1 number=$2 target
   shift 2
-  printf '%s\n' "$@" > "$fixture/.agent-runs/fake/responses/$role-$number.out"
+  target="$fixture/.agent-runs/fake/responses/$role-$number.json"
+  [ "$(($# % 2))" -eq 0 ] || fixture_abort "fake_response erwartet Feld-Wert-Paare"
+  printf '%s\n' "$@" | awk '
+    NR % 2 == 1 { key=$0; next }
+    { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); printf "%s  \"%s\": \"%s\"", (count++ ? ",\n" : "{\n"), key, $0 }
+    END { print (count ? "\n}" : "{}") }
+  ' > "$target" || fixture_abort "kann Antwort für $role-$number nicht schreiben"
+}
+
+# Ein vollstaendiges Rollenergebnis mit Vorgabewerten; nur Abweichungen nennen.
+fake_worker_result() {
+  local role=worker number=$1 result=${2:-implemented}
+  fake_response "$role" "$number" result "$result" summary 'Testlauf.' tests_run '-' notes '-'
+}
+
+fake_manager_result() {
+  local number=$1 action=${2:-dispatch} task=${3:-017} question=${4:-}
+  fake_response manager "$number" action "$action" task_id "$task" \
+    reason NEXT_HIGHEST_VALUE question "$question"
 }
 
 # Eine Aktion für tests/fake-runner.sh: fake_action <rolle> <nummer> <aktion>
@@ -200,7 +223,9 @@ new_populated_fixture() {
 - evidence: widerlegt
 - finding: VERWORFENE_NOTIZ bleibt draußen.
 EOF
-  cat > "$fixture/docs/verification/latest.md" <<'EOF'
+  # Der Prüfbeleg eines Tasks ist docs/verification/<id>.md; latest.md ist die
+  # Kopie des zuletzt geschriebenen Berichts.
+  cat > "$fixture/docs/verification/017.md" <<'EOF'
 ---
 run_id: previous-run
 task_id: 017
@@ -215,6 +240,8 @@ PRIOR_ERROR: Erwartung fehlgeschlagen.
 - `.env` wurde in einer Fehlermeldung erwähnt.
 - access_token=should-not-leak
 EOF
+  cp "$fixture/docs/verification/017.md" "$fixture/docs/verification/latest.md" \
+    || fixture_abort "kann latest.md nicht schreiben"
   cat > "$fixture/src/app.txt" <<'EOF'
 VISIBLE_CODE=hello
 api_key=should-not-leak

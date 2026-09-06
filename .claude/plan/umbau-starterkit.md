@@ -15,7 +15,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | gemergt | 402   | 2026-09-06 |
 | F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | gemergt | 395   | 2026-09-06 |
 | F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | gemergt | 449   | 2026-09-06 |
-| F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | offen  | –     | –          |
+| F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | geprüft | 547   | –          |
 | F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | offen  | –     | –          |
 | F8  | Prüftor verschlanken                     | `refactor/verify-gate`            | offen  | –     | –          |
 | F9  | Dokumentation                            | `docs/architecture`               | offen  | –     | –          |
@@ -27,6 +27,12 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F6 · Rollenergebnis ist JSON gegen ein Schema, sechs Prompt-Rollen
+  auf `manager`/`worker`/`finalizer` zusammengelegt, ein Modus-Pfad mit
+  Eskalation statt drei, `ask_human` als Frage im Task, deterministischer
+  Laufbeleg bei jedem Laufende, Finalizer abwählbar ·
+  `./scripts/verify.sh` → `tests: GREEN (547 Zusicherungen in 26 Dateien)`;
+  `wc -l scripts/orchestrate.sh` → `399`
 - 2026-09-06 · F5 · Nach `main` gemergt (`82460fe`), Suite auf `main` grün ·
   `./scripts/verify.sh` → `tests: GREEN (449 Zusicherungen in 24 Dateien)`
 - 2026-09-06 · F5 · Frontmatter auf zwölf Felder gekürzt, Parser auf einen
@@ -738,40 +744,120 @@ Review:
 
 ### F6 · JSON-Ergebnisse, drei Rollen, Eskalation
 
-Branch `refactor/json-results-and-roles` · Status: **offen**
+Branch `refactor/json-results-and-roles` · Status: **geprüft**
 
 Ziel: Der Orchestrator wird auf ≤400 Zeilen mit einem klaren Ablauf; drei Prompts;
 ein Format.
 
 Aufgaben:
 
-- [ ] `lib/schemas/{manager,worker,finalizer}.json`; Runner schreibt `result.json`;
-      `output.sh` löschen; Prüfung mit `jq -e`
-- [ ] `docs/prompts/{manager,worker,finalizer}.md` (Rollenvertrag, Schreibbereich,
+- [x] `scripts/agent/schemas/{manager,worker,finalizer}.json`; Runner schreibt
+      `result.json`; `output.sh` gelöscht; Prüfung mit `jq -e`
+- [x] `docs/prompts/{manager,worker,finalizer}.md` (Rollenvertrag, Schreibbereich,
       Abbruchregeln, Ausgabeformat als JSON-Beispiel mit allen Feldern)
-- [ ] Manager mit Steuerfeld-Schutz (`task_control_snapshot`) und Regel «neue Tasks
-      `todo/0`»; `plan_is_placeholder` weg
-- [ ] `run_role` mit Infra-Retry (`MAX_INFRA_RETRIES`), Manifest vor/nach,
+- [x] Manager mit Steuerfeld-Schutz (`ledger_control_snapshot`) und Regel «neue
+      Tasks `todo/0`»; `plan_is_placeholder` weg
+- [x] `run_role` mit Infra-Retry (`MAX_INFRA_RETRIES`), Manifest vor/nach,
       Scope-Prüfung, Restore
-- [ ] Versuchsschleife mit Eskalation; `failure_kind=verifier` zählt nicht;
+- [x] Versuchsschleife mit Eskalation; `failure_kind=verifier` zählt nicht;
       No-Progress-Guard; `MAX_GLOBAL_ITERATIONS`
-- [ ] `ask_human`: Frage in Task, `blocked/ASK_HUMAN`, kein Versuch
-- [ ] Deterministischer Laufbeleg in `handoff.md` bei jedem Ende; Finalizer opt-in
+- [x] `ask_human`: Frage in Task, `blocked/ASK_HUMAN`, kein Versuch
+- [x] Deterministischer Laufbeleg in `handoff.md` bei jedem Ende; Finalizer opt-in
       (`FINALIZER=llm`) ohne Arbeitskopie
-- [ ] Headless-Rahmen in `context.sh`; Dateiliste statt Dateiinhalte; feste Budgets
-- [ ] `append_failure_note`, `progress_fingerprint`, `agent_redact`,
-      `agent_truncate_blocks`, `validate_metadata`, `write_metadata` übernehmen
+- [x] Headless-Rahmen in `context.sh`; Dateiliste statt Dateiinhalte; feste Budgets
+- [x] `append_failure_note`, `progress_fingerprint`, `agent_redact`,
+      `agent_truncate_blocks`, `validate_metadata`, `write_metadata` übernommen
 
 Abnahme:
 
-- [ ] Tests: single/verified/managed grün und rot; Eskalation genau eine Stufe pro
+- [x] Tests: single/verified/managed grün und rot; Eskalation genau eine Stufe pro
       rotem Versuch; Verifier-Fehler ohne Versuch; `ask_human` → `blocked`, nach
       `reopen` sieht der Manager die Antwort; ungültiges JSON stoppt, Ledger gültig;
       Infra-Retry für jede Rolle (Timeout, leer, ungültig); Laufbeleg bei
       grün/blocked/ask_human; Manager kann Steuerfelder nicht ändern
-- [ ] `wc -l scripts/orchestrate.sh` ≤ 400
+      (`tests/e2e/orchestrate-{single,verified,escalation,managed,fresh,ask-human,
+      failures}.sh`, `tests/unit/result-contract.sh`)
+- [x] `wc -l scripts/orchestrate.sh` ≤ 400 (gemessen 399)
 
-Review: –
+Review:
+
+- Ein Rollenergebnis ist jetzt eine JSON-Datei. Der Anbieter-CLI erzwingt das
+  Schema beim Erzeugen, danach prüft `runner.sh validate_result` es ein zweites
+  Mal mit `jq -e`: genau die geforderten Felder, jeder Wert eine Zeichenkette,
+  `enum` und `pattern` eingehalten. Zwei unabhängige Prüfungen, weil die erste
+  vom Anbieter kommt und niemand sie im Repository nachweisen kann.
+  `scripts/agent/output.sh` (181 Zeilen mit zwei awk-Parsern für zwei
+  Textformate) ist ersatzlos weg — mit ihm das Zeilenformat `KEY=WERT` und das
+  Manager-Frontmatter.
+- Aus sechs Prompt-Rollen sind drei geworden. `manager-plan` und
+  `manager-manage` waren dieselbe Rolle mit zwei Prompts; `worker-brainstorm`
+  ist ersatzlos gestrichen, weil eine Runde «Risiken sammeln» ohne Prüftor
+  keinen belegbaren Fortschritt erzeugt hat; `worker-fresh` ist keine Rolle
+  mehr, sondern eine Variante des Workers — derselbe Prompt, derselbe
+  Schreibbereich, nur ein Kontext ohne Vorgeschichte.
+- Der grösste Gewinn ist der Ablauf. Vorher gab es drei Codepfade (`single`,
+  `verified`, `managed`) plus `managed_loop`; jetzt gibt es eine Schleife. Der
+  Modus entscheidet nur noch, ob vor der Runde der Manager läuft. Jede rote
+  Prüfung zählt einen Versuch, und der Router liefert daraus die nächste Stufe
+  — `single → verified → managed → blocked` ergibt sich, statt programmiert zu
+  werden.
+- Das ändert das Verhalten sichtbar: ein `single`-Task lief früher genau eine
+  Runde und war dann fertig oder offen. Jetzt eskaliert derselbe Task innerhalb
+  **eines** Aufrufs bis `MAX_TASK_ATTEMPTS`. Wer die alte Enge will, setzt
+  `MAX_TASK_ATTEMPTS=1`. Der Plan verlangt das so («Versuchsschleife in einem
+  Aufruf»), aber es ist der Punkt, an dem ein Lauf teurer werden kann als
+  vorher.
+- `failure_kind: verifier` zählt keinen Versuch mehr. Ein fehlendes Programm
+  oder ein Zeitlimit im Prüfweg ist keine Aussage über den Kandidaten; vorher
+  hat es trotzdem eine Aufgabe Richtung Blockade geschoben.
+- `ask_human` ist neu und ersetzt `request_human`. Die Frage steht als
+  `# Offene Frage` im Task, die Aufgabe ist `blocked/ASK_HUMAN`, kein Versuch
+  ist verbraucht. Der Mensch antwortet in derselben Datei und öffnet sie mit
+  `./scripts/task.sh reopen <id>`; beim nächsten Lauf steht die Antwort im
+  Manager-Kontext, weil der Task-Rumpf vollständig mitgeht. Der Lauf endet mit
+  Exitcode 1 wie jedes andere Ende ohne `done`/`review` — Exit 0 heisst
+  weiterhin genau: die Aufgabe ist durch.
+- Den Laufbeleg schreibt der Orchestrator bei **jedem** Ende selbst, auch bei
+  Absturz und Abbruch: Run-ID, Modus, Ergebnis, Task mit Status, Verifierstatus
+  und letzter grüner Stand. Er ersetzt den vorhandenen Abschnitt, statt ihn
+  anzuhäufen. Dafür braucht es kein Modell — der Finalizer ist jetzt abwählbar
+  und im Auslieferungsstand aus (`FINALIZER=off`). Läuft er, dann wie jede
+  andere Rolle im Arbeitsbaum; die 52 Zeilen, die vorher eine Arbeitskopie
+  samt eigenem `git init` aufgebaut und Ergebnisse zurückgespielt haben, sind
+  weg. Bei `ASK_HUMAN` läuft er auch mit `FINALIZER=llm` nicht: eine Frage
+  braucht eine Antwort, keine Erzählung.
+- Der Worker bekommt die **Liste** der Pfade aus `touches` statt deren Inhalt.
+  Dateien liest er mit seinen eigenen Werkzeugen; der Kontext wird dadurch klein
+  und vorhersagbar. Zusammen mit festen Budgets je Abschnitt konnte die
+  Schrumpfschleife in `context.sh` (bis zu zwölf Runden Nachrechnen) entfallen:
+  passt ein Kontext heute, passt er auch morgen. Passt er nicht, sagt das Skript
+  das mit Zahl statt still zu kürzen.
+- Der Headless-Rahmen steht jetzt im Kontextdokument statt in
+  `--append-system-prompt`. Das ist die Vorbereitung für F7: beide Runner
+  reichen dieselbe Datei weiter, und keiner muss den Rahmen kennen.
+- Zwei Fehler sind dabei aufgefallen und behoben. Erstens war die Regel «neue
+  Tasks `todo/0`» tot: das Muster `*'|todo|0|never|'*` konnte auf eine Zeile
+  `<id>|todo|0|` nie passen, ein Manager hätte also nie einen Task anlegen
+  können. Zweitens kollidierte der Infrastruktur-Retry mit der Regel des
+  Runners, keine bestehende Ausgabedatei zu überschreiben — mit dem echten
+  Runner wäre jeder zweite Versuch sofort gescheitert. Jeder Retry bekommt jetzt
+  eigene Dateien (`<label>.retry1`), und beide Fälle haben einen Test.
+- Ein Verstoss gegen die Steuerfelder setzt den Arbeitsbaum jetzt genauso zurück
+  wie ein Verstoss gegen den Schreibbereich. Vorher stoppte der Lauf zwar, liess
+  aber die manipulierte Task-Datei liegen — der nächste Lauf hätte darauf
+  aufgesetzt.
+- `docs/verification/<id>.md` ist seit F5 der Prüfbeleg eines Tasks;
+  `context.sh` liest jetzt ihn statt `latest.md`. Die elf toten Aufrufe von
+  `make_active_run` in `tests/integration/verify-gate.sh` sind entfernt.
+- Zwei bewusste Abweichungen von der Zielstruktur. Erstens gibt es eine siebte
+  Bibliotheksdatei: `scripts/agent/rolecall.sh` (142 Zeilen) trägt den
+  bewachten Rollenaufruf — Kontext bauen, Runner rufen, Ergebnis prüfen,
+  Manifest vergleichen, Verstoss zurücksetzen. Ohne diese Trennung wären es
+  540 Zeilen im Orchestrator statt 399; die Zielstruktur nennt sie noch nicht.
+  Zweitens ist `context.sh` mit 291 Zeilen über den dort genannten 200; das
+  bleibt für ein späteres Feature offen. Der Umzug von `scripts/agent/` nach
+  `scripts/lib/` gehört weiterhin zu keinem Feature — er sollte einen eigenen
+  bekommen.
 
 ### F7 · Zwei Runner: Claude und Codex
 

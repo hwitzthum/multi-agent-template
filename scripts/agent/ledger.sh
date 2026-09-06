@@ -267,6 +267,61 @@ ledger_active_notes() {
   ' "$file"
 }
 
+# Ein Schnappschuss der Steuerfelder aller Tasks, eine Zeile je Task:
+# "<id>|<status>|<attempts>|<blocked_reason>". Vor und nach einem Rollenaufruf
+# gebildet beweist er, dass die Rolle die Steuerung nicht angefasst hat.
+ledger_control_snapshot() {
+  : > "$2"
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    printf '%s|%s|%s|%s\n' "$(ledger_scalar "$file" id)" "$(ledger_scalar "$file" status)" \
+      "$(ledger_scalar "$file" attempts)" "$(ledger_scalar "$file" blocked_reason)" >> "$2"
+  done <<EOF
+$(ledger_task_files "$1")
+EOF
+}
+
+# Liegt ein Pfad im `touches`-Umfang eines Tasks? Ein Task ohne `touches`
+# begrenzt nichts und laesst jeden Pfad zu.
+ledger_path_in_touches() {
+  ledger_touches=$(ledger_list "$1" touches 2>/dev/null || true)
+  [ -n "$ledger_touches" ] || return 0
+  while IFS= read -r allowed; do
+    [ -n "$allowed" ] || continue
+    allowed=${allowed%/}
+    case "$2" in "$allowed"|"$allowed"/*) return 0 ;; esac
+  done <<EOF
+$ledger_touches
+EOF
+  return 1
+}
+
+# Haengt eine Notiz im Schema von notes.md an: ledger_append_note DATEI TASK
+# TITEL BEFUND BELEG. Dieselbe Erkenntnis wird nicht zweimal geschrieben.
+ledger_append_note() {
+  notes=$1
+  grep -Fq -- "- finding: $4" "$notes" && return 0
+  lock="$(dirname -- "$notes")/.notes-write-lock"
+  mkdir "$lock" 2>/dev/null || { ledger_error "Notes werden bereits geschrieben"; return 1; }
+  temp=$(mktemp "$(dirname -- "$notes")/.notes.tmp.XXXXXX") || { rmdir "$lock"; return 1; }
+  cp "$notes" "$temp" || { rm -f "$temp"; rmdir "$lock"; return 1; }
+  next=$(awk '/^## N-[0-9]+[[:space:]]/ { id=$2; sub(/^N-/,"",id); if (id+0>max) max=id+0 } END { printf "%04d", max+1 }' "$notes")
+  {
+    echo
+    echo "## N-$next — $3"
+    echo "- tasks: [$2]"
+    echo "- date: $(date -u +%Y-%m-%d)"
+    echo '- source: orchestrator'
+    echo '- confidence: observed'
+    echo '- status: active'
+    echo "- evidence: $5"
+    echo "- finding: $4"
+  } >> "$temp"
+  agent_atomic_write "$notes" "$temp" || { rm -f "$temp"; rmdir "$lock"; return 1; }
+  rm -f "$temp"
+  rmdir "$lock" 2>/dev/null || true
+}
+
 ledger_atomic_replace_scalar() {
   file=$1
   key=$2
