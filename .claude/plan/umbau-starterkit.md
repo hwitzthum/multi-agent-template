@@ -16,7 +16,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | gemergt   | 395   | 2026-09-06 |
 | F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | gemergt   | 449   | 2026-09-06 |
 | F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | gemergt   | 547   | 2026-09-06 |
-| F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | umgesetzt | 666   | –          |
+| F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | gemergt   | 666   | 2026-09-06 |
 | F8  | Prüftor verschlanken                     | `refactor/verify-gate`            | offen     | –     | –          |
 | F9  | Dokumentation                            | `docs/architecture`               | offen     | –     | –          |
 
@@ -27,6 +27,8 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F7 · Nach `main` gemergt (`f3cf2f6`), Suite auf `main` grün ·
+  `./scripts/verify.sh` → `tests: GREEN (666 Zusicherungen in 28 Dateien)`
 - 2026-09-06 · F7 · Zwei Runner hinter einem Vertrag: Claude-Adapter mit
   rollenabhängigen Werkzeugen und eigener Einstellungsdatei (Deny-Liste,
   `bash-guard`-Hook, `claudeMdExcludes`), Codex-Adapter über `codex exec --json`
@@ -874,7 +876,7 @@ Review:
 
 ### F7 · Zwei Runner: Claude und Codex
 
-Branch `feat/codex-runner` · Status: **umgesetzt**
+Branch `feat/codex-runner` · Status: **gemergt**
 
 Ziel: `AGENT_RUNNER=claude|codex` mit identischem Ergebnisvertrag und jeweils
 passender Sicherheitshülle.
