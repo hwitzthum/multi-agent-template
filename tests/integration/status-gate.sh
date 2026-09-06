@@ -24,6 +24,15 @@ make_task --id 001 --status todo
 expect_success "todo nach in_progress" "$status_gate" --project-dir "$fixture" set-status 001 in_progress todo
 expect_failure "veralteter Statuswechsel" "$status_gate" --project-dir "$fixture" set-status 001 in_progress todo
 
+# Der Fall oben scheitert schon an der Uebergangstabelle (in_progress:in_progress
+# ist kein gueltiger Wechsel) und sagt damit nichts ueber den Erwartungswert.
+# Hier ist der Uebergang todo:in_progress zulaessig — abweisen darf ihn allein
+# der Abgleich des erwarteten Stands.
+new_project_fixture
+make_task --id 001 --status todo
+expect_failure "falscher Erwartungswert wird abgewiesen" "$status_gate" --project-dir "$fixture" set-status 001 in_progress review
+expect_contains "abgewiesener Wechsel laesst den Status unveraendert" 'todo' ledger_scalar "$fixture/docs/tasks/001.md" status
+
 new_project_fixture
 make_task --id 001 --status in_progress
 make_report --id 001 --result green
