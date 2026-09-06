@@ -15,9 +15,9 @@ begin_suite orchestrate-single
 fixture_workspace
 
 new_app_fixture
-before=$(find "$fixture" -type f ! -path '*/.agent-runs/*' -exec shasum -a 256 {} \; | shasum -a 256 | awk '{print $1}')
+before=$(find "$fixture" -type f ! -path '*/.agent-runs/*' ! -path '*/.git/*' -exec shasum -a 256 {} \; | shasum -a 256 | awk '{print $1}')
 dry_output=$(ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017 --dry-run)
-after=$(find "$fixture" -type f ! -path '*/.agent-runs/*' -exec shasum -a 256 {} \; | shasum -a 256 | awk '{print $1}')
+after=$(find "$fixture" -type f ! -path '*/.agent-runs/*' ! -path '*/.git/*' -exec shasum -a 256 {} \; | shasum -a 256 | awk '{print $1}')
 assert_eq "Dry Run verändert keine produktive oder versionierte Datei" "$before" "$after"
 case "$dry_output" in *'MODE=single'*'PLANNED_CALLS=worker-task,verify'*) ok ;; *) bad "Dry Run zeigt Route und Aufrufe" ;; esac
 

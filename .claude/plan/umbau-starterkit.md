@@ -11,7 +11,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | --- | ---------------------------------------- | --------------------------------- | ------ | ----- | ---------- |
 | F0  | Verhaltensbenannte Testsuite mit Runner  | `test/behaviour-suite`            | gemergt | 417   | 2026-09-06 |
 | F1  | Ballast entfernen                        | `chore/remove-ballast`            | gemergt | 400   | 2026-09-06 |
-| F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | offen  | –     | –          |
+| F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | umgesetzt | 424 | –          |
 | F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | offen  | –     | –          |
 | F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | offen  | –     | –          |
 | F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | offen  | –     | –          |
@@ -27,6 +27,9 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F2 · Manifeste und Snapshot auf Git umgestellt, Vorher-Manifeste
+  aus dem Arbeitsbaum genommen, Task-Lookup auf den Dateinamen gestellt ·
+  `./scripts/verify.sh` → `tests: GREEN (424 Zusicherungen in 26 Dateien)`
 - 2026-09-06 · F1 · Nach `main` gemergt (`4c8f189`), Suite auf `main` grün ·
   `./scripts/verify.sh` → `tests: GREEN (400 Zusicherungen in 25 Dateien)`
 - 2026-09-06 · F1 · Kurs-, Landingpage- und Ursprungsprojekt-Ballast entfernt,
@@ -406,34 +409,110 @@ Abweichungen vom Plan:
 
 ### F2 · Git-basierte Manifeste und Snapshot
 
-Branch `perf/git-manifests` · Status: **offen**
+Branch `perf/git-manifests` · Status: **umgesetzt**
 
 Ziel: Manifeste in Millisekunden statt Sekunden, `.gitignore` gilt, Manipulation
 durch Worker ausgeschlossen, Wiederherstellung aus Snapshot möglich.
 
 Aufgaben:
 
-- [ ] `agent_repo_manifest`, `agent_product_manifest`, `ledger_candidate_fingerprint`
+- [x] `agent_repo_manifest`, `agent_product_manifest`, `ledger_candidate_fingerprint`
       auf `git ls-files -z -co --exclude-per-directory=.gitignore` +
       `git hash-object -w --stdin-paths`
-- [ ] Einträge `missing` (gelöscht), `symlink` (Modus 120000), ignorierte neue Pfade
+- [x] Einträge `missing` (gelöscht), `symlink` (Modus 120000), ignorierte neue Pfade
       nur mit Namen; `.git/hooks/*`, `.git/config`, `.git/info/exclude` aufnehmen
-- [ ] Vorher-Manifest bis zum Nachher-Manifest ausserhalb des Arbeitsbaums halten
-- [ ] `agent_snapshot_restore <manifest> <pfad…>`: Blob zurückschreiben oder neue
+- [x] Vorher-Manifest bis zum Nachher-Manifest ausserhalb des Arbeitsbaums halten
+- [x] `agent_snapshot_restore <manifest> <pfad…>`: Blob zurückschreiben oder neue
       Datei in Quarantäne verschieben
-- [ ] Validator: Dateiname `<id>.md` == `id`; `ledger_task_path_by_id` → `[ -f ]`
-- [ ] `agent_manifest_changes`, Masking-awk, `ledger_verifier_fingerprint` unverändert
+- [x] Validator: Dateiname `<id>.md` == `id`; `ledger_task_path_by_id` → `[ -f ]`
+- [x] `agent_manifest_changes`, Masking-awk, `ledger_verifier_fingerprint` unverändert
       übernehmen
 
 Abnahme:
 
-- [ ] Scratch-Kopie (60 Tasks, 2000 Dateien in `node_modules`): Manifest < 0,5 s,
-      `validate-ledger` < 1 s, `next-tasks` < 1 s
-- [ ] Tests: gitignored unsichtbar; neue untracked sichtbar; gelöschte sichtbar; neue
+- [~] Scratch-Kopie (60 Tasks, 2000 Dateien in `node_modules`): Manifest < 0,5 s
+      **erfüllt (0,11 s)**, `validate-ledger` < 1 s **nicht erfüllt (10,6 s)**,
+      `next-tasks` < 1 s **nicht erfüllt (11,9 s)** — siehe Review
+- [x] Tests: gitignored unsichtbar; neue untracked sichtbar; gelöschte sichtbar; neue
       ignorierte Namen sichtbar (`.env`); Restore stellt geänderte Datei her und
       quarantänisiert neue; Besitzer-Dirt in derselben Datei überlebt
 
-Review: –
+Review:
+
+Manifestformat: eine sortierte Zeile `<feld>  <pfad>` je Eintrag.
+
+| Feld             | Bedeutung                                                          |
+| ---------------- | ------------------------------------------------------------------ |
+| `<hash>`         | Blob-Hash des Inhalts; damit ist jedes Manifest zugleich ein Snapshot |
+| `exec:<hash>`    | dasselbe mit gesetztem Ausführungsbit                              |
+| `symlink:<hash>` | Hash des Linkziels, nie des Inhalts dahinter                       |
+| `missing`        | im Index, aber nicht im Arbeitsbaum                                 |
+| `ignored`        | von `.gitignore` erfasst: nur der Name                             |
+
+Messungen auf der Scratch-Kopie (60 Tasks, 2000 Dateien in `node_modules`):
+
+| Messung                     | vorher | nachher | Ziel    |
+| --------------------------- | ------ | ------- | ------- |
+| Repo-Manifest               | 23 s   | 0,11 s  | < 0,5 s |
+| Produkt-Manifest            | 23 s   | 0,04 s  | < 0,5 s |
+| `validate-ledger.sh`        | 11 s   | 10,6 s  | < 1 s   |
+| `next-tasks.sh`             | 48 s   | 11,9 s  | < 1 s   |
+| `orchestrate.sh --dry-run`  | 92 s   | 33,5 s  | –       |
+
+Belege:
+
+- `./scripts/verify.sh` → `tests: GREEN (424 Zusicherungen in 26 Dateien)`
+- neue Datei `tests/integration/manifests.sh` (24 Zusicherungen) deckt die
+  gesamte Abnahmeliste ab, dazu Git-Hooks im Manifest, `missing`-Eintrag,
+  Rückkehr einer gelöschten Datei und die Abweisung eines Pfads mit `..`
+- `bash -n` über alle Skripte in `scripts/` und `tests/`: fehlerfrei
+
+Offen aus dieser Abnahme:
+
+- `validate-ledger` und `next-tasks` bleiben über einer Sekunde. Die verbleibende
+  Zeit sind die **~40 Prozesse pro Task** aus dem Befund, nicht mehr der
+  O(n²)-Lookup: den erledigt der Dateiname-Lookup (`next-tasks` 48 s → 11,9 s,
+  davon 10,6 s der Validator, den es aufruft). Den Rest löst erst der eine
+  awk-Durchlauf pro Datei — der steht als Aufgabe in **F5** und trägt dort
+  dieselbe Abnahme (`validate-ledger` mit 60 Tasks < 1 s). Die Zahl gehört in
+  F2 also verfrüht in die Abnahme; sie wird mit F5 erfüllt.
+
+Abweichungen vom Plan:
+
+- `agent_manifest_changes` wurde **nicht** unverändert übernommen: die alte
+  Fassung schnitt Feld und Pfad an fester Spalte 67 (SHA-256 + zwei Leerzeichen).
+  Git-Blob-Hashes sind 40 Zeichen, `missing`/`ignored` kürzer. Die Fassung
+  trennt jetzt am ersten Doppelleerzeichen; die Diff-Logik selbst ist gleich.
+- Symlinks stehen als `symlink:<hash des Linkziels>`, nicht nur als `symlink`.
+  Ohne den Hash bliebe ein umgehängter Symlink unsichtbar und liesse sich nicht
+  zurücksetzen. Aus demselben Grund gibt es `exec:<hash>`: ein gesetztes
+  Ausführungsbit ist eine Änderung, und ein Restore muss es wiederherstellen.
+- `agent_snapshot_restore` nimmt Projektpfad und Quarantäneordner als Argumente
+  (`<projekt> <manifest> <quarantäne> <pfad…>`). Das Vorher-Manifest liegt
+  ausserhalb des Arbeitsbaums, sein Ort taugt also nicht zur Herleitung.
+- Ignorierte Ordner werden mit `git ls-files -oi --directory` als **ein** Eintrag
+  geführt (`node_modules/`). Sonst stünden 2000 Namen in jedem Manifest.
+- Git wird damit zur harten Voraussetzung. Deshalb ist jedes Test-Fixture jetzt
+  ein Repository (`new_project_fixture` macht `git init`, `fixture_git_init`
+  setzt nur noch den Basiscommit), und die Finalizer-Arbeitskopie bekommt ein
+  eigenes `git init`.
+- Drei Prüfungen liefen bisher nur zufällig nicht, weil Fixtures kein Git hatten;
+  mit Git wurden sie sichtbar und laufen jetzt gegen `HEAD` statt gegen
+  «irgendein Git-Verzeichnis»: der Dirty-Check des Orchestrators, der
+  `touches`-Abgleich in `verify-task.sh` und der Git-Vergleich beim Resume
+  (`git rev-parse HEAD` schrieb ohne Commit `HEAD` **und** `unborn` in die
+  Variable; jetzt `--verify -q`). Ohne Commit gibt es keinen Vergleichsstand.
+- Der Dirty-Check ignoriert zusätzlich `docs/tasks`, `docs/state` und
+  `docs/verification` — vorgezogen aus dem Zielentwurf, weil der Orchestrator
+  diese Pfade selbst schreibt. F4 führt dieselbe Aufgabe nochmals; dort ist sie
+  dann erledigt.
+- `agent_repo_manifest`/`agent_product_manifest` schreiben Blobs in den
+  Objektspeicher, auch im `--dry-run`. Der Dry-Run-Test vergleicht deshalb ohne
+  `.git/`. Versionierte und produktive Dateien bleiben unberührt; Git-Objekte
+  sind inhaltsadressiert und werden vom `git gc` des Besitzers abgeräumt.
+- Vorgezogen für die Kandidaten- und Finalizer-Pfade: auch deren Vorher-Manifeste
+  liegen jetzt ausserhalb des Arbeitsbaums. Beide Rollen laufen in Verzeichnissen,
+  in die sie selbst schreiben dürfen; F3 und F6 entfernen die Pfade später ganz.
 
 ### F3 · Turnier streichen, Fresh-Versuch, Router
 

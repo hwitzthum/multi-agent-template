@@ -2,7 +2,7 @@
 # tests/run.sh — der eine Befehl, der die Suite ausführt.
 #
 # Stufen (Ordner unter tests/):
-#   unit         reine Funktions- und CLI-Prüfungen, keine Fixtures mit Git
+#   unit         reine Funktions- und CLI-Prüfungen ohne Zusammenspiel
 #   integration  mehrere Skripte zusammen, Fixtures, kein Modellaufruf
 #   e2e          ganzer Orchestrator gegen den Fake-Runner (langsam, parallel)
 #   lint         Doku- und Hilfetexte gegen den Code

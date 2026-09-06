@@ -155,21 +155,14 @@ ledger_task_files() {
   find "$tasks_dir" -maxdepth 1 -type f -name '*.md' -print 2>/dev/null | LC_ALL=C sort
 }
 
+# Der Dateiname ist die Task-ID; der Validator erzwingt das. Damit ist der
+# Lookup ein Dateitest statt eines Durchlaufs durch alle Tasks.
 ledger_task_path_by_id() {
   tasks_dir=$1
   wanted=$2
-  found=''
-  while IFS= read -r candidate; do
-    candidate_id=$(ledger_scalar "$candidate" id 2>/dev/null) || continue
-    if [ "$candidate_id" = "$wanted" ]; then
-      [ -z "$found" ] || { ledger_error "Task-ID $wanted ist nicht eindeutig"; return 1; }
-      found=$candidate
-    fi
-  done <<EOF
-$(ledger_task_files "$tasks_dir")
-EOF
-  [ -n "$found" ] || { ledger_error "Task $wanted wurde nicht gefunden"; return 1; }
-  printf '%s\n' "$found"
+  case "$wanted" in ''|*[!0-9]*) ledger_error "Task-ID muss aus Ziffern bestehen: $wanted"; return 1 ;; esac
+  [ -f "$tasks_dir/$wanted.md" ] || { ledger_error "Task $wanted wurde nicht gefunden"; return 1; }
+  printf '%s\n' "$tasks_dir/$wanted.md"
 }
 
 ledger_candidate_fingerprint() {
@@ -183,24 +176,10 @@ ledger_candidate_fingerprint() {
   esac
   task_file=$(CDPATH= cd -- "$(dirname -- "$task_file")" && printf '%s/%s\n' "$PWD" "$(basename -- "$task_file")") || return 1
   fingerprint_task_id=$(ledger_scalar "$task_file" id 2>/dev/null) || return 1
+  manifest=$(mktemp "${TMPDIR:-/tmp}/agent-candidate.XXXXXX") || return 1
+  agent_manifest_build "$project_dir" "$manifest" agent_manifest_include_candidate || { rm -f "$manifest"; return 1; }
   (
-    cd "$project_dir" || exit 1
-    find . -type f \
-      ! -path './.git/*' \
-      ! -path './.agent-runs/*' \
-      ! -path './.venv/*' \
-      ! -path './node_modules/*' \
-      ! -path './.pytest_cache/*' \
-      ! -path './.mypy_cache/*' \
-      ! -path './.ruff_cache/*' \
-      ! -path './__pycache__/*' \
-      ! -path '*/__pycache__/*' \
-      ! -path './docs/state/*' \
-      ! -path './docs/verification/*' \
-      ! -path './docs/tasks/*' \
-      -print | LC_ALL=C sort | while IFS= read -r file; do
-        printf '%s  %s\n' "$(shasum -a 256 "$file" | awk '{print $1}')" "${file#./}"
-      done
+    cat "$manifest"
     awk '
       BEGIN { front=0 }
       NR == 1 && $0 == "---" { front=1; print; next }
@@ -211,6 +190,9 @@ ledger_candidate_fingerprint() {
       { print }
     ' "$task_file" | shasum -a 256 | awk -v name="docs/tasks/$fingerprint_task_id.md" '{ print $1 "  " name }'
   ) | shasum -a 256 | awk '{print $1}'
+  fingerprint_status=$?
+  rm -f "$manifest"
+  return "$fingerprint_status"
 }
 
 ledger_verifier_fingerprint() {

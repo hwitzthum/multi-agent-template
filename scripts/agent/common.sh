@@ -169,51 +169,196 @@ agent_run_with_timeout() {
   ' "$timeout_seconds" "$@"
 }
 
-agent_repo_manifest() {
-  local project_dir destination file
+# --- Manifeste und Snapshot -------------------------------------------------
+# Ein Manifest ist eine sortierte Liste "<feld>  <pfad>". Git liefert Namen und
+# Hashes in je einer Prozessgruppe; .gitignore gilt. Feldwerte:
+#   <hash>            Blob-Hash einer normalen Datei. Der Inhalt liegt damit als
+#                     Snapshot im Git-Objektspeicher und laesst sich
+#                     zurueckschreiben.
+#   exec:<hash>       dasselbe mit gesetztem Ausfuehrungsbit
+#   symlink:<hash>    Hash des Linkziels, nie des Inhalts dahinter
+#   missing           im Index, aber nicht im Arbeitsbaum (geloescht)
+#   ignored           von .gitignore erfasst: nur der Name. Ein neu angelegter
+#                     ignorierter Pfad wie .env wird dadurch sichtbar, sein
+#                     Inhalt aber nie gelesen.
+
+agent_manifest_include_repo() {
+  case "$1" in
+    .agent-runs|.agent-runs/*|docs/state/current-run.md|docs/state/metrics.csv) return 1 ;;
+  esac
+  return 0
+}
+
+agent_manifest_include_product() {
+  agent_manifest_include_repo "$1" || return 1
+  case "$1" in
+    .git/*|.agent|.agent/*|.claude|.claude/*) return 1 ;;
+    docs/state|docs/state/*|docs/tasks|docs/tasks/*) return 1 ;;
+    docs/verification|docs/verification/*|docs/templates|docs/templates/*) return 1 ;;
+    scripts/agent|scripts/agent/*) return 1 ;;
+    scripts/orchestrate.sh|scripts/route-task.sh|scripts/validate-ledger.sh) return 1 ;;
+    scripts/next-tasks.sh|scripts/state-summary.sh|scripts/bash-guard.sh|scripts/commit-gate.sh) return 1 ;;
+  esac
+  return 0
+}
+
+# Das Produkt aus Sicht eines Tasks: alles ausser Ledger, Laufstand und den
+# Git-Steuerdateien. Kit-Skripte und Vorlagen zaehlen mit, weil ein Task sie
+# aendern koennen soll.
+agent_manifest_include_candidate() {
+  case "$1" in
+    .git/*|.agent-runs|.agent-runs/*) return 1 ;;
+    docs/state|docs/state/*|docs/tasks|docs/tasks/*|docs/verification|docs/verification/*) return 1 ;;
+  esac
+  return 0
+}
+
+# Sammelt alle Manifestzeilen eines Projekts auf der Standardausgabe. Laeuft in
+# einer Subshell, damit das Arbeitsverzeichnis des Aufrufers unberuehrt bleibt.
+agent_manifest_collect() (
   project_dir=$1
-  destination=$2
-  (
-    cd "$project_dir" || exit 1
-    find . -type f \
-      ! -path './.git/*' \
-      ! -path './.agent-runs/*' \
-      ! -path './docs/state/current-run.md' \
-      ! -path './docs/state/metrics.csv' \
-      -print | LC_ALL=C sort | while IFS= read -r file; do
-        case "$file" in *$'\n'*|*$'\r'*) echo "agent-common: Dateiname mit Zeilenumbruch ist unzulässig" >&2; exit 1 ;; esac
-        printf '%s  %s\n' "$(shasum -a 256 "$file" | awk '{print $1}')" "${file#./}"
+  filter=$2
+  work=$3
+  cd "$project_dir" || return 1
+  git rev-parse --git-dir >/dev/null 2>&1 || {
+    echo "agent-common: kein Git-Repository: $project_dir" >&2
+    return 1
+  }
+  : > "$work/paths"
+  : > "$work/labels"
+  : > "$work/modes"
+  : > "$work/plain"
+
+  # Ein Eintrag: <name im Manifest> <tatsaechlicher Pfad>. Beide unterscheiden
+  # sich nur bei den Git-Steuerdateien, die ausserhalb des Arbeitsbaums liegen.
+  record() {
+    entry=$1
+    target=$2
+    case "$entry" in *$'\n'*|*$'\r'*)
+      echo "agent-common: Dateiname mit Zeilenumbruch ist unzulaessig" >&2
+      return 1 ;;
+    esac
+    "$filter" "${entry%/}" || return 0
+    if [ -L "$target" ]; then
+      printf 'symlink:%s  %s\n' "$(readlink "$target" | git hash-object -w --stdin)" "$entry" >> "$work/plain"
+    elif [ -f "$target" ]; then
+      if [ -x "$target" ]; then printf 'exec\n' >> "$work/modes"; else printf 'plain\n' >> "$work/modes"; fi
+      printf '%s\n' "$target" >> "$work/paths"
+      printf '%s\n' "$entry" >> "$work/labels"
+    elif [ -e "$target" ]; then
+      return 0
+    else
+      printf 'missing  %s\n' "$entry" >> "$work/plain"
+    fi
+  }
+
+  while IFS= read -r -d '' entry; do
+    record "$entry" "$entry" || return 1
+  done < <(git ls-files -z -co --exclude-per-directory=.gitignore)
+
+  # Ignorierte Pfade nur mit Namen; ein vollstaendig ignorierter Ordner zaehlt
+  # als ein Eintrag, damit node_modules weder gelesen noch aufgezaehlt wird.
+  while IFS= read -r -d '' entry; do
+    case "$entry" in *$'\n'*|*$'\r'*) echo "agent-common: Dateiname mit Zeilenumbruch ist unzulaessig" >&2; return 1 ;; esac
+    "$filter" "${entry%/}" || continue
+    printf 'ignored  %s\n' "$entry" >> "$work/plain"
+  done < <(git ls-files -z -oi --directory --exclude-per-directory=.gitignore)
+
+  # Steuerdateien von Git selbst: sie liegen ausserhalb des Arbeitsbaums, aendern
+  # aber das Verhalten des Projekts und gehoeren deshalb ins Manifest.
+  if "$filter" .git/config; then
+    for control in config info/exclude; do
+      resolved=$(git rev-parse --git-path "$control") || return 1
+      [ -f "$resolved" ] || continue
+      record ".git/$control" "$resolved" || return 1
+    done
+    hooks_dir=$(git rev-parse --git-path hooks) || return 1
+    if [ -d "$hooks_dir" ]; then
+      for hook in "$hooks_dir"/*; do
+        [ -f "$hook" ] || continue
+        record ".git/hooks/$(basename -- "$hook")" "$hook" || return 1
       done
-  ) > "$destination"
+    fi
+  fi
+
+  if [ -s "$work/paths" ]; then
+    git hash-object -w --stdin-paths < "$work/paths" > "$work/hashes" || return 1
+    awk '
+      FILENAME == hashes_file { hash[FNR]=$0; count_hashes=FNR; next }
+      FILENAME == modes_file { mode[FNR]=$0; count_modes=FNR; next }
+      { print (mode[FNR] == "exec" ? "exec:" : "") hash[FNR] "  " $0; count_labels=FNR }
+      END { if (count_hashes != count_labels || count_modes != count_labels) exit 1 }
+    ' hashes_file="$work/hashes" modes_file="$work/modes" \
+      "$work/hashes" "$work/modes" "$work/labels" >> "$work/plain" || {
+      echo "agent-common: Manifest konnte Hashes und Pfade nicht paaren" >&2
+      return 1
+    }
+  fi
+  LC_ALL=C sort "$work/plain"
+)
+
+agent_manifest_build() {
+  local project_dir=$1 destination=$2 filter=$3 work result
+  work=$(mktemp -d "${TMPDIR:-/tmp}/agent-manifest.XXXXXX") || return 1
+  agent_manifest_collect "$project_dir" "$filter" "$work" > "$destination"
+  result=$?
+  rm -rf "$work"
+  return "$result"
+}
+
+agent_repo_manifest() {
+  agent_manifest_build "$1" "$2" agent_manifest_include_repo
 }
 
 agent_product_manifest() {
-  local project_dir destination file
-  project_dir=$1
-  destination=$2
-  (
-    cd "$project_dir" || exit 1
-    find . -type f \
-      ! -path './.git/*' \
-      ! -path './.agent-runs/*' \
-      ! -path './.agent/*' \
-      ! -path './.claude/*' \
-      ! -path './docs/state/*' \
-      ! -path './docs/tasks/*' \
-      ! -path './docs/verification/*' \
-      ! -path './docs/templates/*' \
-      ! -path './scripts/agent/*' \
-      ! -path './scripts/orchestrate.sh' \
-      ! -path './scripts/route-task.sh' \
-      ! -path './scripts/validate-ledger.sh' \
-      ! -path './scripts/next-tasks.sh' \
-      ! -path './scripts/state-summary.sh' \
-      ! -path './scripts/bash-guard.sh' \
-      ! -path './scripts/commit-gate.sh' \
-      -print | LC_ALL=C sort | while IFS= read -r file; do
-        printf '%s  %s\n' "$(shasum -a 256 "$file" | awk '{print $1}')" "${file#./}"
-      done
-  ) > "$destination"
+  agent_manifest_build "$1" "$2" agent_manifest_include_product
+}
+
+# Liefert das Feld eines Pfades aus einem Manifest; Exit 1, wenn es ihn nicht kennt.
+agent_manifest_field() {
+  awk -v want="$2" '
+    { separator=index($0, "  "); if (separator == 0) next }
+    substr($0, separator + 2) == want { print substr($0, 1, separator - 1); found=1; exit }
+    END { if (!found) exit 1 }
+  ' "$1"
+}
+
+# Setzt Pfade auf den Stand des Manifests zurueck. Bekannte Inhalte kommen aus
+# dem Git-Objektspeicher; Pfade, die das Manifest nicht kennt, sind nach dem
+# Snapshot entstanden und wandern in die Quarantaene statt geloescht zu werden.
+agent_snapshot_restore() {
+  local project_dir=$1 manifest=$2 quarantine=$3 path field target result=0
+  shift 3
+  [ -f "$manifest" ] || { echo "agent-common: Manifest fehlt: $manifest" >&2; return 1; }
+  project_dir=$(CDPATH= cd -- "$project_dir" 2>/dev/null && pwd -P) || return 1
+  for path in "$@"; do
+    case "$path" in ''|/*|..|../*|*/../*|*/..) echo "agent-common: unzulaessiger Pfad: $path" >&2; result=1; continue ;; esac
+    target="$project_dir/$path"
+    field=$(agent_manifest_field "$manifest" "$path") || field=''
+    case "$field" in
+      '')
+        mkdir -p "$quarantine/$(dirname -- "$path")" || { result=1; continue; }
+        if [ -e "$target" ] || [ -L "$target" ]; then
+          mv -f "$target" "$quarantine/$path" || result=1
+        fi ;;
+      ignored)
+        : ;;
+      missing)
+        rm -f "$target" || result=1 ;;
+      symlink:*)
+        mkdir -p "$(dirname -- "$target")" || { result=1; continue; }
+        rm -f "$target"
+        ln -s "$(git -C "$project_dir" cat-file blob "${field#symlink:}")" "$target" || result=1 ;;
+      *)
+        mkdir -p "$(dirname -- "$target")" || { result=1; continue; }
+        rm -f "$target"
+        case "$field" in
+          exec:*) git -C "$project_dir" cat-file blob "${field#exec:}" > "$target" && chmod +x "$target" || result=1 ;;
+          *) git -C "$project_dir" cat-file blob "$field" > "$target" || result=1 ;;
+        esac ;;
+    esac
+  done
+  return "$result"
 }
 
 agent_manifest_changes() {
@@ -221,9 +366,10 @@ agent_manifest_changes() {
   before=$1
   after=$2
   awk '
-    function path(line) { return substr(line, 67) }
-    NR == FNR { old[path($0)]=substr($0,1,64); next }
-    { name=path($0); current[name]=substr($0,1,64); if (!(name in old) || old[name] != current[name]) print name }
+    function path(line) { return substr(line, index(line, "  ") + 2) }
+    function field(line) { return substr(line, 1, index(line, "  ") - 1) }
+    NR == FNR { old[path($0)]=field($0); next }
+    { name=path($0); current[name]=field($0); if (!(name in old) || old[name] != current[name]) print name }
     END { for (name in old) if (!(name in current)) print name }
   ' "$before" "$after" | LC_ALL=C sort -u
 }
