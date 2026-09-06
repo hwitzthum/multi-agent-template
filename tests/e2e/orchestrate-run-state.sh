@@ -39,6 +39,33 @@ summary=$(CLAUDE_PROJECT_DIR="$fixture" "$project_dir/scripts/state-summary.sh")
 assert_eq "Kurzsummary haelt das Zwei-Zeilen-Budget" 2 "$(printf '%s\n' "$summary" | wc -l | tr -d ' ')"
 case "$summary" in *'verify: GREEN'*) ok ;; *) bad "Kurzsummary nennt den Pruefstand" ;; esac
 
+# --- Ein schmutziger Arbeitsbaum verlangt eine ausdrueckliche Erlaubnis -----
+# Ohne diesen Riegel setzte ein Lauf auf ungespeicherter Arbeit auf, und das
+# Ruecksetzen nach einem Regelverstoss traefe sie mit.
+new_app_fixture
+fixture_git_init
+printf '%s\n' 'ungespeicherte Arbeit' > "$fixture/src/other.txt"
+fake_worker_result 1
+fake_worker_result 2
+fake_action worker 1 write-good
+fake_action worker 2 write-good
+expect_failure "Schmutziger Arbeitsbaum stoppt den Lauf" \
+  env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
+assert_eq "Der abgewiesene Lauf laesst den Task auf todo" todo "$(ledger_scalar "$fixture/docs/tasks/017.md" status)"
+[ -z "$(fixture_latest_run_dir)" ] && ok || bad "Der abgewiesene Lauf legt keinen Laufordner an"
+expect_success "Mit --allow-dirty laeuft derselbe Task" \
+  env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017 --allow-dirty
+
+# Die Ledger-Pfade zaehlen nicht mit: die schreibt der Orchestrator selbst, und
+# scripts/doctor.sh sagt dazu ueber dieselbe Funktion dasselbe.
+new_app_fixture
+fixture_git_init
+printf '%s\n' '- eine Notiz mehr' >> "$fixture/docs/state/notes.md"
+fake_worker_result 1
+fake_action worker 1 write-good
+expect_success "Geaenderte Ledger-Pfade verlangen kein --allow-dirty" \
+  env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
+
 # --- Ein Dry Run hat keine Nebenwirkung -------------------------------------
 new_app_fixture
 fixture_git_init

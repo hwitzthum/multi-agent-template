@@ -25,7 +25,7 @@ while [ "$#" -gt 0 ]; do
   case $1 in
     -h|--help) usage; exit 0 ;;
     --fast) fast=true ;;
-    --jobs) jobs=$2; shift ;;
+    --jobs) [ "$#" -ge 2 ] || { echo "--jobs erwartet eine Zahl" >&2; usage >&2; exit 2; }; jobs=$2; shift ;;
     unit|integration|e2e|lint) tiers="$tiers $1" ;;
     *) echo "unbekannte Option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -65,13 +65,22 @@ total_files=0
 failed_files=0
 
 report_tier() {
-  local tier=$1 file name status log count
+  local tier=$1 file name status log count noise
   for file in "$script_dir/$tier"/*.sh; do
     [ -f "$file" ] || continue
     name=$(basename -- "$file" .sh)
     log="$work/$tier--$name.log"
     status=$(sed -n '1p' "$work/$tier--$name.status" 2>/dev/null)
     [ -n "$status" ] || status=1
+    # Eine Datei, die GRUEN meldet und dabei Spuren eines gebrochenen Skripts
+    # ins Log schreibt, ist nicht gruen. Genau so blieb der Aufruf einer nie
+    # definierten Fixture-Funktion unbemerkt: das Log wird nur bei Rot
+    # gedruckt, und am Ergebnis aenderte er nichts.
+    noise=''
+    if [ "$status" -eq 0 ]; then
+      noise=$(grep -nE 'command not found|unbound variable|syntax error' "$log" 2>/dev/null | head -n 3)
+      [ -z "$noise" ] || status=1
+    fi
     total_files=$((total_files + 1))
     count=$(sed -n 's/.*(\([0-9][0-9]*\) bestanden.*/\1/p' "$log" 2>/dev/null | tail -n 1)
     case "$count" in ''|*[!0-9]*) count=0 ;; esac
@@ -81,6 +90,7 @@ report_tier() {
     else
       failed_files=$((failed_files + 1))
       printf '  %-12s %-28s RED\n' "$tier" "$name"
+      [ -z "$noise" ] || echo "      (rot wegen Fehlerspuren im Log, obwohl die Datei GRÜN meldete)" >&2
       sed 's/^/      /' "$log" >&2
     fi
   done

@@ -165,6 +165,13 @@ for script in "$project_dir"/scripts/*.sh "$project_dir"/scripts/agent/*.sh "$pr
 done
 if [ -z "$undocumented_scripts" ]; then ok; else bad "jedes Skript ist dokumentiert (fehlt:$undocumented_scripts)"; fi
 
+# Die Metadaten eines Rollenaufrufs sind ein Vertrag fuer jeden kuenftigen
+# Adapter. Ein Feld, das der Runner schreibt und die Architektur verschweigt,
+# faellt sonst erst dem naechsten Adapterschreiber auf.
+for field in $(grep -oE "printf '[a-z_]+=" "$project_dir/scripts/agent/runner.sh" | sed "s/printf '//; s/=$//" | sort -u); do
+  assert_file_has "ARCHITECTURE nennt das Metadatenfeld $field" "$project_dir/docs/ARCHITECTURE.md" "\`$field\`"
+done
+
 undocumented_keys=''
 while IFS='=' read -r key _; do
   case "$key" in ''|'#'*) continue ;; esac
