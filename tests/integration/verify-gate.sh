@@ -105,7 +105,7 @@ echo named-runner-ok
 EOF
 chmod +x "$fixture/scripts/named-check"
 printf '%s\n' 'release|build|./scripts/named-check' > "$fixture/.agent/verification-runners"
-expect_success "Projektprofil ergänzt einen benannten Runner" "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
+expect_success "Projektkonfiguration ergänzt einen benannten Runner" "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
 assert_file_has "benannter Runner wird seiner Stufe zugeordnet" "$fixture/docs/verification/latest.md" '- build: GREEN'
 
 new_project_fixture --with-scripts

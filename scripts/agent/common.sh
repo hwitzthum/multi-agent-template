@@ -208,8 +208,6 @@ agent_product_manifest() {
       ! -path './scripts/validate-ledger.sh' \
       ! -path './scripts/next-tasks.sh' \
       ! -path './scripts/state-summary.sh' \
-      ! -path './scripts/archive-notes.sh' \
-      ! -path './scripts/migrate-tasks.sh' \
       ! -path './scripts/bash-guard.sh' \
       ! -path './scripts/commit-gate.sh' \
       -print | LC_ALL=C sort | while IFS= read -r file; do

@@ -10,7 +10,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | Nr  | Feature                                  | Branch                            | Status | Tests | Gemergt am |
 | --- | ---------------------------------------- | --------------------------------- | ------ | ----- | ---------- |
 | F0  | Verhaltensbenannte Testsuite mit Runner  | `test/behaviour-suite`            | gemergt | 417   | 2026-09-06 |
-| F1  | Ballast entfernen                        | `chore/remove-ballast`            | offen  | –     | –          |
+| F1  | Ballast entfernen                        | `chore/remove-ballast`            | geprüft | 400   | –          |
 | F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | offen  | –     | –          |
 | F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | offen  | –     | –          |
 | F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | offen  | –     | –          |
@@ -27,6 +27,9 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F1 · Kurs-, Landingpage- und Ursprungsprojekt-Ballast entfernt,
+  `.agent/README.md` → `docs/ARCHITECTURE.md`, Doku-Lint nachgezogen ·
+  `./scripts/verify.sh` → `tests: GREEN (400 Zusicherungen in 25 Dateien)`
 - 2026-09-06 · F0 · Nach `main` gemergt (`e5cbd52`), Suite auf `main` grün ·
   `./scripts/verify.sh` → `tests: GREEN (417 Zusicherungen in 27 Dateien)`
 - 2026-09-06 · F0 · Suite nach Verhalten in vier Stufen zerlegt, gemeinsame
@@ -310,34 +313,94 @@ Abweichungen vom Plan:
   keine Testdatei eigene Fixtures baut.
 - `scripts/verify.sh` bekam eine Rekursionsbremse (`AGENT_TEST_SUITE`): die Suite
   prüft den Commit-Hook, und der startet `verify.sh --quick`.
-- Offen für F9: `docs/state/plan.md` und `docs/state/handoff.md` behaupten noch,
-  `scripts/verify.sh` sei ein Platzhalter, der immer GREEN meldet.
+- Nachgezogen in F1: `docs/state/plan.md` und `docs/state/handoff.md` behaupteten
+  noch, `scripts/verify.sh` sei ein Platzhalter, der immer GREEN meldet.
 
 ### F1 · Ballast entfernen
 
-Branch `chore/remove-ballast` · Status: **offen**
+Branch `chore/remove-ballast` · Status: **geprüft**
 
 Ziel: alles weg, was nur für Kurs, Landingpage-Profil oder das Ursprungsprojekt da
 war, ohne Verhaltensänderung des Orchestrators.
 
 Aufgaben:
 
-- [ ] Löschen: `docs/KURSANLEITUNG.md`, `docs/profil/**`, `docs/briefs/`,
+- [x] Löschen: `docs/KURSANLEITUNG.md`, `docs/profil/**`, `docs/briefs/`,
       `docs/state/features.md`, `scripts/migrate-tasks.sh`, `scripts/autoformat.sh`
       (+ PostToolUse-Hook), `scripts/archive-notes.sh`, `scripts/agent-metrics.sh`
-- [ ] `.agent/README.md` → `docs/ARCHITECTURE.md` (Rohfassung, wird in F9 normativ)
-- [ ] `bash-guard.sh:14,26`: Kurs-Verweise entfernen
-- [ ] `.gitignore`: `.astro/`, `dist/` prüfen; `tasks.json`-Verbote in CLAUDE.md und
-      Initializer-Prompt entfernen
-- [ ] Tests und Doku-Lint an die gelöschten Dateien anpassen
+- [x] `.agent/README.md` → `docs/ARCHITECTURE.md` (Rohfassung, wird in F9 normativ)
+- [x] `bash-guard.sh:14,26`: Kurs-Verweise entfernt
+- [x] `.gitignore`: `.astro/` entfernt, `dist/` behalten; `tasks.json`-Verbote in
+      CLAUDE.md und Initializer-Prompt entfernt
+- [x] Tests und Doku-Lint an die gelöschten Dateien angepasst
 
 Abnahme:
 
-- [ ] `grep -ri 'landingpage\|kurs\|profil\|tasks.json' --exclude-dir=.git .` liefert
-      nur diese Plandatei
-- [ ] `tests/run.sh` grün
+- [x] `grep -ri 'landingpage\|kurs\|profil\|tasks.json' --exclude-dir=.git .` liefert
+      nur diese Plandatei — mit einer Einschränkung, siehe Review
+- [x] `tests/run.sh` grün
 
-Review: –
+Review:
+
+Gelöscht (16 Dateien, 1324 Zeilen entfernt, 71 hinzugefügt):
+
+| Was                       | Dateien                                                    |
+| ------------------------- | ---------------------------------------------------------- |
+| Kursmaterial              | `docs/KURSANLEITUNG.md`                                    |
+| Landingpage-Profil        | `docs/profil/**` (7), `docs/briefs/`                       |
+| Feature-Liste             | `docs/state/features.md`                                   |
+| Wartungs- und Hilfsskript | `migrate-tasks.sh`, `autoformat.sh`, `archive-notes.sh`, `agent-metrics.sh` |
+| Tests dazu                | `tests/integration/{notes-archive,task-migration}.sh`      |
+
+Verschoben: `.agent/README.md` → `docs/ARCHITECTURE.md` (F9 macht sie normativ).
+`.agent/` enthält jetzt nur noch `config.env`.
+
+Angepasst: `README.md` 581 → 162 Zeilen (Block 52–455 wie geplant raus, dazu die
+Verweise auf gelöschte Dateien); `.claude/settings.json` ohne PostToolUse-Hook;
+`scripts/agent/common.sh` ohne die zwei Manifest-Ausnahmen der gelöschten
+Skripte; `docs/templates/initializer-prompt.md` ohne Profil-, Brief- und
+`features.md`-Schritt (Projektbeschreibung wird jetzt direkt in die Datei
+eingetragen; Punkte neu durchnummeriert 0–6); `docs/state/{goal,notes}.md`,
+`docs/templates/task-template.md`, `tests/lint/check-docs.sh`,
+`tests/integration/{metrics,verify-gate}.sh`.
+
+Nachgezogen aus F0: `docs/state/plan.md` und `docs/state/handoff.md` sagten
+noch, `scripts/verify.sh` sei ein immer-grüner Platzhalter. Beide sagen jetzt,
+dass die Prüfung bis zur Initialisierung das Starterkit selbst prüft; auch
+`initializer-prompt.md` spricht nicht mehr vom «Platzhalter».
+
+Belege:
+
+- `./scripts/verify.sh` → `tests: GREEN (400 Zusicherungen in 25 Dateien)`
+- `bash -n` über alle 25 Skripte in `scripts/` und `tests/`: fehlerfrei
+- `./scripts/validate-ledger.sh` → `GREEN`; `state-summary.sh`, `next-tasks.sh`,
+  `orchestrate.sh --help` laufen auf dem leeren Starter
+- Abnahme-Grep ohne die deutschen Falschtreffer liefert nur diese Plandatei:
+  `grep -ri 'landingpage\|kurs\|profil\|tasks.json' --exclude-dir=.git . | grep -vi 'rekurs\|diskurs\|exkurs'`
+
+Abweichungen vom Plan:
+
+- Der Abnahme-Grep ist wörtlich nicht erfüllbar: «kurs» steckt als Teilwort in
+  «rekursiv»/«Rekursionsbremse». Übrig bleiben nur solche Treffer in
+  `scripts/bash-guard.sh`, `scripts/verify.sh`, `tests/unit/bash-guard.sh` und
+  `docs/ARCHITECTURE.md`. Der Grep oben mit `grep -vi 'rekurs\|diskurs\|exkurs'`
+  ist die tragfähige Fassung.
+- Zusicherungen 417 → 400: entfallen sind `notes-archive` (5) und
+  `task-migration` (3) als ganze Dateien, `agent-metrics --help` (1) und die
+  10 Begriffs- plus 5 Bedienfall-Greps gegen die KURSANLEITUNG; dafür prüft
+  `check-docs.sh` jetzt 6 Begriffe gegen `docs/ARCHITECTURE.md`.
+- `.gitignore`: `.astro/` war Astro-spezifisch und ist raus, `dist/` bleibt
+  (stackneutral üblich). Die Node-Überschrift heisst jetzt
+  «Build- und Abhaengigkeitsordner».
+- Nicht angefasst, weil einem späteren Feature zugeordnet:
+  `scripts/agent/metrics.sh` und `docs/state/metrics.csv` (F4),
+  `candidates.sh` (F3), `output.sh` (F6), Feld `features` im Task-Frontmatter
+  (F5), `docs/state/notes-archive/` (F5).
+- Vorgefunden, nicht behoben (gehört in den README-Audit von F9):
+  `docs/templates/initializer-prompt.md` verweist auf `tests/orchestrator/`,
+  ein Pfad, den es seit F0 nicht mehr gibt.
+- Weiterhin offen für F7: die mit F0 gestrichene Umgebungsprüfung
+  `runner.sh --check` fehlt der Suite, bis `scripts/doctor.sh` entsteht.
 
 ### F2 · Git-basierte Manifeste und Snapshot
 
@@ -520,6 +583,8 @@ Abnahme:
 - [ ] Tests mit Fixtures: Claude-`result.json` (ok, Fehler, kein JSON) und
       Codex-JSONL (ok, `turn.failed` ohne Datei) liefern korrekte `metadata.env`
 - [ ] `doctor.sh` meldet die defekte Codex-Installation als Befund, nicht als Absturz
+- [ ] `doctor.sh` ersetzt die mit F0 gestrichene Umgebungsprüfung `runner.sh --check`
+      und ist wieder in der Suite (Stufe `lint` oder `integration`)
 - [ ] Vermerk im Commit: Codex-Adapter nicht gegen echtes CLI geprüft
 
 Review: –
