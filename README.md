@@ -217,7 +217,7 @@ ihn direkt, bricht er nach dem Zeitlimit ab.
 
 ```
 verify: GREEN
-ready: 1 | review: 1 | blocked: 0
+ready: 2 | review: 1 | blocked: 0
 ```
 
 Zeile 1 ist der letzte Prüfstand: `GREEN`, `RED` (mit der Fehlerart in
@@ -424,15 +424,15 @@ das Hochladen machst du selbst.
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   AUFGABENVERWALTUNG                         │
+│                   AUFGABENVERWALTUNG                        │
 ├─────────────────────────────────────────────────────────────┤
 │ docs/tasks/001.md      → Task 1 mit Status, Abhängigkeiten  │
 │ docs/tasks/002.md      → Task 2 (hängt von Task 1 ab)       │
 │ docs/tasks/003.md      → Task 3 usw.                        │
-│                                                              │
-│ Jeder Task hat:                                              │
-│  • Status: todo / in_progress / review / done / blocked      │
-│  • Schwierigkeit: mechanical / patterned / open              │
+│                                                             │
+│ Jeder Task hat:                                             │
+│  • Status: todo / in_progress / review / done / blocked     │
+│  • Schwierigkeit: mechanical / patterned / open             │
 │  • Akzeptanzkriterien: Wie wissen wir, es ist fertig?       │
 └─────────────────────────────────────────────────────────────┘
                               ↓
@@ -451,26 +451,26 @@ das Hochladen machst du selbst.
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                  AUSFÜHRUNG DES TASKS                        │
+│                  AUSFÜHRUNG DES TASKS                       │
 ├─────────────────────────────────────────────────────────────┤
-│                                                              │
+│                                                             │
 │ 1. MANAGER (bei komplexen Tasks):                           │
 │    • Liest Ziel, Task, Plan und bisherige Erkenntnisse      │
 │    • Entscheidet: Was genau tun? Brauche ich Rückfragen?    │
 │    • Kann sagen: "Ich brauche eine Entscheidung vom Mensch" │
-│                                                              │
-│ 2. WORKER:                                                   │
+│                                                             │
+│ 2. WORKER:                                                  │
 │    • Erhält klare Anweisung und Kontextinformationen        │
 │    • Liest und bearbeitet Dateien im Projekt                │
-│    • Kann nur die Dateien anfassen, die im Task stehen       │
+│    • Kann nur die Dateien anfassen, die im Task stehen      │
 │    • Kann nicht löschen, nicht hochladen, nicht verstümmeln │
 │    • Schreibt Ergebnis auf (was wurde gemacht?)             │
-│                                                              │
-│ 3. VERIFIER:                                                 │
+│                                                             │
+│ 3. VERIFIER:                                                │
 │    • Führt die Akzeptanzkommandos des Tasks aus             │
 │    • Prüft: "Ist das Ergebnis fehlerfrei?"                  │
 │    • Schreibt einen Prüfbericht: grün ✓ oder rot ✗          │
-│                                                              │
+│                                                             │
 │ 4. STATUS-GATE (automatisch):                               │
 │    • Nur diese Komponente darf Task-Status ändern           │
 │    • Ist der Bericht grün? → Task auf "review" oder "done"  │
@@ -552,7 +552,7 @@ Hier sind alle Skripte, die du brauchst, erklärt in Laien-Sprache:
 | `./scripts/next-tasks.sh`             | Zeigt die nächsten Tasks, die bereit sind.                                                                                | Zu Beginn einer Session: "Was soll ich als nächstes bearbeiten?"  | `./scripts/next-tasks.sh` → `READY: 001 \| Startseite aufbauen \| mechanical`           |
 | `./scripts/orchestrate.sh --next`     | Startet den nächsten bereiten Task. Der Router entscheidet automatisch: braucht er Manager? Nur Worker? Mehrere Versuche? | Nach `next-tasks.sh`: Starte die Arbeit.                          | `./scripts/orchestrate.sh --next` → arbeitet an Task 001, prüft es, aktualisiert Status |
 | `./scripts/orchestrate.sh --task 003` | Startet einen bestimmten Task (z.B. 003).                                                                                 | Du willst einen spezifischen Task, nicht den nächsten.            | `./scripts/orchestrate.sh --task 003`                                                   |
-| `./scripts/state-summary.sh`          | Zeigt in zwei Zeilen den letzten Prüfstand und die offene Arbeit: wie viele Tasks bereitstehen, auf Freigabe warten, blockiert sind. | Schneller Überblick über den Projektstand.                        | `./scripts/state-summary.sh` → `verify: GREEN` und `ready: 1 \| review: 1 \| blocked: 0` |
+| `./scripts/state-summary.sh`          | Zeigt in zwei Zeilen den letzten Prüfstand und die offene Arbeit: wie viele Tasks bereitstehen, auf Freigabe warten, blockiert sind. | Schneller Überblick über den Projektstand.                        | `./scripts/state-summary.sh` → `verify: GREEN` und `ready: 2 \| review: 1 \| blocked: 0` |
 | `./scripts/verify.sh`                 | Prüft das ganze Projekt: Ist die Task-Struktur korrekt? Gibt es Fehler in den Dateien?                                    | Nach Änderungen an Task-Dateien: "Habe ich etwas kaputt gemacht?" | `./scripts/verify.sh` → OK oder Liste von Fehlern                                       |
 | `./scripts/verify.sh --quick`         | Schnelle Prüfung; lässt die e2e-Stufe weg.                                                                                | Vor dem Commit: "Ist der aktuelle Stand in Ordnung?"              | Läuft automatisch, wenn ein **Agent** committet (`commit-gate.sh`). Dein eigener `git commit` im Terminal wird nicht geprüft — ruf es dort selbst auf. |
 | `./scripts/verify.sh --deep`          | Komplette Prüfung (alles durchschauen).                                                                                   | Wenn `--quick` fehlschlägt oder du alle Details brauchst.         | `./scripts/verify.sh --deep`                                                            |
@@ -576,7 +576,7 @@ Hier sind alle Skripte, die du brauchst, erklärt in Laien-Sprache:
 
 | Skript                                   | Was tut es?                                                                                                                | Wann nutzen?                                                                                       | Beispiel                                                                          |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `./scripts/orchestrate.sh --dry-run`     | Zeigt, was passieren würde: Welcher Task? Welcher Modus? Wie viele Manager/Worker/Verifier-Runden? Schreibt KEINE Dateien. | Bevor du `orchestrate.sh --next` aufrufst: "Lass mich checken, was passiert, bevor ich es starte." | `./scripts/orchestrate.sh --dry-run` → `TASK_ID=003`, `MODE=managed`, `PLANNED_CALLS=manager,worker-oder-worker-fresh,verify,eskalation-bei-rot` |
+| `./scripts/orchestrate.sh --dry-run`     | Zeigt, was passieren würde: Welcher Task? Welcher Modus? Wie viele Manager/Worker/Verifier-Runden? Schreibt KEINE Dateien. | Bevor du `orchestrate.sh --next` aufrufst: "Lass mich checken, was passiert, bevor ich es starte." | `./scripts/orchestrate.sh --dry-run` → `TASK_ID=003`, `MODE=managed`, `HUMAN_GATE=true`, `PLANNED_CALLS=manager,worker-oder-worker-fresh,verify,eskalation-bei-rot` |
 | `./scripts/orchestrate.sh --allow-dirty` | Erlaubt, einen Task zu starten, auch wenn es ungespeicherte Änderungen im Projekt gibt.                                    | Du hast lokal Änderungen und willst nicht committen, sondern trotzdem einen Task starten.          | `./scripts/orchestrate.sh --task 003 --allow-dirty`                               |
 
 ### Interne Skripte (die `orchestrate.sh` selbst nutzt)

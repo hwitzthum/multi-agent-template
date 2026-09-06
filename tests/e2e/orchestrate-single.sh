@@ -28,6 +28,11 @@ expect_failure "Dry Run weist einen Task am Versuchslimit ab" \
   env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017 --dry-run
 
 new_app_fixture
+make_task --id 018 --title 'Haengt an 017' --class mechanical --depends 017
+expect_failure "Dry Run weist einen Task mit offener Abhaengigkeit ab" \
+  env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 018 --dry-run
+
+new_app_fixture
 fake_worker_result 1
 fake_action worker 1 write-good
 expect_success "Single-Modus schließt grünen Task ab" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
