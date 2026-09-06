@@ -22,6 +22,11 @@ assert_eq "Dry Run verändert keine produktive oder versionierte Datei" "$before
 case "$dry_output" in *'MODE=single'*'PLANNED_CALLS=worker,verify'*) ok ;; *) bad "Dry Run zeigt Route und Aufrufe" ;; esac
 case "$dry_output" in *'FINALIZER=off'*) ok ;; *) bad "Dry Run nennt den Finalizer-Schalter" ;; esac
 
+# Die Vorschau darf keinen Task ankuendigen, den der Start danach ablehnt.
+new_app_fixture --attempts 3
+expect_failure "Dry Run weist einen Task am Versuchslimit ab" \
+  env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017 --dry-run
+
 new_app_fixture
 fake_worker_result 1
 fake_action worker 1 write-good
