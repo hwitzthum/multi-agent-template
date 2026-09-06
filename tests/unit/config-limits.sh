@@ -42,4 +42,31 @@ awk '$1 != "FINALIZER=off"' "$fixture/.agent/config.env" > "$fixture/.agent/conf
 mv "$fixture/.agent/config.tmp" "$fixture/.agent/config.env"
 expect_failure "fehlender Pflichtschlüssel FINALIZER" "$config" --check "$fixture/.agent/config.env"
 
+# AGENT_RUNNER wählt die Anbietergrenze und ist deshalb eine Aufzählung, keine
+# freie Zeichenkette: ein Tippfehler soll die Konfiguration rot machen, nicht
+# erst den Lauf.
+new_project_fixture
+expect_output "Auslieferungsstand läuft mit claude" claude "$config" --get AGENT_RUNNER "$fixture/.agent/config.env"
+fixture_config AGENT_RUNNER codex
+expect_success "AGENT_RUNNER=codex ist gültig" "$config" --check "$fixture/.agent/config.env"
+fixture_config AGENT_RUNNER gemini
+expect_failure "AGENT_RUNNER kennt nur claude und codex" "$config" --check "$fixture/.agent/config.env"
+
+# AGENT_MODEL ist eine Zeichenkette, aber keine Shell-Eingabe: Modellnamen
+# tragen Punkte, Doppelpunkte und Bindestriche, sonst nichts.
+new_project_fixture
+expect_output "Modellwahl liegt im Auslieferungsstand beim CLI" default "$config" --get AGENT_MODEL "$fixture/.agent/config.env"
+fixture_config AGENT_MODEL claude-haiku-4-5-20251001
+expect_success "AGENT_MODEL nimmt einen Modellnamen" "$config" --check "$fixture/.agent/config.env"
+fixture_config AGENT_MODEL 'modell;touch_x'
+expect_failure "AGENT_MODEL nimmt keine Shellsyntax" "$config" --check "$fixture/.agent/config.env"
+
+# Die Grenzen eines Modellaufrufs stehen in der Konfiguration, nicht in der
+# Umgebung: ein Lauf soll ohne gesetzte Variablen reproduzierbar sein.
+new_project_fixture
+expect_success "Zeitlimit eines Modellaufrufs ist konfiguriert" "$config" --get AGENT_TIMEOUT_SECONDS "$fixture/.agent/config.env"
+expect_success "Rundenlimit eines Modellaufrufs ist konfiguriert" "$config" --get AGENT_MAX_TURNS "$fixture/.agent/config.env"
+fixture_config AGENT_MAX_TURNS 0
+expect_failure "AGENT_MAX_TURNS nimmt keine Null" "$config" --check "$fixture/.agent/config.env"
+
 finish_suite

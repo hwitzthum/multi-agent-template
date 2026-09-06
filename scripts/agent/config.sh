@@ -11,21 +11,25 @@ fail() {
   return 1
 }
 
-required_keys='MAX_GLOBAL_ITERATIONS MAX_TASK_ATTEMPTS MAX_NO_PROGRESS CONTEXT_MAX_CHARS NOTES_MAX_CHARS VERIFY_TIMEOUT_SECONDS MAX_INFRA_RETRIES RETRY_BACKOFF_SECONDS FINALIZER'
+required_keys='MAX_GLOBAL_ITERATIONS MAX_TASK_ATTEMPTS MAX_NO_PROGRESS CONTEXT_MAX_CHARS NOTES_MAX_CHARS VERIFY_TIMEOUT_SECONDS AGENT_TIMEOUT_SECONDS AGENT_MAX_TURNS MAX_INFRA_RETRIES RETRY_BACKOFF_SECONDS AGENT_RUNNER AGENT_MODEL FINALIZER'
 
 known_key() {
   for candidate in $required_keys; do [ "$1" = "$candidate" ] && return 0; done
   return 1
 }
 
-# Alle Grenzen sind positive ganze Zahlen; FINALIZER ist ein Schalter. Der
+# Drei Werttypen: Grenzen sind positive ganze Zahlen, AGENT_RUNNER und
+# FINALIZER sind Aufzaehlungen, AGENT_MODEL ist eine Zeichenkette. Der
 # Finalizer ist ein zusaetzlicher Modellaufruf und deshalb ausdruecklich
-# abwaehlbar (`off`), nicht stillschweigend an.
+# abwaehlbar (`off`), nicht stillschweigend an. `default` ueberlaesst dem
+# gewaehlten CLI die Modellwahl.
 valid_value() {
   key=$1
   value=$2
   case "$key" in
     FINALIZER) case "$value" in off|llm) return 0 ;; *) return 1 ;; esac ;;
+    AGENT_RUNNER) case "$value" in claude|codex) return 0 ;; *) return 1 ;; esac ;;
+    AGENT_MODEL) case "$value" in *[!A-Za-z0-9._:-]*) return 1 ;; *) return 0 ;; esac ;;
     *) case "$value" in ''|*[!0-9]*|0) return 1 ;; *) return 0 ;; esac ;;
   esac
 }
@@ -40,7 +44,7 @@ validate_config() {
     line_no=$((line_no + 1))
     case "$line" in
       ''|'#'*) continue ;;
-      *[!A-Za-z0-9_=-]*) fail "unerlaubte Zeichen in Zeile $line_no"; return 1 ;;
+      *[!A-Za-z0-9_.:=-]*) fail "unerlaubte Zeichen in Zeile $line_no"; return 1 ;;
       *=*) ;;
       *) fail "KEY=VALUE erwartet in Zeile $line_no"; return 1 ;;
     esac

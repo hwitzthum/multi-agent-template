@@ -9,6 +9,7 @@
 
 tmp_root=''
 fixture=''
+stub_bin=''
 
 fixture_workspace() {
   tmp_root=$(mktemp -d "${TMPDIR:-/tmp}/agent-test.XXXXXX") || exit 1
@@ -57,6 +58,7 @@ new_project_fixture() {
 
   [ -n "$tmp_root" ] || fixture_abort "fixture_workspace wurde nicht aufgerufen"
   fixture=$(mktemp -d "$tmp_root/case.XXXXXX") || fixture_abort "kann Fixture nicht anlegen"
+  stub_bin=''
   mkdir -p "$fixture/.agent" "$fixture/docs/tasks" "$fixture/docs/verification" \
     "$fixture/docs/prompts" "$fixture/docs/templates" "$fixture/scripts" \
     "$fixture/src" "$fixture/.agent-runs/fake/responses" "$fixture/.agent-runs/fake/actions" \
@@ -104,6 +106,58 @@ new_project_fixture() {
 
   ORCHESTRATOR_FAKE_STATE_DIR="$fixture/.agent-runs/fake"
   export ORCHESTRATOR_FAKE_STATE_DIR
+}
+
+# Stub-CLIs fuer beide Runner-Adapter. Sie antworten auf --help und --version
+# wie das echte Werkzeug, schreiben ihre Argumente mit und geben eine
+# vorbereitete Antwort aus. Damit laesst sich run_agent bis zur metadata.env
+# pruefen, ohne ein Modell zu rufen.
+#
+# Setzt: $stub_bin (fuer PATH). Steuerung ueber die Umgebung des Aufrufs:
+#   STUB_ARGS     Datei, in die der Stub seine Argumente schreibt
+#   STUB_STDOUT   Datei, deren Inhalt der Stub auf stdout ausgibt
+#   STUB_MESSAGE  nur codex: Datei, die als --output-last-message abgelegt wird
+#   STUB_EXIT     Exitcode des Stubs (Standard 0)
+fixture_agent_cli_stubs() {
+  [ -n "$fixture" ] || fixture_abort "fixture_agent_cli_stubs ohne Fixture"
+  stub_bin="$fixture/.agent-runs/stub-bin"
+  mkdir -p "$stub_bin" || fixture_abort "kann Stub-Verzeichnis nicht anlegen"
+
+  cat > "$stub_bin/claude" <<'STUB'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --help)
+    printf '%s\n' '  --allowedTools, --allowed-tools <tools...>' '  --json-schema <schema>' \
+      '  --max-budget-usd <amount>' '  --permission-prompts <target>' '  --restricted' \
+      '  --settings <file-or-json>' '  --tools <tools...>'
+    exit 0 ;;
+  --version) echo '9.9.9 (Claude Code Stub)'; exit 0 ;;
+esac
+[ -z "${STUB_ARGS:-}" ] || printf '%s\n' "$@" > "$STUB_ARGS"
+[ -z "${STUB_STDOUT:-}" ] || cat "$STUB_STDOUT"
+exit "${STUB_EXIT:-0}"
+STUB
+
+  cat > "$stub_bin/codex" <<'STUB'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --version) echo 'codex-cli 9.9.9'; exit 0 ;;
+esac
+[ -z "${STUB_ARGS:-}" ] || printf '%s\n' "$@" > "$STUB_ARGS"
+# --output-last-message benennt die Datei mit dem Ergebnisobjekt. Der Stub legt
+# sie nur an, wenn STUB_MESSAGE eine Vorlage nennt: ein Lauf ohne Antwort ist
+# genau der Fall `turn.failed ohne Datei`.
+message_path=''
+while [ "$#" -gt 0 ]; do
+  case $1 in --output-last-message) message_path=${2:-}; shift ;; esac
+  shift
+done
+if [ -n "${STUB_MESSAGE:-}" ] && [ -n "$message_path" ]; then cp "$STUB_MESSAGE" "$message_path"; fi
+[ -z "${STUB_STDOUT:-}" ] || cat "$STUB_STDOUT"
+exit "${STUB_EXIT:-0}"
+STUB
+
+  chmod +x "$stub_bin/claude" "$stub_bin/codex" || fixture_abort "kann Stubs nicht ausführbar machen"
 }
 
 # Versioniert den aktuellen Fixture-Stand als Basiscommit. Erst aufrufen, wenn
