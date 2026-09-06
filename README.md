@@ -32,6 +32,22 @@ Das macht es sicher: Der Agent kann nicht einfach Dateien löschen, ins Internet
 
 ## Schnelteinstieg: So nutzt du das System
 
+### Zwei Orte, an denen du arbeitest
+
+Du bedienst das System an zwei Stellen, und die Arbeitsteilung ist wichtig:
+
+- **Dein Terminal** ist der Ort, an dem gearbeitet wird. Ein echter Lauf mit
+  `orchestrate.sh` dauert Minuten bis Stunden und belegt das Fenster so lange.
+  Er startet dort und nirgendwo sonst.
+- **Eine Claude Code Sitzung** ist der Ort, an dem du _verstehst und
+  entscheidest_: Stand vorlesen lassen, eine blockierte Frage in Alltagssprache
+  erklärt bekommen, ein Ergebnis vor der Freigabe durchsehen.
+
+Bei jedem Schritt steht unten deshalb beides: der Befehl fürs Terminal und —
+wo es hilft — der Prompt, den du in eine Claude Code Sitzung tippst. Die
+Prompts sind Vorlagen; formuliere sie ruhig in deinen eigenen Worten, die
+Dateinamen und Task-Nummern darin sind das Entscheidende.
+
 ### Schritt 1: Vor dem ersten Lauf — Setup prüfen
 
 ```bash
@@ -45,23 +61,54 @@ Das Skript prüft:
 - ✓ Sind alle notwendigen Tools vorhanden (`jq`, `awk`, `sed`, etc.)?
 - ✓ Ist die `.agent/config.env` Konfiguration korrekt?
 
-**Ergebnis:** Zeigt `OK` oder `BEFUND`. Bei Fehlern werden diese angezeigt und können behoben werden.
+**Ergebnis:** Jede Zeile beginnt mit `OK` oder `BEFUND`; die letzte Zeile ist
+`doctor: GREEN (einsatzbereit)` oder `doctor: RED (N Befund(e))`. Ein `BEFUND`
+sagt, was fehlt — er hält dich nicht auf, solange die letzte Zeile grün ist.
+
+**Prompt, wenn ein BEFUND dasteht und du nicht weißt, was er bedeutet:**
+
+```text
+Führe ./scripts/doctor.sh aus. Erklär mir jeden BEFUND in Alltagssprache:
+was fehlt, warum das System es braucht, und was ich konkret tun muss.
+Sag mir auch, ob ich trotzdem schon starten kann.
+```
 
 ### Schritt 2: Projekt einmalig initialisieren
 
-Das machst du nur einmal am Anfang:
+Das machst du nur einmal am Anfang. Hier tippst du wirklich einen Prompt — die
+Initialisierung ist der einzige Schritt, den kein Skript erledigt.
+
+**Zuerst die Projektbeschreibung schreiben.** Sie steht am Ende von
+`docs/prompts/init.md` und ersetzt dort den Platzhalter:
 
 ```bash
-# Öffne diese Datei in deinem Editor
 nano docs/prompts/init.md
-
-# Schreibe deine Projektbeschreibung unten in die Datei ein
-# (ersetze den Platzhalter)
-
-# Kopiere dann den kompletten Inhalt dieser Datei
-# und öffne eine neue Claude Code Sitzung
-# Paste den Prompt dort ein und führe ihn aus
 ```
+
+Wenn du unsicher bist, was da hineingehört, lass sie dir in einer Claude Code
+Sitzung erarbeiten:
+
+```text
+Ich will mit diesem Template ein neues Projekt starten und muss die
+Projektbeschreibung am Ende von docs/prompts/init.md schreiben.
+
+Mein Vorhaben in einem Satz: <hier dein Vorhaben, in Alltagssprache>
+
+Stell mir nacheinander die Fragen, die du brauchst — aber nur solche, die
+ich ohne Programmierkenntnisse beantworten kann. Schreib die fertige
+Beschreibung danach in docs/prompts/init.md an die vorgesehene Stelle.
+```
+
+**Dann die Initialisierung selbst.** Sie gehört in eine _eigene, neue_ Sitzung
+mit dem stärksten verfügbaren Modell, weil sie das ganze Projekt aufsetzt:
+
+```bash
+# Inhalt der Datei in die Zwischenablage kopieren (macOS)
+pbcopy < docs/prompts/init.md
+```
+
+Öffne eine neue Claude Code Sitzung, füge den kompletten Inhalt ein und schick
+ihn ab. Die Datei _ist_ der Prompt — du schreibst nichts dazu.
 
 Der Initializer wird:
 
@@ -69,6 +116,9 @@ Der Initializer wird:
 - Einen Plan in `docs/state/plan.md` erstellen
 - Die ersten Tasks in `docs/tasks/` erzeugen
 - `scripts/verify.sh` durch deine Projekt-Prüfung ersetzen
+
+Er stellt dir dabei Rückfragen zum Umfang. Danach ist die Sitzung fertig und du
+kannst sie schließen.
 
 ### Schritt 3: Den ersten Task anschauen
 
@@ -80,15 +130,52 @@ Der Initializer wird:
 **Ausgabe zum Beispiel:**
 
 ```
-Task 001: "Frontend-Komponente für Dashboard" (todo)
-Task 003: "API-Endpoint für Benutzerdaten" (todo)
-(Task 002 wartet auf Task 001)
+READY: 001 | Startseite aufbauen | mechanical
+READY: 004 | Kontaktformular anbinden | patterned
+```
+
+Je Zeile: Nummer, Titel und Klasse des Tasks. Aufgelistet wird nur, was
+_jetzt_ dran ist — ein Task, dessen Vorgänger noch offen ist, taucht gar nicht
+erst auf. Steht dort `keine Tasks (Initialisierung noch nicht ausgeführt)`,
+fehlt Schritt 2.
+
+**Prompt, wenn du wissen willst, was hinter den Titeln steckt:**
+
+```text
+Zeig mir die bereitstehenden Tasks mit ./scripts/next-tasks.sh. Erklär mir
+für jeden in zwei Sätzen, was er am Produkt ändert und warum er jetzt an
+der Reihe ist. Sag mir, mit welchem du anfangen würdest.
 ```
 
 ### Schritt 4: Task bearbeiten lassen
 
+Sieh dir zuerst an, was passieren würde — das schreibt nichts:
+
 ```bash
-# Starte den nächsten bereitstehenden Task
+./scripts/orchestrate.sh --next --dry-run
+```
+
+**Ausgabe zum Beispiel:**
+
+```
+DRY_RUN=true
+TASK_ID=001
+MODE=single
+HUMAN_GATE=false
+FINALIZER=off
+MAX_GLOBAL_ITERATIONS=10
+MAX_TASK_ATTEMPTS=3
+MAX_NO_PROGRESS=1
+PLANNED_CALLS=worker,verify,eskalation-bei-rot
+```
+
+Gelesen: Task 001 läuft im einfachsten Modus, ein Worker schreibt, danach
+prüft das Prüftor, und bei Rot wird eskaliert. `HUMAN_GATE=false` heißt, dass
+dieser Task ohne deine Freigabe auf `done` gehen darf.
+
+Wenn das passt, der echte Lauf:
+
+```bash
 ./scripts/orchestrate.sh --next
 ```
 
@@ -100,7 +187,23 @@ Das System wird:
 4. Das Ergebnis prüfen
 5. Task-Status automatisch aktualisieren
 
-**Das passiert im Hintergrund — du wirst informiert, wenn es fertig ist.**
+**Der Lauf belegt dein Terminal, bis er fertig ist** — je nach Task Minuten bis
+Stunden. Lass das Fenster offen. Am Ende steht der Laufbeleg in
+`docs/state/handoff.md`, egal ob der Lauf grün war, pausiert hat oder blockiert
+ist.
+
+**Prompt, wenn du den Lauf lieber aus einer Sitzung startest:**
+
+```text
+Starte ./scripts/orchestrate.sh --next im Hintergrund und sag mir Bescheid,
+wenn er durch ist. Fass danach zusammen: welcher Task, welches Ergebnis,
+was steht jetzt in docs/state/handoff.md.
+```
+
+Der Umweg über die Sitzung lohnt sich nur, wenn du parallel weiterfragen
+willst. Ein Lauf überschreitet leicht das Zeitlimit eines einzelnen Befehls,
+deshalb muss er dort ausdrücklich im Hintergrund laufen — startet die Sitzung
+ihn direkt, bricht er nach dem Zeitlimit ab.
 
 ### Schritt 5: Aktuellen Stand checken
 
@@ -112,8 +215,26 @@ Das System wird:
 **Ausgabe zum Beispiel:**
 
 ```
-Status: 5 todo | 2 in_progress | 3 done | 1 blocked
-Fehler: keine
+verify: GREEN
+ready: 1 | review: 1 | blocked: 0
+```
+
+Zeile 1 ist der letzte Prüfstand: `GREEN`, `RED` (mit der Fehlerart in
+Klammern) oder `NEVER`, wenn noch nie geprüft wurde. Zeile 2 zählt die offene
+Arbeit: wie viele Tasks jetzt bereitstehen, wie viele auf deine Freigabe
+warten, wie viele blockiert sind.
+
+Diese zwei Zeilen bekommt auch jede neue Claude Code Sitzung automatisch
+mitgeliefert — du musst den Stand also nicht selbst erzählen. Was sie _nicht_
+zeigt, ist ein gerade laufender Lauf: der Stand kommt von der Platte, nicht aus
+dem laufenden Betrieb.
+
+**Prompt, wenn du mehr als die zwei Zeilen willst:**
+
+```text
+Lies den aktuellen Stand: state-summary.sh, next-tasks.sh und
+docs/state/handoff.md. Erklär mir in Alltagssprache, wo das Projekt steht,
+was zuletzt passiert ist und was als Nächstes ansteht.
 ```
 
 ### Schritt 6: Wenn ein Task blockiert ist
@@ -139,6 +260,28 @@ nano docs/tasks/001.md
 ./scripts/orchestrate.sh --task 001
 ```
 
+Wichtig: Deine Antwort muss _in der Task-Datei_ stehen, bevor du `reopen`
+aufrufst. Der nächste Lauf liest die Datei, nicht dein Gedächtnis und keine
+frühere Unterhaltung.
+
+**Prompt, wenn die Frage technisch klingt:**
+
+```text
+Task 001 ist blockiert. Lies docs/tasks/001.md, gib mir die offene Frage in
+Alltagssprache wieder und erklär mir, welche Antwortmöglichkeiten es gibt
+und was jede für Aufwand, Kosten und Datenschutz bedeutet. Frag mich dann
+nach meiner Entscheidung — trag noch nichts ein.
+```
+
+Und wenn du entschieden hast:
+
+```text
+Trag meine Antwort in docs/tasks/001.md unter "# Offene Frage" ein:
+<hier deine Entscheidung>
+Setz den Task danach mit ./scripts/task.sh reopen 001 wieder auf todo und
+sag mir, was der nächste Lauf damit tun wird.
+```
+
 ### Schritt 7: Wenn ein Task auf "review" wartet
 
 Nach einem erfolgreichen Lauf kann ein Task auf `review` warten. Das bedeutet:
@@ -157,6 +300,20 @@ nano docs/tasks/001.md
 ```
 
 Der Task wird jetzt auf `done` gesetzt.
+
+**Prompt, wenn du sehen willst, was der Lauf tatsächlich geändert hat:**
+
+```text
+Task 001 steht auf review. Zeig mir, was der Lauf am Produkt geändert hat,
+und prüfe es gegen die Abnahmekriterien im Task. Sag mir ehrlich, was du
+freigeben würdest und was nicht — und begründe jeden Einwand.
+Gib den Task noch nicht frei.
+```
+
+Die Freigabe selbst bleibt bei dir: `approve` ist einer der zwei
+Statuswechsel, die ausschließlich ein Mensch auslöst. Ein Task landet genau
+deshalb auf `review` — weil bei Design, Texten oder Rechtlichem eine grüne
+Prüfung nicht genügt.
 
 ### Schritt 8: Fehlerbehebung — Wenn etwas nicht stimmt
 
@@ -180,6 +337,18 @@ Das zeigt:
 | Task ist in `blocked`, aber ich habe nicht gefragt | Lese die Frage unter `# Offene Frage` und beantworte sie |
 | Prüfung schlägt fehl                               | Führe `./scripts/verify-task.sh 001` aus für Details     |
 | Agent konnte nicht weiterkommen                    | Versuche `./scripts/orchestrate.sh --task 001` erneut    |
+
+**Prompt, wenn du mit der Ausgabe nichts anfangen kannst:**
+
+```text
+./scripts/verify.sh --deep ist rot. Führ es aus, finde die Ursache und
+erklär sie mir in Alltagssprache: was ist kaputt, wodurch, und was sind
+meine Möglichkeiten. Ändere noch nichts, bevor ich zugestimmt habe.
+```
+
+Ein Task, der sein Versuchslimit ausgeschöpft hat, wird von einem neuen Lauf
+abgelehnt — auch vom Dry-Run. Dann hilft kein weiterer Versuch, sondern nur
+ein kleinerer Zuschnitt des Tasks oder eine beantwortete offene Frage.
 
 ### Schritt 9: Täglicher Workflow (nach dem Setup)
 
@@ -207,6 +376,35 @@ Das zeigt:
 git add -A
 git commit -m "daily progress"
 ```
+
+**Die drei Prompts, mit denen du den Tag in einer Sitzung bestreitest:**
+
+Morgens, zur Lage:
+
+```text
+Wo steht das Projekt? Lies state-summary.sh, next-tasks.sh und
+docs/state/handoff.md und fass es mir in fünf Sätzen zusammen.
+```
+
+Zwischendurch, wenn etwas hängt:
+
+```text
+Task <Nummer> steht auf blocked. Erklär mir die offene Frage in
+Alltagssprache und schlag mir eine Antwort vor, mit Begründung.
+```
+
+Abends, zum Abschluss:
+
+```text
+Lauf ./scripts/verify.sh --quick. Wenn es grün ist, fass zusammen, was
+heute fertig geworden ist, und aktualisiere docs/state/handoff.md nach der
+Vorlage in docs/templates/handoff.md. Committen möchte ich selbst.
+```
+
+Zum Commit: versucht eine Sitzung `git commit`, läuft vorher automatisch
+`verify.sh --quick`, und ein rotes Ergebnis blockiert den Commit
+(`scripts/commit-gate.sh`). `git push` ist Agenten grundsätzlich verwehrt —
+das Hochladen machst du selbst.
 
 ---
 
@@ -368,7 +566,7 @@ Hier sind alle Skripte, die du brauchst, erklärt in Laien-Sprache:
 
 | Skript                                   | Was tut es?                                                                                                                | Wann nutzen?                                                                                       | Beispiel                                                                          |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `./scripts/orchestrate.sh --dry-run`     | Zeigt, was passieren würde: Welcher Task? Welcher Modus? Wie viele Manager/Worker/Verifier-Runden? Schreibt KEINE Dateien. | Bevor du `orchestrate.sh --next` aufrufst: "Lass mich checken, was passiert, bevor ich es starte." | `./scripts/orchestrate.sh --dry-run` → "TASK_ID=003 MODE=managed PLANNED_CALLS=3" |
+| `./scripts/orchestrate.sh --dry-run`     | Zeigt, was passieren würde: Welcher Task? Welcher Modus? Wie viele Manager/Worker/Verifier-Runden? Schreibt KEINE Dateien. | Bevor du `orchestrate.sh --next` aufrufst: "Lass mich checken, was passiert, bevor ich es starte." | `./scripts/orchestrate.sh --dry-run` → `TASK_ID=003`, `MODE=managed`, `PLANNED_CALLS=manager,worker-oder-worker-fresh,verify,eskalation-bei-rot` |
 | `./scripts/orchestrate.sh --allow-dirty` | Erlaubt, einen Task zu starten, auch wenn es ungespeicherte Änderungen im Projekt gibt.                                    | Du hast lokal Änderungen und willst nicht committen, sondern trotzdem einen Task starten.          | `./scripts/orchestrate.sh --task 003 --allow-dirty`                               |
 
 ### Interne Skripte (die `orchestrate.sh` selbst nutzt)
