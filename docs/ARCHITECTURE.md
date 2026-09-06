@@ -84,6 +84,15 @@ Rollen, die nur Skripte einnehmen.
 | `status-gate`  | geprüfte Task-Statusübergänge             | `docs/tasks/*.md`                                  |
 | `orchestrator` | Laufzustand und lokale Artefakte führen   | `.agent-runs/`                                     |
 
+Die Steuerungspfade, die dem Worker verschlossen sind, benennt
+`worker_path_allowed` in `scripts/agent/policy.sh`: `.agent/`, `.agent-runs/`,
+`.claude/`, `.git/` mit `.gitignore`, `docs/state/`, `docs/tasks/`,
+`docs/verification/`, `docs/prompts/`, `docs/templates/`, `CLAUDE.md`,
+`scripts/agent/` sowie die beiden Hooks. Rollenverträge und Vorlagen stehen
+darin, weil ein Worker, der sie schreibt, die Regeln des nächsten Aufrufs
+verändert. `scripts/verify.sh` bleibt bewusst schreibbar: der Initializer
+ersetzt sie, und ein Task soll die Produktprüfung fortschreiben dürfen.
+
 `fresh` ist keine eigene Rolle, sondern eine Variante des Workers: derselbe
 Schreibbereich, derselbe Prompt, nur ein Kontext ohne Vorgeschichte.
 
