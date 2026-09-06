@@ -11,7 +11,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | --- | ---------------------------------------- | --------------------------------- | ------ | ----- | ---------- |
 | F0  | Verhaltensbenannte Testsuite mit Runner  | `test/behaviour-suite`            | gemergt | 417   | 2026-09-06 |
 | F1  | Ballast entfernen                        | `chore/remove-ballast`            | gemergt | 400   | 2026-09-06 |
-| F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | umgesetzt | 424 | –          |
+| F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | gemergt | 424   | 2026-09-06 |
 | F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | offen  | –     | –          |
 | F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | offen  | –     | –          |
 | F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | offen  | –     | –          |
@@ -27,6 +27,8 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F2 · Nach `main` gemergt (`ee358cb`), Suite auf `main` grün ·
+  `./scripts/verify.sh` → `tests: GREEN (424 Zusicherungen in 26 Dateien)`
 - 2026-09-06 · F2 · Manifeste und Snapshot auf Git umgestellt, Vorher-Manifeste
   aus dem Arbeitsbaum genommen, Task-Lookup auf den Dateinamen gestellt ·
   `./scripts/verify.sh` → `tests: GREEN (424 Zusicherungen in 26 Dateien)`
@@ -409,7 +411,7 @@ Abweichungen vom Plan:
 
 ### F2 · Git-basierte Manifeste und Snapshot
 
-Branch `perf/git-manifests` · Status: **umgesetzt**
+Branch `perf/git-manifests` · Status: **gemergt**
 
 Ziel: Manifeste in Millisekunden statt Sekunden, `.gitignore` gilt, Manipulation
 durch Worker ausgeschlossen, Wiederherstellung aus Snapshot möglich.
