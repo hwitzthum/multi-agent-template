@@ -159,7 +159,13 @@ Listen, keine Feldnamen — welche Felder ein Task tragen muss, entscheidet alle
 Konfiguration interpretiert. Jede Änderung wird zuerst in einer temporären Datei
 im selben Ordner validiert und erst danach atomar an ihren Zielpfad verschoben.
 
-`scripts/validate-ledger.sh` erzwingt das Task-Schema: acht Einzelfelder, vier
+`scripts/validate-ledger.sh` verlangt die fünf Ledger-Dateien unter
+`docs/state/` — `goal.md`, `plan.md`, `notes.md`, `decisions.md` und
+`handoff.md` — sowie `docs/verification/latest.md`. Alle sechs sind verbindliche
+Quellen; fehlt eine, verliert eine Rolle stillschweigend ihren Kontext oder der
+Orchestrator seinen Laufbeleg.
+
+Für die Aufgaben erzwingt der Validator das Task-Schema: acht Einzelfelder, vier
 Listen, vier Rumpfabschnitte. Andere Felder sind ungültig, ein Einzelfeld mit
 zwei Werten ebenfalls. Der Dateiname ist der Schlüssel — Task `017` liegt als
 `docs/tasks/017.md`.

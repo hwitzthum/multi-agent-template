@@ -210,7 +210,13 @@ ask_human() {
 # Ende selbst, unabhaengig davon, ob eine Rolle etwas dazu gesagt hat. Er
 # ersetzt den vorhandenen Abschnitt und steht sonst direkt unter dem Titel.
 write_run_receipt() {
-  [ -f "$handoff_file" ] || return 0
+  # Ein Beleg gehoert zu jedem Laufende. Fehlt die Datei trotz der
+  # Eingangspruefung, hat sie jemand waehrend des Laufs entfernt — das ist eine
+  # Meldung wert und kein stilles Achselzucken.
+  [ -f "$handoff_file" ] || {
+    echo "orchestrate: $handoff_file fehlt; der Laufbeleg geht verloren" >&2
+    return 1
+  }
   verifier_state=NEVER
   green_reference=keiner
   case "$(ledger_scalar "$verification_dir/$task_id.md" result 2>/dev/null || true)" in
@@ -309,7 +315,7 @@ cleanup() {
   exit_status=$?
   trap - EXIT HUP INT TERM
   if [ -n "$run_state" ] && [ -f "$run_state" ]; then
-    case "$run_phase" in finished|paused) ;; *) run_phase=failed ;; esac
+    case "$run_phase" in finished) ;; *) run_phase=failed ;; esac
     if [ -z "$run_outcome" ]; then
       case "$exit_status:$(ledger_scalar "$task_file" status 2>/dev/null || true)" in
         130:*) run_outcome=cancelled ;; *:done) run_outcome=success ;;

@@ -86,6 +86,11 @@ if [ -z "$(find "$project_dir/docs/tasks" -maxdepth 1 -name '*.md' -print -quit 
   assert_file_has "Startzustand: goal.md ohne Projektziel" "$project_dir/docs/state/goal.md" 'Noch kein Projektziel festgelegt.'
   assert_file_has "Startzustand: plan.md ohne Strategie" "$project_dir/docs/state/plan.md" 'Noch keine Strategie festgelegt.'
   assert_file_has "Startzustand: handoff.md verweist auf die Initialisierung" "$project_dir/docs/state/handoff.md" 'noch nicht initialisiert'
+  # Der Startzustand ist das erste, was ein Mensch liest: sein Laufbeleg traegt
+  # dieselben Zeilen wie die Vorlage und wie der Beleg des Orchestrators.
+  for receipt_field in 'Run-ID:' 'Modus:' 'Ergebnis:' 'Task:' 'Verifierstatus:' 'Letzter grüner Stand:'; do
+    assert_file_has "Startzustand: Laufbeleg trägt $receipt_field" "$project_dir/docs/state/handoff.md" "$receipt_field"
+  done
   for state_file in decisions.md goal.md plan.md handoff.md; do
     assert_file_lacks "Startzustand: keine Bau-Historie in $state_file" "$project_dir/docs/state/$state_file" '2026-09-04'
   done
