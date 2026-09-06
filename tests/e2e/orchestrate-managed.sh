@@ -44,6 +44,18 @@ expect_failure "Manager kann die Versuchszählung nicht bewegen" env ORCHESTRATO
 assert_eq "Die geschützte Versuchszählung bleibt stehen" 0 "$(ledger_scalar "$fixture/docs/tasks/017.md" attempts)"
 [ ! -f "$fixture/.agent-runs/fake/worker.count" ] && ok || bad "Steuerfeldverstoss startet keinen Worker"
 
+# Ein Rollenlauf, der das Ledger unlesbar zurueckliesse, blockierte jeden
+# weiteren Lauf schon an dessen Eingangspruefung. Er wird deshalb wie jeder
+# andere Regelverstoss zurueckgesetzt.
+new_app_fixture --class open
+fake_manager_result 1
+fake_action manager 1 break-class
+expect_failure "Manager kann das Ledger nicht ungültig zurücklassen" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
+expect_success "Ledger gilt nach dem Rücksetzen wieder" "$validator" --project-dir "$fixture"
+assert_eq "Die ungültige Klasse ist zurückgesetzt" open "$(ledger_scalar "$fixture/docs/tasks/017.md" class)"
+assert_eq "Der Task fällt trotzdem auf todo zurück" todo "$(ledger_scalar "$fixture/docs/tasks/017.md" status)"
+[ ! -f "$fixture/.agent-runs/fake/worker.count" ] && ok || bad "Ungültiges Ledger startet keinen Worker"
+
 new_app_fixture --class open
 fake_manager_result 1 done
 expect_failure "Manager meldet done ohne grünen Beleg vergeblich" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017

@@ -34,10 +34,10 @@ case "$task_id" in ''|*[!0-9]*) bad_usage ;; esac
 project_dir=$(CDPATH= cd -- "$project_dir" 2>/dev/null && pwd -P) || { echo "verify-task: Projektpfad fehlt" >&2; exit 1; }
 task_file=$(ledger_task_path_by_id "$project_dir/docs/tasks" "$task_id") || exit 1
 
+# Die Grenze kommt aus den Daten des Zielprojekts, gelesen vom Konfigurations-
+# leser neben diesem Skript: `--project-dir` waehlt keine Implementierung aus.
 if [ -z "$timeout_seconds" ]; then
-  config_reader="$script_dir/agent/config.sh"
-  [ -x "$project_dir/scripts/agent/config.sh" ] && config_reader="$project_dir/scripts/agent/config.sh"
-  timeout_seconds=$("$config_reader" --get VERIFY_TIMEOUT_SECONDS "$project_dir/.agent/config.env" 2>/dev/null || true)
+  timeout_seconds=$("$script_dir/agent/config.sh" --get VERIFY_TIMEOUT_SECONDS "$project_dir/.agent/config.env" 2>/dev/null || true)
 fi
 timeout_seconds=${timeout_seconds:-90}
 case "$timeout_seconds" in ''|*[!0-9]*|0) echo "verify-task: ungueltiges Timeout" >&2; exit 2 ;; esac

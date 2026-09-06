@@ -61,6 +61,12 @@ expect_failure "Worker ohne Task ist kein Kontext" "$builder" build --project-di
 expect_failure "Fresh gilt nur für den Worker" "$builder" build --project-dir "$fixture" --role manager --run-id "$run_id" --fresh
 expect_failure "abgelöste Rolle wird abgewiesen" "$builder" build --project-dir "$fixture" --role worker-task --run-id "$run_id" --task-id 017
 
+# Der Rollenvertrag gehört zu den Daten des Projekts: fehlt er, ist das ein
+# Befund und kein stiller Griff zur Fassung des Kits.
+new_populated_fixture
+rm -f "$fixture/docs/prompts/worker.md"
+expect_failure "fehlender Rollenvertrag stoppt den Kontextbau" "$builder" build --project-dir "$fixture" --role worker --run-id "$run_id" --task-id 017
+
 # Die Dateiliste ist genau die Schreibpolicy des Workers: was sie nennt, darf er
 # auch ändern. Steuerungspfade, die allein die Kontextpolicy durchliesse, stehen
 # deshalb nicht darin — sonst nennte der Kontext einen Pfad, den der

@@ -38,6 +38,13 @@ make_task --id 001 --status in_progress
 make_report --id 001 --result green
 expect_success "done mit passendem gruenen Bericht" "$status_gate" --project-dir "$fixture" set-status 001 done in_progress
 
+# `--project-dir` benennt nur die Daten. Eine abweichende Skriptkopie im
+# Zielprojekt darf den Lauf weder pruefen noch aufhalten.
+new_project_fixture --with-scripts
+make_task --id 001 --status todo
+printf '%s\n' '#!/usr/bin/env bash' 'exit 1' > "$fixture/scripts/validate-ledger.sh"
+expect_success "abweichender Validator im Projekt prüft nicht mit" "$status_gate" --project-dir "$fixture" set-status 001 in_progress todo
+
 new_project_fixture
 make_task --id 001 --class mechanical --status review --human-review true
 make_report --id 001 --result green
