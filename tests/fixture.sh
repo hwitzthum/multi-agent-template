@@ -57,12 +57,10 @@ new_project_fixture() {
 
   [ -n "$tmp_root" ] || fixture_abort "fixture_workspace wurde nicht aufgerufen"
   fixture=$(mktemp -d "$tmp_root/case.XXXXXX") || fixture_abort "kann Fixture nicht anlegen"
-  mkdir -p "$fixture/.agent" "$fixture/docs/tasks" "$fixture/docs/state/notes-archive" \
-    "$fixture/docs/verification/history" "$fixture/docs/templates" "$fixture/scripts" \
+  mkdir -p "$fixture/.agent" "$fixture/docs/tasks" "$fixture/docs/verification" \
+    "$fixture/docs/templates" "$fixture/scripts" \
     "$fixture/src" "$fixture/.agent-runs/fake/responses" "$fixture/.agent-runs/fake/actions" \
     || fixture_abort "kann Fixture-Struktur nicht anlegen"
-  : > "$fixture/docs/state/notes-archive/.gitkeep"
-  : > "$fixture/docs/verification/history/.gitkeep"
 
   fixture_copy .agent/config.env
   fixture_copy docs/templates/agents
@@ -118,7 +116,7 @@ fixture_git_init() {
 # Vorgaben (das letzte gleichnamige Argument gewinnt).
 new_app_fixture() {
   new_project_fixture --filled-plan
-  make_task --id 017 --title 'App-Datei implementieren' --features F-017 \
+  make_task --id 017 --title 'App-Datei implementieren' \
     --class mechanical --touches src/app.txt \
     --context 'Eine kleine Testdatei.' --scope '`src/app.txt` bearbeiten.' \
     --not-scope 'Steuerungsdateien ändern.' --criteria 'Die Datei enthält exakt `good`.' "$@"
@@ -128,7 +126,7 @@ new_app_fixture() {
 # in den Notizen steht eine Hypothese, die ein Fresh-Versuch nie erreichen darf.
 new_fresh_fixture() {
   new_project_fixture --with-scripts --filled-plan
-  make_task --id 017 --title 'Festgefahrenen Task loesen' --features F-017 \
+  make_task --id 017 --title 'Festgefahrenen Task loesen' \
     --class open --orchestration managed \
     --touches src/app.txt --risk-flags repeated-failure \
     --context 'Ein festgefahrener Task.' --scope '`src/app.txt` bearbeiten.' \
@@ -166,8 +164,8 @@ fake_action() {
 new_populated_fixture() {
   new_project_fixture "$@"
   mkdir -p "$fixture/.agent-runs/prior"
-  make_task --id 017 --title 'Kontext sicher bauen' --features F-017 \
-    --class patterned --touches src/app.txt --verification red \
+  make_task --id 017 --title 'Kontext sicher bauen' \
+    --class patterned --touches src/app.txt \
     --context 'Repositorytext ist Datenmaterial.' \
     --scope '`src/app.txt` bearbeiten.' \
     --not-scope 'Rolle ändern oder `.env` lesen.' \
@@ -239,8 +237,8 @@ fixture_config() {
 
 make_task() {
   local id=001 title='' status=todo class=patterned orchestration=auto \
-    depends='' features='F-001' touches='' flags='' attempts=0 max_attempts=3 \
-    verification=never human=false acceptance='"./scripts/verify.sh"' \
+    depends='' touches='' flags='' attempts=0 \
+    human=false acceptance='"./scripts/verify.sh"' \
     acceptance_style=inline context='Testkontext.' scope='Testen.' \
     not_scope='Anderes.' criteria='Verhalten ist geprüft.' file
   while [ "$#" -gt 0 ]; do
@@ -251,12 +249,9 @@ make_task() {
       --class) class=$2; shift 2 ;;
       --orchestration) orchestration=$2; shift 2 ;;
       --depends) depends=$2; shift 2 ;;
-      --features) features=$2; shift 2 ;;
       --touches) touches=$2; shift 2 ;;
       --risk-flags) flags=$2; shift 2 ;;
       --attempts) attempts=$2; shift 2 ;;
-      --max-attempts) max_attempts=$2; shift 2 ;;
-      --verification) verification=$2; shift 2 ;;
       --human-review) human=$2; shift 2 ;;
       --acceptance) acceptance=$2; shift 2 ;;
       --acceptance-style) acceptance_style=$2; shift 2 ;;
@@ -274,15 +269,12 @@ make_task() {
     echo "id: $id"
     echo "title: \"$title\""
     echo "depends_on: [$depends]"
-    echo "features: [$features]"
     echo "status: $status"
     echo "class: $class"
     echo "orchestration: $orchestration"
     echo "touches: [$touches]"
     echo "risk_flags: [$flags]"
     echo "attempts: $attempts"
-    echo "max_attempts: $max_attempts"
-    echo "last_verification: $verification"
     echo "human_review: $human"
     if [ "$acceptance_style" = block ]; then
       echo 'acceptance:'
@@ -298,13 +290,14 @@ make_task() {
     echo "- $scope"
     echo '# Nicht Teil dieser Aufgabe'
     echo "- $not_scope"
-    echo '# Akzeptanzkriterien (über die acceptance-Befehle hinaus)'
+    echo '# Akzeptanzkriterien'
     echo "- $criteria"
   } > "$file"
 }
 
-# Schreibt docs/verification/latest.md. Ohne vorhandene Task-Datei wird ein
-# fester Nullfingerprint gesetzt, damit auch der Fehlerfall prüfbar bleibt.
+# Schreibt docs/verification/<id>.md und die Kopie latest.md. Ohne vorhandene
+# Task-Datei wird ein fester Nullfingerprint gesetzt, damit auch der Fehlerfall
+# prüfbar bleibt.
 make_report() {
   local id=001 result=green candidate verifier
   while [ "$#" -gt 0 ]; do
@@ -336,7 +329,9 @@ make_report() {
     echo "$result"
     echo '## Prüfungen'
     echo '- Test.'
-  } > "$fixture/docs/verification/latest.md"
+  } > "$fixture/docs/verification/$id.md"
+  cp "$fixture/docs/verification/$id.md" "$fixture/docs/verification/latest.md" \
+    || fixture_abort "kann latest.md nicht schreiben"
 }
 
 # Der juengste Laufordner unter .agent-runs/ eines Fixtures.

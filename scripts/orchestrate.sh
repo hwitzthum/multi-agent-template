@@ -90,14 +90,6 @@ select_next_task() {
   "$script_dir/next-tasks.sh" --project-dir "$project_dir" | awk -F '[ |]+' '$1 == "READY:" { print $2; exit }'
 }
 
-# Das harte Limit der Konfiguration gilt auch dann, wenn ein Task ein hoeheres
-# max_attempts traegt.
-task_max_attempts() {
-  value=$(ledger_scalar "$task_file" max_attempts) || return 1
-  [ "$value" -le "$max_task_attempts" ] || value=$max_task_attempts
-  printf '%s\n' "$value"
-}
-
 # Der Laufzustand ist unversioniert: eine flache KEY=VALUE-Datei im Laufordner.
 # Sie wird nie gelesen, um einen Lauf fortzusetzen, sondern nur, um innerhalb
 # eines Aufrufs Phase, Runde und Fortschritt zu fuehren und am Ende einen
@@ -151,10 +143,9 @@ task_control_snapshot() {
   : > "$destination"
   while IFS= read -r file; do
     [ -n "$file" ] || continue
-    printf '%s|%s|%s|%s|%s\n' \
+    printf '%s|%s|%s|%s\n' \
       "$(ledger_scalar "$file" id)" "$(ledger_scalar "$file" status)" \
-      "$(ledger_scalar "$file" attempts)" "$(ledger_scalar "$file" last_verification)" \
-      "$(ledger_scalar "$file" blocked_reason)" >> "$destination"
+      "$(ledger_scalar "$file" attempts)" "$(ledger_scalar "$file" blocked_reason)" >> "$destination"
   done <<EOF
 $(ledger_task_files "$tasks_dir")
 EOF
@@ -319,7 +310,7 @@ verify_candidate() {
 }
 
 append_failure_note() {
-  finding="Task $task_id: Verifikation rot; siehe docs/verification/latest.md."
+  finding="Task $task_id: Verifikation rot; siehe docs/verification/$task_id.md."
   grep -Fq -- "- finding: $finding" "$notes_file" && return 0
   lock="$project_dir/docs/state/.notes-write-lock"
   mkdir "$lock" 2>/dev/null || { echo "orchestrate: Notes werden bereits geschrieben" >&2; return 1; }
@@ -334,7 +325,7 @@ append_failure_note() {
     echo '- source: orchestrator'
     echo '- confidence: observed'
     echo '- status: active'
-    echo '- evidence: `docs/verification/latest.md`'
+    echo "- evidence: \`docs/verification/$task_id.md\`"
     echo "- finding: $finding"
   } >> "$temp"
   agent_atomic_write "$notes_file" "$temp" || { rm -f "$temp"; rmdir "$lock"; return 1; }
@@ -344,8 +335,7 @@ append_failure_note() {
 
 record_failure() {
   attempts=$(ledger_scalar "$task_file" attempts) || return 1
-  max_attempts=$(task_max_attempts) || return 1
-  [ "$attempts" -lt "$max_attempts" ] || return 1
+  [ "$attempts" -lt "$max_task_attempts" ] || return 1
   new_attempts=$((attempts + 1))
   validate_task_candidate() { "$validator" --project-dir "$project_dir" --task-file "$1" >/dev/null; }
   ledger_atomic_replace_scalar "$task_file" attempts "$new_attempts" validate_task_candidate || return 1
@@ -398,7 +388,7 @@ progress_fingerprint() {
   : > "$task_state"
   while IFS= read -r file; do
     [ -n "$file" ] || continue
-    printf '%s|%s|%s\n' "$(ledger_scalar "$file" id)" "$(ledger_scalar "$file" status)" "$(ledger_scalar "$file" last_verification)" >> "$task_state"
+    printf '%s|%s\n' "$(ledger_scalar "$file" id)" "$(ledger_scalar "$file" status)" >> "$task_state"
   done <<EOF
 $(ledger_task_files "$tasks_dir")
 EOF
@@ -539,7 +529,7 @@ managed_loop() {
         run_finalizer "$reason"
         return 1 ;;
       done)
-        [ "$(ledger_scalar "$task_file" last_verification)" = green ] && ledger_verification_is_green "$verification_dir" "$task_id" "$project_dir" "$task_file" || {
+        ledger_verification_is_green "$verification_dir" "$task_id" "$project_dir" "$task_file" || {
           echo "orchestrate: Manager meldete done ohne grünen Prüfbeleg" >&2
           run_state_set phase failed || true
           return 1
@@ -556,8 +546,7 @@ managed_loop() {
     # Der letzte erlaubte Versuch laeuft immer fresh: eine Runde ohne die
     # Vorgeschichte, die bis hierher nicht getragen hat.
     attempts=$(ledger_scalar "$task_file" attempts) || return 1
-    attempt_limit=$(task_max_attempts) || return 1
-    if [ "$worker_kind" = fresh ] || [ "$((attempts + 1))" -ge "$attempt_limit" ]; then
+    if [ "$worker_kind" = fresh ] || [ "$((attempts + 1))" -ge "$max_task_attempts" ]; then
       run_fresh_attempt || return 1
     else
       run_role worker-task "$task_id" work || return 1

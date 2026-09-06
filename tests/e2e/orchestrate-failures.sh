@@ -61,7 +61,7 @@ expect_failure "Abgeschnittene Antwort wird nicht ausgewertet" env ORCHESTRATOR_
 assert_eq "Abgeschnittene Antwort markiert Lauf failed" failed "$(fixture_run_state phase)"
 assert_eq "Abgeschnittene Antwort gilt nicht als Providerfehler" 1 "$(sed -n '1p' "$fixture/.agent-runs/fake/worker-task.count")"
 
-new_app_fixture --attempts 3 --max-attempts 9
+new_app_fixture --attempts 3
 expect_failure "Globales Versuchslimit bleibt trotz höherem Taskwert hart" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
 assert_eq "Versuchslimit startet keinen Worker" todo "$(ledger_scalar "$fixture/docs/tasks/017.md" status)"
 

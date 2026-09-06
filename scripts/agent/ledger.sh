@@ -6,142 +6,141 @@ set -uo pipefail
 
 . "$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
+# Trennzeichen der Parserausgabe. Als Variable, damit `read` ohne Umweg damit
+# arbeiten kann.
+ledger_tab=$'\t'
+ledger_newline=$'\n'
+
 ledger_error() {
   echo "ledger: $1" >&2
   return 1
 }
 
-ledger_known_scalar() {
-  case "$1" in
-    id|title|status|class|orchestration|attempts|max_attempts|last_verification|human_review|blocked_reason|run_id|task_id|attempt|result|candidate_fingerprint|verifier_version|failure_kind) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-ledger_known_list() {
-  case "$1" in
-    depends_on|features|acceptance|touches|risk_flags) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-ledger_has_frontmatter() {
+# ledger_parse DATEI [FELD]
+#
+# Liest eine Ledger-Datei in genau einem awk-Durchlauf. Ohne FELD steht je Wert
+# eine Zeile "<schluessel><TAB><wert>" auf der Standardausgabe; mit FELD nur die
+# Werte dieses Feldes, ohne Schluessel und ohne Tabulator.
+#
+# Ein skalares Feld liefert genau eine Zeile. Ein Listenfeld liefert eine Zeile
+# je Eintrag, eine leere Liste genau eine Zeile mit leerem Wert. Ueberschriften
+# der Ebene 1 im Rumpf erscheinen unter dem Schluessel `#`; als Feldname ist er
+# ausgeschlossen, weil Schluessel mit einem Buchstaben beginnen muessen.
+#
+# Rueckgabe: 0 bei gueltigem Frontmatter, 1 bei fehlendem oder unzulaessigem
+# Frontmatter (mit Meldung auf der Standardfehlerausgabe), 4 wenn FELD gesetzt
+# ist und die Datei dieses Feld nicht kennt.
+ledger_parse() {
   file=$1
-  [ -f "$file" ] || return 1
-  awk '
-    NR == 1 && $0 != "---" { exit 1 }
-    NR > 1 && $0 == "---" { found=1; exit }
-    END { if (!found) exit 1 }
-  ' "$file"
-}
-
-ledger_frontmatter() {
-  file=$1
-  ledger_has_frontmatter "$file" || { ledger_error "Frontmatter fehlt oder ist unvollstaendig: $file"; return 1; }
-  awk 'NR == 1 { next } $0 == "---" { exit } { print }' "$file"
-}
-
-ledger_unquote() {
-  value=$1
-  value=$(printf '%s\n' "$value" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-  case "$value" in
-    \"*\") value=${value#\"}; value=${value%\"} ;;
-    \'*\') value=${value#\'}; value=${value%\'} ;;
-    *) value=$(printf '%s\n' "$value" | sed 's/[[:space:]]#.*$//; s/[[:space:]]*$//') ;;
-  esac
-  printf '%s\n' "$value"
-}
-
-ledger_scalar() {
-  file=$1
-  key=$2
-  ledger_known_scalar "$key" || { ledger_error "unbekanntes Einzelfeld: $key"; return 2; }
-  raw=$(ledger_frontmatter "$file" | awk -v wanted="$key" '
-    index($0, wanted ":") == 1 {
-      if (found) exit 3
-      found=1
-      print substr($0, length(wanted) + 2)
-    }
-    END { if (!found) exit 4 }
-  ') || { ledger_error "Feld $key fehlt oder ist doppelt in $file"; return 1; }
-  ledger_unquote "$raw"
-}
-
-ledger_list() {
-  file=$1
-  key=$2
-  ledger_known_list "$key" || { ledger_error "unbekanntes Listenfeld: $key"; return 2; }
-  ledger_frontmatter "$file" | awk -v wanted="$key" '
+  want=${2:-}
+  [ -f "$file" ] || { ledger_error "Datei fehlt oder ist keine Datei: $file"; return 1; }
+  awk -v want="$want" -v label="$file" '
     function trim(value) {
       sub(/^[[:space:]]+/, "", value)
       sub(/[[:space:]]+$/, "", value)
       return value
     }
-    function emit(value) {
-      value=trim(value)
-      if (value ~ /^".*"$/ || value ~ /^\047.*\047$/) {
-        value=substr(value, 2, length(value)-2)
+    # Entfernt aeussere Anfuehrungszeichen; ohne sie gilt ein freistehendes
+    # "#" als Kommentarbeginn. Der Inhalt bleibt in jedem Fall reiner Text.
+    function unquote(value, first) {
+      value = trim(value)
+      first = substr(value, 1, 1)
+      if (length(value) >= 2 && (first == "\"" || first == "\047") && substr(value, length(value), 1) == first) {
+        return substr(value, 2, length(value) - 2)
       }
-      if (value != "") print value
+      sub(/[[:space:]]#.*$/, "", value)
+      return trim(value)
     }
-    BEGIN { state=0; found=0 }
-    index($0, wanted ":") == 1 {
-      if (found) exit 3
-      found=1
-      value=trim(substr($0, length(wanted) + 2))
-      if (value == "") { state=1; next }
-      if (value !~ /^\[.*\]$/) exit 4
-      value=substr(value, 2, length(value)-2)
-      count=split(value, parts, ",")
-      for (i=1; i<=count; i++) emit(parts[i])
-      state=2
+    function fail(message) {
+      print "ledger: " label ": " message > "/dev/stderr"
+      bad = 1
+    }
+    function emit(key, value) {
+      if (want == "") { print key "\t" value; return }
+      if (key != want) return
+      found = 1
+      print value
+    }
+    # Ein Listenfeld ohne Eintraege bleibt sichtbar: es liefert einen leeren Wert.
+    function close_list() {
+      if (open_list != "" && open_items == 0) emit(open_list, "")
+      open_list = ""
+      open_items = 0
+    }
+    BEGIN { state = 0; bad = 0; found = 0; open_list = ""; open_items = 0 }
+    NR == 1 {
+      if ($0 != "---") { fail("Frontmatter fehlt"); exit 1 }
+      state = 1
       next
     }
-    state == 1 && $0 ~ /^[[:space:]]+-[[:space:]]+/ {
-      value=$0
-      sub(/^[[:space:]]+-[[:space:]]+/, "", value)
-      emit(value)
+    state == 1 && $0 == "---" { close_list(); state = 2; next }
+    state == 1 {
+      if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) next
+      if ($0 ~ /^[[:space:]]+-[[:space:]]/) {
+        if (open_list == "") { fail("Listeneintrag ohne Listenfeld"); next }
+        item = $0
+        sub(/^[[:space:]]+-[[:space:]]+/, "", item)
+        item = unquote(item)
+        if (item != "") { emit(open_list, item); open_items++ }
+        next
+      }
+      if ($0 !~ /^[A-Za-z_][A-Za-z0-9_-]*:/) { fail("unbekannte Frontmatter-Form: " $0); next }
+      close_list()
+      key = $0
+      sub(/:.*/, "", key)
+      if (key in seen) { fail("doppeltes Frontmatter-Feld: " key); next }
+      seen[key] = 1
+      value = trim(substr($0, length(key) + 2))
+      if (value ~ /[{}]/ || value ~ /^[>|&*!]/) { fail("nicht unterstuetzte YAML-Form bei " key); next }
+      if (value == "") { open_list = key; open_items = 0; next }
+      if (substr(value, 1, 1) == "[") {
+        closing = index(value, "]")
+        if (closing == 0) { fail("unvollstaendige Liste bei " key); next }
+        rest = trim(substr(value, closing + 1))
+        if (rest != "" && substr(rest, 1, 1) != "#") { fail("Text nach der Liste bei " key); next }
+        count = split(substr(value, 2, closing - 2), parts, ",")
+        emitted = 0
+        for (i = 1; i <= count; i++) {
+          item = unquote(parts[i])
+          if (item != "") { emit(key, item); emitted++ }
+        }
+        if (emitted == 0) emit(key, "")
+        next
+      }
+      emit(key, unquote(value))
       next
     }
-    state == 1 { state=2 }
-    END { if (!found) exit 5 }
-  '
+    state == 2 && /^# / { emit("#", $0) }
+    END {
+      if (state != 2) { print "ledger: " label ": Frontmatter fehlt oder ist unvollstaendig" > "/dev/stderr"; exit 1 }
+      if (bad) exit 1
+      if (want != "" && !found) exit 4
+    }
+  ' "$file"
 }
 
-ledger_frontmatter_keys() {
+ledger_scalar() {
   file=$1
-  ledger_frontmatter "$file" | awk '
-    /^[A-Za-z_][A-Za-z0-9_-]*:/ {
-      key=$0
-      sub(/:.*/, "", key)
-      print key
-    }
-  '
+  key=$2
+  value=$(ledger_parse "$file" "$key") || { ledger_error "Feld $key fehlt oder ist unlesbar in $file"; return 1; }
+  case "$value" in
+    *"$ledger_newline"*) ledger_error "Feld $key traegt mehrere Werte in $file"; return 1 ;;
+  esac
+  printf '%s\n' "$value"
 }
 
-ledger_validate_frontmatter_shape() {
+ledger_list() {
   file=$1
-  ledger_has_frontmatter "$file" || return 1
-  ledger_frontmatter "$file" | awk '
-    function fail(message) { print message > "/dev/stderr"; bad=1 }
-    /^[[:space:]]*$/ || /^[[:space:]]*#/ { next }
-    /^[A-Za-z_][A-Za-z0-9_-]*:/ {
-      key=$0
-      sub(/:.*/, "", key)
-      if (seen[key]++) fail("doppeltes Frontmatter-Feld: " key)
-      value=substr($0, length(key)+2)
-      sub(/^[[:space:]]*/, "", value)
-      list_open=(value == "")
-      if (value ~ /[{}]|^[>|&*!]/) fail("nicht unterstuetzte YAML-Form bei " key)
-      next
-    }
-    /^[[:space:]]+-[[:space:]]+/ {
-      if (!list_open) fail("Listeneintrag ohne Listenfeld")
-      next
-    }
-    { fail("unbekannte Frontmatter-Form: " $0) }
-    END { exit bad ? 1 : 0 }
-  '
+  key=$2
+  ledger_parse "$file" "$key" | grep -v '^$'
+  # grep liefert 1, wenn die Liste leer ist; das ist kein Fehler.
+  [ "${PIPESTATUS[0]}" -eq 0 ]
+}
+
+# Die Ueberschriften der Ebene 1 im Rumpf, eine je Zeile.
+ledger_sections() {
+  ledger_parse "$1" '#'
+  case "$?" in 0|4) return 0 ;; *) return 1 ;; esac
 }
 
 ledger_markdown_has_section() {
@@ -184,7 +183,7 @@ ledger_candidate_fingerprint() {
       BEGIN { front=0 }
       NR == 1 && $0 == "---" { front=1; print; next }
       front && $0 == "---" { front=0; print; next }
-      front && /^(status|attempts|last_verification|blocked_reason):/ {
+      front && /^(status|attempts|blocked_reason):/ {
         key=$0; sub(/:.*/, "", key); print key ": <mutable>"; next
       }
       { print }
@@ -220,38 +219,34 @@ ledger_verifier_fingerprint() {
   done | shasum -a 256 | awk '{print $1}'
 }
 
+# Der Pruefbeleg eines Tasks ist genau eine Datei: docs/verification/<id>.md.
+# Ohne Projekt und Task-Datei zaehlt nur das gruene Ergebnis; mit beiden muss
+# der Bericht zusaetzlich zum aktuellen Kandidaten- und Verifierstand passen.
 ledger_verification_is_green() {
   verification_dir=$1
   wanted=$2
-  [ -d "$verification_dir" ] || return 1
   project_dir=${3:-}
   task_file=${4:-}
-  strict=false
-  if [ -n "$project_dir" ] && [ -n "$task_file" ]; then strict=true; fi
-  if [ "$strict" = true ]; then
-    reports=$(printf '%s\n' "$verification_dir/latest.md"; find "$verification_dir/history" -type f -name '*.md' -print 2>/dev/null | LC_ALL=C sort -r)
-    current_candidate=$(ledger_candidate_fingerprint "$project_dir" "$task_file") || return 1
-    current_verifier=$(ledger_verifier_fingerprint "$project_dir") || return 1
-  else
-    reports=$(find "$verification_dir" -type f -name '*.md' -print 2>/dev/null)
-  fi
-  while IFS= read -r report; do
-    [ -n "$report" ] || continue
-    report_task=$(ledger_scalar "$report" task_id 2>/dev/null) || continue
-    [ "$report_task" = "$wanted" ] || continue
-    report_result=$(ledger_scalar "$report" result 2>/dev/null) || { [ "$strict" = true ] && return 1; continue; }
-    [ "$report_result" = green ] || { [ "$strict" = true ] && return 1; continue; }
-    if [ "$strict" = true ]; then
-      report_candidate=$(ledger_scalar "$report" candidate_fingerprint 2>/dev/null) || return 1
-      report_verifier=$(ledger_scalar "$report" verifier_version 2>/dev/null) || return 1
-      [ "$report_candidate" = "$current_candidate" ] || return 1
-      [ "$report_verifier" = "$current_verifier" ] || return 1
-    fi
-    return 0
+  report="$verification_dir/$wanted.md"
+  [ -f "$report" ] || return 1
+  report_task=''; report_result=''; report_candidate=''; report_verifier=''
+  while IFS="$ledger_tab" read -r report_key report_value; do
+    case "$report_key" in
+      task_id) report_task=$report_value ;;
+      result) report_result=$report_value ;;
+      candidate_fingerprint) report_candidate=$report_value ;;
+      verifier_version) report_verifier=$report_value ;;
+    esac
   done <<EOF
-$reports
+$(ledger_parse "$report" 2>/dev/null)
 EOF
-  return 1
+  [ "$report_task" = "$wanted" ] || return 1
+  [ "$report_result" = green ] || return 1
+  [ -n "$project_dir" ] && [ -n "$task_file" ] || return 0
+  current_candidate=$(ledger_candidate_fingerprint "$project_dir" "$task_file") || return 1
+  current_verifier=$(ledger_verifier_fingerprint "$project_dir") || return 1
+  [ "$report_candidate" = "$current_candidate" ] || return 1
+  [ "$report_verifier" = "$current_verifier" ] || return 1
 }
 
 ledger_active_notes() {
@@ -311,9 +306,10 @@ ledger_atomic_replace_scalar() {
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   case "${1:-}" in
+    parse) [ "$#" -ge 2 ] && [ "$#" -le 3 ] || exit 2; ledger_parse "$2" "${3:-}" ;;
     scalar) [ "$#" -eq 3 ] || exit 2; ledger_scalar "$2" "$3" ;;
     list) [ "$#" -eq 3 ] || exit 2; ledger_list "$2" "$3" ;;
     active-notes) [ "$#" -eq 2 ] || exit 2; ledger_active_notes "$2" ;;
-    *) echo "Verwendung: $0 scalar DATEI FELD | list DATEI FELD | active-notes DATEI" >&2; exit 2 ;;
+    *) echo "Verwendung: $0 parse DATEI [FELD] | scalar DATEI FELD | list DATEI FELD | active-notes DATEI" >&2; exit 2 ;;
   esac
 fi

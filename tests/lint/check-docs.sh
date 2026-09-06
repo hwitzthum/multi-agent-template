@@ -11,7 +11,7 @@ begin_suite check-docs
 
 for path in \
   README.md CLAUDE.md docs/ARCHITECTURE.md \
-  docs/templates/task-template.md docs/templates/handoff-template.md \
+  docs/templates/task.md docs/templates/handoff-template.md \
   docs/templates/initializer-prompt.md docs/state/decisions.md \
   docs/state/goal.md docs/state/plan.md docs/state/notes.md \
   docs/verification/latest.md; do
@@ -41,11 +41,19 @@ for term in 'Ledger' 'Router' 'Fresh Worker' 'Status-Gate' 'Runner' 'Verifier'; 
   assert_file_has "ARCHITECTURE erklärt $term" "$project_dir/docs/ARCHITECTURE.md" "$term"
 done
 
-for field in 'orchestration: auto' 'touches: []' 'risk_flags: []' 'max_attempts: 3' 'human_review: false'; do
-  assert_file_has "Task-Vorlage enthält $field" "$project_dir/docs/templates/task-template.md" "$field"
+for field in 'orchestration: auto' 'touches: []' 'risk_flags: []' 'attempts: 0' 'human_review: false' 'blocked_reason: ""'; do
+  assert_file_has "Task-Vorlage enthält $field" "$project_dir/docs/templates/task.md" "$field"
 done
-assert_file_has "Task-Vorlage erklärt Single" "$project_dir/docs/templates/task-template.md" 'empfohlen wird `single`'
-assert_file_has "Task-Vorlage erklärt den Fresh-Versuch" "$project_dir/docs/templates/task-template.md" 'Fresh-Versuch'
+for field in 'features:' 'max_attempts:' 'last_verification:'; do
+  assert_file_lacks "Task-Vorlage trägt kein $field mehr" "$project_dir/docs/templates/task.md" "$field"
+done
+for heading in '# Kontext' '# Umfang' '# Nicht Teil dieser Aufgabe' '# Akzeptanzkriterien'; do
+  assert_file_has "Task-Vorlage hat den Pflichtabschnitt $heading" "$project_dir/docs/templates/task.md" "$heading"
+done
+assert_file_has "Task-Vorlage erklärt Single" "$project_dir/docs/templates/task.md" 'empfohlen wird `single`'
+assert_file_has "Task-Vorlage erklärt den Fresh-Versuch" "$project_dir/docs/templates/task.md" 'Fresh-Versuch'
+assert_file_has "Task-Vorlage nennt das Wiederöffnen" "$project_dir/docs/templates/task.md" './scripts/task.sh reopen'
+assert_file_has "Task-Vorlage nennt die Freigabe" "$project_dir/docs/templates/task.md" './scripts/task.sh approve'
 
 for field in 'Run-ID:' 'Verifierstatus:' 'Letzter grüner Stand:' 'Entscheidung:' 'Erster offener Fehler:'; do
   assert_file_has "Handoff-Vorlage enthält $field" "$project_dir/docs/templates/handoff-template.md" "$field"
@@ -75,6 +83,7 @@ expect_contains "state-summary --help" 'Verwendung:' "$project_dir/scripts/state
 expect_contains "verify --help" 'Verwendung:' "$project_dir/scripts/verify.sh" --help
 expect_contains "verify-task --help" 'Verwendung:' "$project_dir/scripts/verify-task.sh" --help
 expect_contains "validate-ledger --help" 'Verwendung:' "$project_dir/scripts/validate-ledger.sh" --help
+expect_contains "task --help" 'Verwendung:' "$project_dir/scripts/task.sh" --help
 expect_contains "tests/run --help" 'Verwendung:' "$tests_dir/run.sh" --help
 
 if grep -rEq --include='*.md' '(AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{20,}|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY)' "$project_dir/README.md" "$project_dir/CLAUDE.md" "$project_dir/docs"; then

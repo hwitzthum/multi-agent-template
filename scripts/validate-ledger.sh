@@ -26,13 +26,19 @@ state_dir="$project_dir/docs/state"
 verification_dir="$project_dir/docs/verification"
 errors=0
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/ledger-validation.XXXXXX") || exit 1
-trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
+trap 'rm -r -f -- "$work_dir"' EXIT HUP INT TERM
 ids_file="$work_dir/ids"
 graph_file="$work_dir/graph"
 active_file="$work_dir/active"
 : > "$ids_file"
 : > "$graph_file"
 : > "$active_file"
+
+# Das Schema in zwei Zeilen: acht Einzelfelder und vier Listen. Dazu kommen die
+# vier Pflichtabschnitte im Rumpf.
+task_scalar_fields='id title status class orchestration attempts human_review blocked_reason'
+task_list_fields='depends_on touches risk_flags acceptance'
+task_sections='# Kontext|# Umfang|# Nicht Teil dieser Aufgabe|# Akzeptanzkriterien'
 
 problem() {
   echo "Ledger ungueltig: $1" >&2
@@ -46,10 +52,13 @@ one_of() {
   return 1
 }
 
-required_list() {
-  file=$1
-  key=$2
-  ledger_list "$file" "$key" >/dev/null 2>&1 || { problem "$(basename "$file"): Pflichtliste '$key' fehlt oder ist ungueltig"; return 1; }
+# Ein Einzelfeld traegt genau einen Wert. Eine zweite Zeile aus dem Parser
+# bedeutet, dass es als Liste geschrieben wurde.
+scalar_once() {
+  case "$seen_scalars" in
+    *"|$1|"*) problem "$label: Feld '$1' traegt mehrere Werte"; return 1 ;;
+  esac
+  seen_scalars="$seen_scalars$1|"
 }
 
 validate_task() {
@@ -57,37 +66,40 @@ validate_task() {
   # Zweites Argument: der Name, unter dem der Task im Ledger liegt. Leer bei
   # einer Kandidatendatei, die noch unter einem Temporaernamen geprueft wird.
   expected_name=${2:-}
-  label=$(basename "$file")
-  ledger_validate_frontmatter_shape "$file" >/dev/null 2>&1 || problem "$label: Frontmatter verwendet eine unzulaessige oder doppelte Form"
+  label=${file##*/}
+  id=''; title=''; status=''; class=''; orchestration=''; attempts=''
+  human_review=''; blocked_reason=''; deps=''; flags=''
+  seen_scalars='|'; seen_lists='|'; sections=$ledger_newline
 
-  id=$(ledger_scalar "$file" id 2>/dev/null) || { problem "$label: Pflichtfeld 'id' fehlt oder ist doppelt"; id=''; }
-  title=$(ledger_scalar "$file" title 2>/dev/null) || { problem "$label: Pflichtfeld 'title' fehlt oder ist doppelt"; title=''; }
-  status=$(ledger_scalar "$file" status 2>/dev/null) || { problem "$label: Pflichtfeld 'status' fehlt oder ist doppelt"; status=''; }
-  class=$(ledger_scalar "$file" class 2>/dev/null) || { problem "$label: Pflichtfeld 'class' fehlt oder ist doppelt"; class=''; }
-  orchestration=$(ledger_scalar "$file" orchestration 2>/dev/null) || { problem "$label: Pflichtfeld 'orchestration' fehlt oder ist doppelt"; orchestration=''; }
-  attempts=$(ledger_scalar "$file" attempts 2>/dev/null) || { problem "$label: Pflichtfeld 'attempts' fehlt oder ist doppelt"; attempts=''; }
-  max_attempts=$(ledger_scalar "$file" max_attempts 2>/dev/null) || { problem "$label: Pflichtfeld 'max_attempts' fehlt oder ist doppelt"; max_attempts=''; }
-  verification=$(ledger_scalar "$file" last_verification 2>/dev/null) || { problem "$label: Pflichtfeld 'last_verification' fehlt oder ist doppelt"; verification=''; }
-  human_review=$(ledger_scalar "$file" human_review 2>/dev/null) || { problem "$label: Pflichtfeld 'human_review' fehlt oder ist doppelt"; human_review=''; }
-  ledger_scalar "$file" blocked_reason >/dev/null 2>&1 || problem "$label: Pflichtfeld 'blocked_reason' fehlt oder ist doppelt"
-  required_list "$file" depends_on || true
-  required_list "$file" features || true
-  required_list "$file" acceptance || true
-  if ledger_frontmatter_keys "$file" | grep -Fxq touches; then
-    ledger_list "$file" touches >/dev/null 2>&1 || problem "$label: touches muss eine einfache Liste sein"
-  fi
-  if ledger_frontmatter_keys "$file" | grep -Fxq risk_flags; then
-    if flags=$(ledger_list "$file" risk_flags 2>/dev/null); then
-      while IFS= read -r flag; do
-        [ -n "$flag" ] || continue
-        one_of "$flag" high-risk cross-component repeated-failure || problem "$label: unbekanntes risk_flag '$flag'"
-      done <<EOF
-$flags
+  # Ein awk-Durchlauf liefert Frontmatter und Rumpfueberschriften zusammen.
+  parsed=$(ledger_parse "$file") || { problem "$label: Frontmatter fehlt oder ist unzulaessig"; return 0; }
+  while IFS="$ledger_tab" read -r key value; do
+    case "$key" in
+      '#') sections="$sections$value$ledger_newline" ;;
+      id) scalar_once id && id=$value ;;
+      title) scalar_once title && title=$value ;;
+      status) scalar_once status && status=$value ;;
+      class) scalar_once class && class=$value ;;
+      orchestration) scalar_once orchestration && orchestration=$value ;;
+      attempts) scalar_once attempts && attempts=$value ;;
+      human_review) scalar_once human_review && human_review=$value ;;
+      blocked_reason) scalar_once blocked_reason && blocked_reason=$value ;;
+      depends_on) seen_lists="${seen_lists}depends_on|"; [ -z "$value" ] || deps="$deps $value" ;;
+      touches) seen_lists="${seen_lists}touches|" ;;
+      risk_flags) seen_lists="${seen_lists}risk_flags|"; [ -z "$value" ] || flags="$flags $value" ;;
+      acceptance) seen_lists="${seen_lists}acceptance|" ;;
+      *) problem "$label: unbekanntes Frontmatter-Feld '$key'" ;;
+    esac
+  done <<EOF
+$parsed
 EOF
-    else
-      problem "$label: risk_flags muss eine einfache Liste sein"
-    fi
-  fi
+
+  for required in $task_scalar_fields; do
+    case "$seen_scalars" in *"|$required|"*) ;; *) problem "$label: Pflichtfeld '$required' fehlt" ;; esac
+  done
+  for required in $task_list_fields; do
+    case "$seen_lists" in *"|$required|"*) ;; *) problem "$label: Pflichtliste '$required' fehlt" ;; esac
+  done
 
   case "$id" in ''|*[!0-9]*) problem "$label: id muss nur aus Ziffern bestehen" ;; esac
   # Der Dateiname ist der Schluessel: nur so bleibt der Lookup ein Dateitest.
@@ -96,24 +108,26 @@ EOF
   one_of "$status" todo in_progress review done blocked || problem "$label: unbekannter status '$status'"
   one_of "$class" mechanical patterned open || problem "$label: unbekannte class '$class'"
   one_of "$orchestration" auto single verified managed || problem "$label: unbekannte orchestration '$orchestration'"
-  one_of "$verification" never green red || problem "$label: unbekannte last_verification '$verification'"
   one_of "$human_review" true false || problem "$label: human_review muss true oder false sein"
   case "$attempts" in ''|*[!0-9]*) problem "$label: attempts muss eine nichtnegative ganze Zahl sein" ;; esac
-  case "$max_attempts" in ''|*[!0-9]*|0) problem "$label: max_attempts muss eine positive ganze Zahl sein" ;; esac
-  if case "$attempts:$max_attempts" in *[!0-9:]*) false ;; *) true ;; esac; then
-    [ "$attempts" -le "$max_attempts" ] || problem "$label: attempts ($attempts) ist groesser als max_attempts ($max_attempts)"
-  fi
-
-  for heading in '# Kontext' '# Umfang' '# Nicht Teil dieser Aufgabe' '# Akzeptanzkriterien (über die acceptance-Befehle hinaus)'; do
-    ledger_markdown_has_section "$file" "$heading" || problem "$label: Pflichtabschnitt '$heading' fehlt"
+  for flag in $flags; do
+    one_of "$flag" high-risk cross-component repeated-failure || problem "$label: unbekanntes risk_flag '$flag'"
   done
 
+  old_ifs=$IFS
+  IFS='|'
+  for heading in $task_sections; do
+    case "$sections" in
+      *"$ledger_newline$heading$ledger_newline"*) ;;
+      *) problem "$label: Pflichtabschnitt '$heading' fehlt" ;;
+    esac
+  done
+  IFS=$old_ifs
+
   if [ "$status" = blocked ]; then
-    reason=$(ledger_scalar "$file" blocked_reason 2>/dev/null || true)
-    [ -n "$reason" ] || problem "$label: blocked benoetigt einen blocked_reason"
+    [ -n "$blocked_reason" ] || problem "$label: blocked benoetigt einen blocked_reason"
   fi
   if [ "$status" = done ]; then
-    [ "$verification" = green ] || problem "$label: done ist nur mit last_verification: green erlaubt"
     # Der strikte Fingerprint-Vergleich gehoert an den Statusuebergang (status.sh).
     # Nach dem Uebergang aendern spaetere Tasks das Produkt; ein erledigter Task
     # bleibt gueltig, solange ein gruener Bericht fuer ihn existiert.
@@ -123,7 +137,6 @@ EOF
   if [ -n "$id" ]; then
     printf '%s\n' "$id" >> "$ids_file"
     [ "$status" != in_progress ] || printf '%s\n' "$id" >> "$active_file"
-    deps=$(ledger_list "$file" depends_on 2>/dev/null | tr '\n' ' ' || true)
     printf '%s|%s\n' "$id" "$deps" >> "$graph_file"
   fi
 }
@@ -131,7 +144,7 @@ EOF
 validate_task_set() {
   files=$(ledger_task_files "$tasks_dir")
   while IFS= read -r file; do
-    [ -n "$file" ] && validate_task "$file" "$(basename "$file")"
+    [ -n "$file" ] && validate_task "$file" "${file##*/}"
   done <<EOF
 $files
 EOF
@@ -152,23 +165,25 @@ EOF
     done
   done < "$graph_file"
 
-  cp "$graph_file" "$work_dir/remaining"
-  while [ -s "$work_dir/remaining" ]; do
-    removable=''
-    while IFS='|' read -r id deps; do
-      ready=true
-      for dep in $deps; do
-        grep -q "^${dep}|" "$work_dir/remaining" && ready=false
-      done
-      if [ "$ready" = true ]; then removable=$id; break; fi
-    done < "$work_dir/remaining"
-    if [ -z "$removable" ]; then
-      problem "Abhaengigkeitsgraph enthaelt einen Zyklus"
-      break
-    fi
-    awk -F '|' -v remove="$removable" '$1 != remove' "$work_dir/remaining" > "$work_dir/next"
-    mv "$work_dir/next" "$work_dir/remaining"
-  done
+  # Zyklensuche als eine Kahn-Sortierung in awk statt als Schleife aus Prozessen.
+  cycle=$(awk -F '|' '
+    { id[NR]=$1; deps[NR]=$2; open[$1]=1; total=NR }
+    END {
+      removed=1
+      while (removed) {
+        removed=0
+        for (i=1; i<=total; i++) {
+          if (!open[id[i]]) continue
+          ready=1
+          count=split(deps[i], parts, " ")
+          for (j=1; j<=count; j++) if (parts[j] != id[i] && open[parts[j]]) ready=0
+          if (ready) { open[id[i]]=0; removed=1 }
+        }
+      }
+      for (i=1; i<=total; i++) if (open[id[i]]) { print "zyklus"; exit }
+    }
+  ' "$graph_file")
+  [ -z "$cycle" ] || problem "Abhaengigkeitsgraph enthaelt einen Zyklus"
 }
 
 validate_ledger_files() {
@@ -176,8 +191,6 @@ validate_ledger_files() {
     [ -f "$state_dir/$file" ] || problem "Ledger-Datei docs/state/$file fehlt"
   done
   [ -f "$verification_dir/latest.md" ] || problem "docs/verification/latest.md fehlt"
-  [ -d "$verification_dir/history" ] || problem "docs/verification/history fehlt"
-  [ -d "$state_dir/notes-archive" ] || problem "docs/state/notes-archive fehlt"
   [ -f "$state_dir/goal.md" ] && for heading in '# Ziel' '## Ergebnis' '## Muss' '## Nicht Teil' '## Globale Abnahme'; do
     ledger_markdown_has_section "$state_dir/goal.md" "$heading" || problem "goal.md: Pflichtabschnitt '$heading' fehlt"
   done

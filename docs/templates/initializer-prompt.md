@@ -29,12 +29,11 @@ Erzeuge genau:
    - `docs/state/plan.md` mit der knappen Gesamtstrategie;
    - `docs/state/notes.md` nur mit bereits belegten Startfakten;
    - `docs/verification/latest.md` mit `result: never` sowie die Ordner
-     `docs/tasks/`, `docs/verification/history/` und
-     `docs/state/notes-archive/`.
+     `docs/tasks/` und `docs/verification/`.
      Nutze die vorhandenen Dateien und Schemata als Vorlage und führe keine
      zweite Aufgabenquelle neben `docs/tasks/` ein.
 
-1. docs/tasks/*.md — Aufgaben nach docs/templates/task-template.md, eine
+1. docs/tasks/*.md — Aufgaben nach docs/templates/task.md, eine
    pro Datei. depends_on nur bei ECHTER technischer Abhängigkeit, keine
    Reihenfolge-Präferenzen. human_review: true bei allem Visuellen oder
    Textlichen. Jede Aufgabe in einer Sitzung schaffbar. Jede hat einen
@@ -66,7 +65,7 @@ Erzeuge genau:
    scripts/verify-task.sh und alles unter scripts/agent/ sind fertige,
    getestete Orchestrierung (tests/orchestrator/). Sie lesen das Ledger über
    scripts/agent/ledger.sh und brauchen keine Anpassung an den Stack.
-Der Laufzustand ist unversioniert: er liegt unter .agent-runs/ und
+   Der Laufzustand ist unversioniert: er liegt unter .agent-runs/ und
    gehört nicht ins Ledger.
 
 4. Skelett: Verzeichnisstruktur, Toolchain, Toolchain-Manifest (z.B.

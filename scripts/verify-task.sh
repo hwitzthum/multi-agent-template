@@ -68,7 +68,7 @@ log_file="$run_dir/attempt-$attempt.log"
 verification_dir="$project_dir/docs/verification"
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/verify-task.XXXXXX") || exit 1
 trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
-mkdir -p "$run_dir" "$verification_dir/history" || exit 1
+mkdir -p "$run_dir" "$verification_dir" || exit 1
 : > "$log_file"
 status_file="$work_dir/stages"
 : > "$status_file"
@@ -371,20 +371,13 @@ write_report() {
     echo
     echo "\`.agent-runs/$run_id/verify/attempt-$attempt.log\`"
   } > "$report_temp"
-  history="$verification_dir/history/$run_id-attempt-$(printf '%06d' "$attempt").md"
-  agent_atomic_write "$history" "$report_temp" && agent_atomic_write "$verification_dir/latest.md" "$report_temp"
+  # Der Beleg eines Tasks liegt unter seiner ID; `latest.md` ist die Kopie des
+  # zuletzt geschriebenen Berichts fuer den schnellen Blick.
+  agent_atomic_write "$verification_dir/$task_id.md" "$report_temp" \
+    && agent_atomic_write "$verification_dir/latest.md" "$report_temp"
 }
 
 write_report || { echo 'verify: RED'; exit 1; }
-
-validate_task_candidate() {
-  "$script_dir/validate-ledger.sh" --project-dir "$project_dir" --task-file "$1" >/dev/null
-}
-if ! ledger_atomic_replace_scalar "$task_file" last_verification "$overall" validate_task_candidate; then
-  record_failure verifier 'status: last_verification konnte nicht atomar aktualisiert werden'
-  finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  write_report || true
-fi
 
 if [ "$overall" = green ]; then echo 'verify: GREEN'; exit 0; fi
 echo 'verify: RED'

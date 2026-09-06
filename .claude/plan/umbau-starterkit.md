@@ -14,7 +14,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | gemergt | 424   | 2026-09-06 |
 | F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | gemergt | 402   | 2026-09-06 |
 | F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | gemergt | 395   | 2026-09-06 |
-| F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | offen  | –     | –          |
+| F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | umgesetzt | 449 | –          |
 | F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | offen  | –     | –          |
 | F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | offen  | –     | –          |
 | F8  | Prüftor verschlanken                     | `refactor/verify-gate`            | offen  | –     | –          |
@@ -27,6 +27,11 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F5 · Frontmatter auf zwölf Felder gekürzt, Parser auf einen
+  awk-Durchlauf gestellt (60 Tasks 9,2 s → 0,3 s), Prüfbeleg je Task unter
+  `docs/verification/<id>.md`, `scripts/task.sh reopen|approve` als einzige
+  menschliche Übergänge ·
+  `./scripts/verify.sh` → `tests: GREEN (449 Zusicherungen in 24 Dateien)`
 - 2026-09-06 · F4 · Nach `main` gemergt (`6ac7fd2`), Suite auf `main` grün ·
   `./scripts/verify.sh` → `tests: GREEN (395 Zusicherungen in 23 Dateien)`
 - 2026-09-06 · F4 · Laufzustand nach `.agent-runs/<run>/run.env` verlegt,
@@ -643,31 +648,91 @@ Review:
 
 ### F5 · Ledger-Schema und Task-Kommandos
 
-Branch `refactor/ledger-schema` · Status: **offen**
+Branch `refactor/ledger-schema` · Status: **umgesetzt**
 
 Ziel: Schlankes Frontmatter, schneller Parser, menschliche Übergänge als Kommandos.
 
 Aufgaben:
 
-- [ ] Felder entfernen: `features`, `last_verification`, `max_attempts`, `route_*`,
+- [x] Felder entfernen: `features`, `last_verification`, `max_attempts`, `route_*`,
       `PROMPT_VERSION` (Config); Feld-Whitelist in `ledger.sh` entfernen
-- [ ] Ein awk-Durchlauf pro Datei (`key<TAB>value`), Bash-3.2-kompatibel
-- [ ] `status.sh`: Übergangstabelle, CAS-Prüfung, Human-Gate übernehmen; neu
+- [x] Ein awk-Durchlauf pro Datei (`key<TAB>value`), Bash-3.2-kompatibel
+- [x] `status.sh`: Übergangstabelle, CAS-Prüfung, Human-Gate übernehmen; neu
       `blocked→todo` nur mit `--human-approved`; Grünprüfung über
       `docs/verification/<id>.md`
-- [ ] `verify-task.sh` schreibt `docs/verification/<id>.md` + `latest.md`; `history/`
+- [x] `verify-task.sh` schreibt `docs/verification/<id>.md` + `latest.md`; `history/`
       und `notes-archive/` entfallen
-- [ ] `scripts/task.sh reopen N | approve N`
-- [ ] `docs/templates/task.md` an das Schema anpassen; Validator an Schema und
+- [x] `scripts/task.sh reopen N | approve N`
+- [x] `docs/templates/task.md` an das Schema anpassen; Validator an Schema und
       Pflichtabschnitte anpassen
 
 Abnahme:
 
-- [ ] Tests: `done` nur mit aktuellen Fingerprints; Änderung an `touches`-Datei oder
+- [x] Tests: `done` nur mit aktuellen Fingerprints; Änderung an `touches`-Datei oder
       `verify.sh` widerruft; `review`-Pfad; `reopen`/`approve`
-- [ ] `validate-ledger` mit 60 Tasks < 1 s
+      (`tests/integration/verify-gate.sh`, `tests/integration/task-commands.sh`)
+- [x] `validate-ledger` mit 60 Tasks < 1 s (gemessen 0,28–0,65 s; als Zusicherung
+      in `tests/integration/ledger-validation.sh`)
 
-Review: –
+Review:
+
+- Das Frontmatter trägt genau zwölf Felder: `id title status class orchestration
+  attempts human_review blocked_reason` als Einzelwerte und `depends_on touches
+  risk_flags acceptance` als Listen. Alle zwölf sind Pflicht — `touches` und
+  `risk_flags` waren vorher optional. Ein dreizehntes Feld ist ein Fehler; damit
+  fällt ein altes `features:` oder `max_attempts:` beim ersten Validatorlauf auf,
+  statt still liegen zu bleiben.
+- `ledger.sh` kennt keine Feldnamen mehr. `ledger_parse` liest eine Datei in
+  einem awk-Durchlauf und gibt je Wert eine Zeile `schlüssel<TAB>wert` aus;
+  Rumpfüberschriften der Ebene 1 erscheinen unter dem Schlüssel `#`, der als
+  Feldname ausgeschlossen ist. Ein Einzelfeld liefert genau eine Zeile, eine
+  leere Liste genau eine Zeile mit leerem Wert — daran unterscheidet der
+  Validator «fehlt» von «ist leer». Welche Felder gelten, entscheidet allein
+  `validate-ledger.sh`.
+- Der Validator liest damit pro Task eine Datei mit einem Prozess statt mit rund
+  75. 60 Tasks: 9,2 s → 0,28 s warm, 0,65 s kalt. Zwei weitere Stellen trugen
+  bei: `basename` ist durch `${file##*/}` ersetzt, und die Zyklensuche ist eine
+  Kahn-Sortierung in einem awk statt einer Schleife aus je einem `awk` und `mv`
+  pro Task.
+- Der Prüfbeleg liegt jetzt je Aufgabe unter `docs/verification/<id>.md`;
+  `latest.md` ist nur noch die Kopie des zuletzt geschriebenen Berichts.
+  `history/` entfällt: die Historie stand bereits im Log unter `.agent-runs/`,
+  und die versionierte Kopie wuchs mit jedem Versuch. `docs/state/notes-archive/`
+  ist ebenfalls weg — der Ordner hatte seit F1 keinen Schreiber mehr.
+- `last_verification` ist ersatzlos gestrichen. Der Prüfstand stand doppelt: im
+  Task und im Bericht. Das Feld war ein Duplikat, das nur der Verifier schreiben
+  durfte, und der Statusübergang prüfte ohnehin zusätzlich den Bericht. Jetzt
+  gibt es eine Quelle: `docs/verification/<id>.md`. `verify-task.sh` schreibt
+  seitdem keine Task-Datei mehr an.
+- `max_attempts` im Task ist gestrichen: das Limit stand an zwei Orten, und der
+  Orchestrator hat den kleineren der beiden Werte genommen — der Taskwert konnte
+  das Limit also nur senken, nie heben. Jetzt gilt `MAX_TASK_ATTEMPTS` aus
+  `.agent/config.env` allein.
+- Neu ist der Übergang `blocked → todo`. Er existierte vorher gar nicht: eine
+  blockierte Aufgabe war eine Sackgasse. Er ist an `--human-approved` gebunden,
+  weil der Orchestrator sonst genau den Lauf wiederholen würde, der sie
+  blockiert hat.
+- `scripts/task.sh` (49 Zeilen) ist der menschliche Zugang zu den beiden
+  Übergängen, die kein Agent auslösen darf: `reopen <id>` öffnet eine blockierte
+  Aufgabe und räumt dabei `blocked_reason` weg, `approve <id>` gibt eine Aufgabe
+  im Review frei. Beide gehen durch dasselbe Status-Gate wie jeder andere
+  Übergang; das Skript setzt nur die menschliche Freigabe.
+- Die Task-Vorlage hiess `task-template.md` und heisst jetzt `task.md`. Sie
+  hatte ausserdem einen Fehler: `touches: [] # Pfade …` — ein Kommentar hinter
+  einer Liste hat den Leser bisher scheitern lassen. Eine Aufgabe, die jemand
+  wörtlich aus der Vorlage abgeschrieben hätte, wäre ungültig gewesen. Der
+  Parser erlaubt den Kommentar jetzt nach der schliessenden Klammer, und die
+  Vorlage erklärt jedes Feld in einer eigenen Zeile.
+- Der Pflichtabschnitt heisst `# Akzeptanzkriterien` statt
+  `# Akzeptanzkriterien (über die acceptance-Befehle hinaus)`; der Zusatz steht
+  jetzt als Fliesstext darunter. `# Offene Frage` ist als optionaler Abschnitt
+  in der Vorlage vorgesehen — F6 füllt ihn.
+- Bewusst nicht angefasst: `scripts/agent/status.sh` bleibt unter `agent/`,
+  obwohl die Zielstruktur `scripts/status.sh` nennt; der Umzug gehört nicht zu
+  diesem Feature. `context.sh` liest weiter `latest.md` statt `<id>.md` — F6
+  baut den Kontext ohnehin neu. In `tests/integration/verify-gate.sh` stehen elf
+  Aufrufe eines `make_active_run`, das es seit F4 nicht mehr gibt; sie tun
+  nichts und gehören zum Aufräumen von F6.
 
 ### F6 · JSON-Ergebnisse, drei Rollen, Eskalation
 
