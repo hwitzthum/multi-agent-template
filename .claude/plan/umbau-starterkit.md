@@ -17,7 +17,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | gemergt   | 449   | 2026-09-06 |
 | F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | gemergt   | 547   | 2026-09-06 |
 | F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | gemergt   | 666   | 2026-09-06 |
-| F8  | Prüftor verschlanken                     | `refactor/verify-gate`            | offen     | –     | –          |
+| F8  | Prüftor verschlanken                     | `refactor/verify-gate`            | geprüft   | 677   | –          |
 | F9  | Dokumentation                            | `docs/architecture`               | offen     | –     | –          |
 
 Reihenfolge ist verbindlich (jedes Feature setzt auf dem vorigen auf). Vor jedem
@@ -27,6 +27,11 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F8 · Prüftor auf einen Ablauf verschlankt: Stufen-Taxonomie,
+  benannte Runner, Syntax-Stufe und `touches`-Prüfung entfernt, Allowlist
+  generisch und als kommentiertes Beispiel ausgeliefert ·
+  `./scripts/verify.sh` → `tests: GREEN (677 Zusicherungen in 28 Dateien)`;
+  `wc -l scripts/verify-task.sh` → `198` (vorher 384)
 - 2026-09-06 · F7 · Nach `main` gemergt (`f3cf2f6`), Suite auf `main` grün ·
   `./scripts/verify.sh` → `tests: GREEN (666 Zusicherungen in 28 Dateien)`
 - 2026-09-06 · F7 · Zwei Runner hinter einem Vertrag: Claude-Adapter mit
@@ -947,27 +952,66 @@ Review:
 
 ### F8 · Prüftor verschlanken
 
-Branch `refactor/verify-gate` · Status: **offen**
+Branch `refactor/verify-gate` · Status: **geprüft**
 
 Ziel: `verify-task.sh` ≤200 Zeilen, ein Ablauf: Befehle prüfen, ausführen,
 Bericht schreiben.
 
 Aufgaben:
 
-- [ ] Entfernen: Stufen-Taxonomie, `classify_command`, `run_planned_stage`, benannte
+- [x] Entfernen: Stufen-Taxonomie, `classify_command`, `run_planned_stage`, benannte
       Runner (`.agent/verification-runners`), Syntax-Stage (`bash -n`, `py_compile`),
       `touches`-Prüfung über `git status`
-- [ ] Übernehmen: `split_command`, `normalize_command`, `command_allowed`, `step`,
+- [x] Übernehmen: `split_command`, `normalize_command`, `command_allowed`, `step`,
       `record_failure`, `write_report`, `failure_kind`
-- [ ] Default-Allowlist generisch; `.agent/verification-allowlist` als Beispiel
+- [x] Default-Allowlist generisch; `.agent/verification-allowlist` als Beispiel
       ausliefern
 
 Abnahme:
 
-- [ ] Tests: Metazeichen und fremde Präfixe abgewiesen; fehlender Befehl =
+- [x] Tests: Metazeichen und fremde Präfixe abgewiesen; fehlender Befehl =
       Verifier-Fehler; Timeout = Verifier-Fehler; Fingerprints im Bericht
 
-Review: –
+Review:
+
+- `verify-task.sh` ist von 384 auf 198 Zeilen geschrumpft und hat nur noch einen
+  Ablauf: jeden `acceptance`-Befehl prüfen, ausführen, eine Ergebniszeile
+  schreiben. Der Bericht nennt statt sieben erfundener Stufen die tatsächlich
+  gelaufenen Befehle (`- acceptance-2: TIMEOUT`). Die Stufen waren ohnehin
+  geraten — `classify_command` hat `pytest` zu `unit` und alles Unbekannte zu
+  `acceptance` erklärt, ohne dass irgendjemand die Einteilung gelesen hat.
+- Die Ledger-Stufe ist ersatzlos entfallen, und das ist kein Loch: Der
+  Orchestrator validiert den ganzen Graphen beim Laufstart, und das Status-Gate
+  validiert den Task bei **jedem** Schreibvorgang. Ein `done` mit kaputtem
+  Ledger war also nie nur über das Prüftor zu haben.
+- Ebenso entfallen ist die `touches`-Prüfung über `git status`. Sie war die
+  zweite, schwächere Kopie der Umfangskontrolle: Der Orchestrator vergleicht
+  Manifeste, setzt Pfade ausserhalb des Umfangs zurück und stellt sie unter
+  `.agent-runs/<run>/quarantine/`. Die Prüfung im Prüftor lief zudem nur mit
+  vorhandenem `HEAD` und hat den Befund als Produktfehler ausgewiesen, obwohl
+  der Kandidat inhaltlich grün sein konnte.
+- Die Syntax-Stufe (`bash -n` über `scripts/` und `tests/`, `py_compile` über
+  alle `.py`) war der einzige Rest, der einen Stack vorwegnahm. Sie gehört in
+  das `scripts/verify.sh` des jeweiligen Projekts, nicht in das Gerüst.
+- Benannte Runner (`.agent/verification-runners`, `runner:name`) sind weg. Ein
+  Task kann seinen Befehl direkt in `acceptance` schreiben; die Indirektion hat
+  nur eine zweite Konfigurationsdatei und ein zweites Parserformat gekostet.
+- Die Standard-Allowlist ist generisch geworden: `./scripts/verify.sh npm pytest
+  go cargo make` statt der bisherigen Python-Schlagseite (`ruff`, `mypy`,
+  `python -m …`). Verglichen wird jetzt einheitlich auf Wortgrenze — `go`
+  erlaubt `go test`, aber nicht `gofmt`. Wer `ruff` braucht, trägt es in
+  `.agent/verification-allowlist` ein; die Datei liegt als kommentiertes
+  Beispiel mit genau den Standardwerten bei und ersetzt die eingebaute Liste
+  vollständig.
+- Eine Verhaltensänderung, die auffallen kann: Das Pflicht-`./scripts/verify.sh`
+  läuft jetzt in Ledger-Reihenfolge, nicht mehr am Ende einer Stufenkette. Nennt
+  ein Task es nicht selbst, wird es angehängt.
+- Das Human Gate erscheint nicht mehr im Prüfbericht. Es hat dort nie
+  entschieden; `status.sh` verlangt für `human_review: true` weiterhin die
+  ausdrückliche Freigabe, und genau das prüft die Suite.
+- `docs/ARCHITECTURE.md` ist im Abschnitt «Verification Gateway» mitgezogen
+  worden, weil die alte Beschreibung sonst aktiv falsch gewesen wäre. Die
+  vollständige Doku-Runde bleibt F9.
 
 ### F9 · Dokumentation
 

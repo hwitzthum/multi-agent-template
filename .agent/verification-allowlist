@@ -1,0 +1,15 @@
+# Erlaubte Präfixe für die `acceptance`-Befehle eines Tasks. Diese Datei ersetzt
+# die eingebaute Standardliste vollständig und kann sie damit verschärfen oder
+# um die Werkzeuge des eigenen Stacks erweitern. Fehlt sie, gelten genau die
+# unten stehenden generischen Präfixe.
+#
+# Ein Eintrag ist ein Befehlspräfix, verglichen auf Wortgrenze: `go` erlaubt
+# `go test ./...`, aber nicht `gofmt`. Shell-Metazeichen, absolute Pfade und
+# Pfadtraversierung sind in Einträgen wie in Befehlen verboten; ein ungültiger
+# Eintrag weist jeden Befehl ab. Zeilen mit `#` sind Kommentare.
+./scripts/verify.sh
+npm
+pytest
+go
+cargo
+make

@@ -26,8 +26,9 @@ assert_eq "Task-Beleg ist grün" green "$(ledger_scalar "$fixture/docs/verificat
 assert_file_lacks "der Task traegt kein Pruefergebnis mehr" "$fixture/docs/tasks/017.md" 'last_verification'
 assert_file_has "Bericht enthält Kandidatenfingerprint" "$fixture/docs/verification/latest.md" 'candidate_fingerprint:'
 assert_file_has "Bericht enthält Verifierversion" "$fixture/docs/verification/latest.md" 'verifier_version:'
-assert_file_has "Bericht nennt alle Stufen" "$fixture/docs/verification/latest.md" '- integration: SKIPPED'
-assert_file_has "vollständiger Log liegt am dokumentierten Ort" "$fixture/.agent-runs/$run_id/verify/attempt-1.log" 'acceptance: acceptance-1'
+assert_file_has "Bericht nennt jeden Befehl mit Ergebnis" "$fixture/docs/verification/latest.md" '- acceptance-1: GREEN'
+assert_file_has "das globale verify.sh laeuft auch ohne acceptance-Eintrag" "$fixture/.agent-runs/$run_id/verify/attempt-1.log" 'command: ./scripts/verify.sh'
+assert_file_has "vollständiger Log liegt am dokumentierten Ort" "$fixture/.agent-runs/$run_id/verify/attempt-1.log" '=== acceptance-1 ==='
 expect_success "passender grüner Fingerprint erlaubt done" "$fixture/scripts/agent/status.sh" --project-dir "$fixture" set-status 017 done in_progress
 sed 's/task_id: 017/task_id: 018/' "$fixture/docs/verification/latest.md" > "$fixture/docs/verification/.latest.tmp"
 mv "$fixture/docs/verification/.latest.tmp" "$fixture/docs/verification/latest.md"
@@ -90,29 +91,32 @@ assert_file_has "verschärfte Allowlist weist Zusatzbefehl aus" "$fixture/docs/v
 new_project_fixture --with-scripts
 make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --class patterned --orchestration verified --touches src/app.txt \
-  --acceptance '"./scripts/verify.sh", "runner:release"' \
+  --acceptance '"mypy", "gofmt -l ."' \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
 printf '%s\n' good > "$fixture/src/app.txt"
-cat > "$fixture/scripts/named-check" <<'EOF'
-#!/usr/bin/env bash
-echo named-runner-ok
-EOF
-chmod +x "$fixture/scripts/named-check"
-printf '%s\n' 'release|build|./scripts/named-check' > "$fixture/.agent/verification-runners"
-expect_success "Projektkonfiguration ergänzt einen benannten Runner" "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
-assert_file_has "benannter Runner wird seiner Stufe zugeordnet" "$fixture/docs/verification/latest.md" '- build: GREEN'
+expect_failure "fremde Präfixe scheitern an der Standardliste" "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
+assert_file_has "nicht gelistetes Werkzeug wird abgewiesen" "$fixture/docs/verification/latest.md" '- acceptance-1: REJECTED'
+assert_file_has "Präfixe gelten auf Wortgrenze: go erlaubt kein gofmt" "$fixture/docs/verification/latest.md" '- acceptance-2: REJECTED'
+assert_file_has "das Pflicht-verify.sh läuft trotz zweier Abweisungen" "$fixture/docs/verification/latest.md" '- acceptance-3: GREEN'
+
+# Das Kit liefert die Allowlist als Beispiel aus; sie trägt genau die
+# generischen Standardpräfixe.
+assert_file "Beispiel-Allowlist wird ausgeliefert" "$project_dir/.agent/verification-allowlist"
+for prefix in './scripts/verify.sh' 'npm' 'pytest' 'go' 'cargo' 'make'; do
+  assert_file_has "Beispiel-Allowlist nennt $prefix" "$project_dir/.agent/verification-allowlist" "$prefix"
+done
 
 new_project_fixture --with-scripts
 make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --class patterned --orchestration verified --touches src/app.txt \
-  --acceptance '"./scripts/verify.sh", "mypy"' \
+  --acceptance '"./scripts/verify.sh", "cargo test"' \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
 printf '%s\n' good > "$fixture/src/app.txt"
 expect_failure "fehlender erlaubter Befehl ergibt Rot" env PATH=/usr/bin:/bin "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
 assert_file_has "fehlender Befehl wird als technischer Fehler getrennt" "$fixture/docs/verification/latest.md" 'failure_kind: verifier'
-assert_file_has "fehlender Befehl erhält Stufenstatus" "$fixture/docs/verification/latest.md" '- lint: MISSING'
+assert_file_has "fehlender Befehl erhält ein eigenes Ergebnis" "$fixture/docs/verification/latest.md" '- acceptance-2: MISSING'
 
 new_project_fixture --with-scripts
 make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
@@ -128,12 +132,13 @@ sleep 5
 EOF
 chmod +x "$fixture/bin/pytest"
 expect_failure "Zeitlimit ergibt Rot" env PATH="$fixture/bin:/usr/bin:/bin" "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 1 017
-assert_file_has "Timeout ist im Bericht sichtbar" "$fixture/docs/verification/latest.md" '- unit: TIMEOUT'
+assert_file_has "Timeout ist im Bericht sichtbar" "$fixture/docs/verification/latest.md" '- acceptance-2: TIMEOUT'
+assert_file_has "Timeout zählt als technischer Fehler" "$fixture/docs/verification/latest.md" 'failure_kind: verifier'
 
 new_project_fixture --with-scripts
 make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --class patterned --orchestration verified --touches src/app.txt \
-  --acceptance '"./scripts/verify.sh", "pytest", "ruff"' \
+  --acceptance '"./scripts/verify.sh", "pytest", "cargo test"' \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
 printf '%s\n' good > "$fixture/src/app.txt"
@@ -143,16 +148,16 @@ cat > "$fixture/bin/pytest" <<'EOF'
 echo unit-control-failed
 exit 1
 EOF
-cat > "$fixture/bin/ruff" <<'EOF'
+cat > "$fixture/bin/cargo" <<'EOF'
 #!/usr/bin/env bash
-echo lint-control-failed
+echo second-control-failed
 exit 1
 EOF
-chmod +x "$fixture/bin/pytest" "$fixture/bin/ruff"
+chmod +x "$fixture/bin/pytest" "$fixture/bin/cargo"
 expect_failure "negative Kontroll-Fixture muss sicher scheitern" env PATH="$fixture/bin:/usr/bin:/bin" "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
-assert_file_has "Unit-Fehler wird berichtet" "$fixture/docs/verification/latest.md" '- unit: RED'
-assert_file_has "spätere Lint-Stufe läuft trotz Unit-Fehler" "$fixture/docs/verification/latest.md" '- lint: RED'
-assert_file_has "echter Prozessoutput liegt im Voll-Log" "$fixture/.agent-runs/$run_id/verify/attempt-1.log" 'lint-control-failed'
+assert_file_has "erster Fehler wird berichtet" "$fixture/docs/verification/latest.md" '- acceptance-2: RED'
+assert_file_has "der nächste Befehl läuft trotz des Fehlers" "$fixture/docs/verification/latest.md" '- acceptance-3: RED'
+assert_file_has "echter Prozessoutput liegt im Voll-Log" "$fixture/.agent-runs/$run_id/verify/attempt-1.log" 'second-control-failed'
 
 new_project_fixture --with-scripts
 make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
