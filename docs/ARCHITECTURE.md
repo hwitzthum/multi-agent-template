@@ -253,8 +253,12 @@ feste Zeichenbudgets, deren Summe unter `CONTEXT_MAX_CHARS` liegt; ein Kontext,
 der heute passt, passt auch morgen. Kürzungen sind sichtbar und lassen
 Frontmatter sowie Fehlerblöcke ganz. Der Worker erhält die **Liste** der Pfade
 aus `touches`, nicht deren Inhalt: Dateien liest er mit seinen eigenen
-Werkzeugen. Die Liste durchläuft die Pfadpolicy und nennt weder Secret- noch
-Steuerungspfade.
+Werkzeugen. Gefiltert wird sie mit genau der Schreibpolicy des Workers
+(`policy.sh role-write worker`), nicht mit einer zweiten Liste daneben: sie
+nennt deshalb weder Secret- noch Steuerungspfade, und kein genannter Pfad wird
+nach dem Aufruf als Regelverstoß zurückgesetzt. Ein Task ohne `touches`
+begrenzt nichts; der Kontext benennt das als offenen Umfang statt als leere
+Freigabe.
 
 Ein Fresh Worker erhält Goal, Task, Akzeptanz und die Dateiliste, aber keine
 Notes, keine Planbegründung und keine früheren Fehler. Die erzeugten Pakete

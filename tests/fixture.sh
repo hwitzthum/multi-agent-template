@@ -118,6 +118,7 @@ new_project_fixture() {
 #   STUB_STDOUT   Datei, deren Inhalt der Stub auf stdout ausgibt
 #   STUB_MESSAGE  nur codex: Datei, die als --output-last-message abgelegt wird
 #   STUB_EXIT     Exitcode des Stubs (Standard 0)
+#   STUB_HELP     nur claude: ersetzt die Hilfeseite (Fähigkeitsprüfung)
 fixture_agent_cli_stubs() {
   [ -n "$fixture" ] || fixture_abort "fixture_agent_cli_stubs ohne Fixture"
   stub_bin="$fixture/.agent-runs/stub-bin"
@@ -127,6 +128,9 @@ fixture_agent_cli_stubs() {
 #!/usr/bin/env bash
 case "${1:-}" in
   --help)
+    # STUB_HELP ersetzt die Hilfeseite, damit auch ein CLI ohne die gesuchten
+    # Optionen pruefbar ist.
+    if [ -n "${STUB_HELP:-}" ]; then printf '%s\n' "$STUB_HELP"; exit 0; fi
     printf '%s\n' '  --json-schema <schema>' \
       '  --max-budget-usd <amount>' '  --permission-prompts <target>' '  --restricted' \
       '  --settings <file-or-json>' '  --tools <tools...>'

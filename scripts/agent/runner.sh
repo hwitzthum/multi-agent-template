@@ -283,7 +283,7 @@ resolve_run_path() {
 invoke_claude() {
   role=$1; context=$2; workdir=$3; provider_output=$4; stderr_file=$5; settings_file=$6
   command -v claude >/dev/null 2>&1 || { echo "runner: claude wurde nicht gefunden" >&2; return 127; }
-  claude_supports -- '--json-schema' || { echo "runner: das installierte claude unterstützt --json-schema nicht; bitte aktualisieren" >&2; return 127; }
+  claude_supports '--json-schema' || { echo "runner: das installierte claude unterstützt --json-schema nicht; bitte aktualisieren" >&2; return 127; }
   schema_file=$(schema_path "$role") || return 1
   runner_settings "$settings_file" "$workdir" || { echo "runner: Einstellungsdatei konnte nicht geschrieben werden" >&2; return 1; }
 
@@ -303,7 +303,7 @@ invoke_claude() {
   esac
   [ "$model" = default ] || args+=(--model "$model")
   [ -z "$max_budget" ] || args+=(--max-budget-usd "$max_budget")
-  if claude_supports -- '--permission-prompts'; then args+=(--permission-prompts none); fi
+  if claude_supports '--permission-prompts'; then args+=(--permission-prompts none); fi
 
   # stderr getrennt halten: Warnungen des CLI duerfen die Antwort nicht
   # verunreinigen. Auto-Memory des Bedieners bleibt aus dem Lauf draussen.

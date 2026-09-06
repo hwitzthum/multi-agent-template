@@ -61,6 +61,35 @@ expect_failure "Worker ohne Task ist kein Kontext" "$builder" build --project-di
 expect_failure "Fresh gilt nur für den Worker" "$builder" build --project-dir "$fixture" --role manager --run-id "$run_id" --fresh
 expect_failure "abgelöste Rolle wird abgewiesen" "$builder" build --project-dir "$fixture" --role worker-task --run-id "$run_id" --task-id 017
 
+# Die Dateiliste ist genau die Schreibpolicy des Workers: was sie nennt, darf er
+# auch ändern. Steuerungspfade, die allein die Kontextpolicy durchliesse, stehen
+# deshalb nicht darin — sonst nennte der Kontext einen Pfad, den der
+# Manifestvergleich danach als Regelverstoss zurücksetzt.
+new_populated_fixture
+scoped=$("$builder" build --project-dir "$fixture" --role worker --run-id "$run_id" --task-id 017 \
+  --include src/app.txt --include CLAUDE.md --include scripts/bash-guard.sh \
+  --include scripts/commit-gate.sh --include .gitignore --include scripts/agent)
+assert_file_has "Produktpfad bleibt in der Dateiliste" "$scoped" '- `src/app.txt`'
+assert_file_lacks "Sitzungsregeln stehen nicht in der Dateiliste" "$scoped" '- `CLAUDE.md`'
+assert_file_lacks "Schutz-Hook steht nicht in der Dateiliste" "$scoped" '- `scripts/bash-guard.sh`'
+assert_file_lacks "Commit-Gate steht nicht in der Dateiliste" "$scoped" '- `scripts/commit-gate.sh`'
+assert_file_lacks "Git-Steuerdatei steht nicht in der Dateiliste" "$scoped" '- `.gitignore`'
+assert_file_lacks "Orchestrierungsordner steht nicht in der Dateiliste" "$scoped" '- `scripts/agent`'
+assert_file_has "Die Entfernung bleibt sichtbar" "$scoped" '[AUSGESCHLOSSENER PFAD ENTFERNT]'
+
+# Zwei verschiedene Lagen, zwei verschiedene Aussagen: eine vollständig
+# gefilterte Liste bleibt eine Grenze, ein Task ohne `touches` ist keine.
+filtered=$("$builder" build --project-dir "$fixture" --role worker --run-id "$run_id" --task-id 017 --include CLAUDE.md)
+assert_file_has "vollständig gefilterte Liste zeigt die Entfernung" "$filtered" '[AUSGESCHLOSSENER PFAD ENTFERNT]'
+assert_file_lacks "gefilterte Liste behauptet keinen offenen Umfang" "$filtered" '(kein touches-Umfang'
+
+make_task --id 018 --title 'Task ohne touches' --class patterned \
+  --context 'Kein Umfang gesetzt.' --scope 'Produktnahe Dateien.' \
+  --not-scope 'Steuerungsdateien ändern.' --criteria 'Verhalten ist geprüft.'
+unbounded=$("$builder" build --project-dir "$fixture" --role worker --run-id "$run_id" --task-id 018)
+assert_file_has "leeres touches wird als unbeschränkt benannt" "$unbounded" '(kein touches-Umfang'
+assert_file_lacks "leeres touches nennt keine Entfernung" "$unbounded" '[AUSGESCHLOSSENER PFAD ENTFERNT]'
+
 new_populated_fixture
 first=$("$builder" build --project-dir "$fixture" --role worker --run-id "$run_id" --task-id 017 --include src/app.txt)
 first_hash=$(shasum -a 256 "$first" | awk '{print $1}')

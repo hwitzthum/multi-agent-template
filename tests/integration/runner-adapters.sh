@@ -115,6 +115,26 @@ expect_success "Metadaten der unlesbaren Antwort sind gültig" "$runner" validat
 assert_eq "unlesbare Antwort meldet output_status=error" error "$(meta "$fixture/.agent-runs/run/claude-garbage.env" output_status)"
 assert_eq "unlesbare Antwort nennt invalid_json" invalid_json "$(meta "$fixture/.agent-runs/run/claude-garbage.env" abort_reason)"
 
+# Die Fähigkeitsprüfung muss die gesuchte Option treffen und nicht jede
+# Hilfeseite: ein CLI ohne `--json-schema` kann das Rollenschema nicht
+# erzwingen und darf gar nicht erst aufgerufen werden.
+STUB_HELP='  -p, --print
+  --output-format <format>'
+export STUB_HELP
+expect_failure "CLI ohne --json-schema wird abgewiesen" run_case worker claude-old "$fixture/claude-ok.json"
+[ ! -f "$fixture/.agent-runs/run/claude-old.args" ] && ok || bad "abgewiesenes CLI wird nicht aufgerufen"
+
+# Kennt das CLI das Schema, aber nicht `--permission-prompts`, läuft der Aufruf
+# — ohne die Option, die es nicht kennt.
+STUB_HELP='  --json-schema <schema>
+  --restricted
+  --settings <file-or-json>
+  --tools <tools...>'
+expect_success "CLI ohne --permission-prompts läuft" run_case worker claude-partial "$fixture/claude-ok.json"
+assert_file_lacks "unbekannte Option wird nicht übergeben" "$fixture/.agent-runs/run/claude-partial.args" '--permission-prompts'
+assert_file_has "bekannte Option wird weiterhin übergeben" "$fixture/.agent-runs/run/claude-partial.args" '--json-schema'
+unset STUB_HELP
+
 # --- Codex-Adapter ----------------------------------------------------------
 new_project_fixture
 fixture_agent_cli_stubs

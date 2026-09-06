@@ -184,15 +184,18 @@ fi
 # Der Worker bekommt die Liste der Pfade, die er anfassen darf, nicht deren
 # Inhalt: Dateien liest er mit seinen eigenen Werkzeugen, und der Kontext bleibt
 # klein und vorhersagbar.
+#
+# Gefiltert wird mit genau der Schreibpolicy des Workers, nicht mit einer
+# zweiten Liste daneben: sonst nennte der Kontext Pfade, die der
+# Manifestvergleich nach dem Aufruf als Regelverstoss zuruecksetzt.
 : > "$files_raw"
 if [ "$include_files" = true ]; then
   removed=false
   for candidate in ${includes[@]+"${includes[@]}"}; do
     case "$candidate" in
-      *$'\n'*|*$'\r'*|.agent/*|.claude/*|docs/state/*|docs/tasks/*|docs/verification/*|docs/prompts/*|docs/templates/*|scripts/agent/*)
-        removed=true; continue ;;
+      *$'\n'*|*$'\r'*) removed=true; continue ;;
     esac
-    "$policy" context-path "$candidate" >/dev/null 2>&1 || { removed=true; continue; }
+    "$policy" role-write worker "$candidate" >/dev/null 2>&1 || { removed=true; continue; }
     absolute="$project_dir/$candidate"
     state=fehlt
     if [ -L "$absolute" ]; then state=symlink
@@ -254,7 +257,12 @@ RAHMEN
   if [ "$include_verification" = true ]; then echo; echo '## Letzte Verifikation'; echo; cat "$verification_section"; fi
   if [ "$include_files" = true ]; then
     echo; echo '## Dateien im Umfang'; echo
-    if [ -s "$files_section" ]; then cat "$files_section"; else echo '(keine Pfade freigegeben)'; fi
+    # Leer ist die Liste nur ohne `touches`: ein gefilterter Pfad hinterlaesst
+    # immer die Entfernungsmarke. Ohne `touches` begrenzt der Task nichts
+    # (ledger_path_in_touches laesst dann jeden Pfad zu) — «keine Pfade
+    # freigegeben» waere genau das Gegenteil.
+    if [ -s "$files_section" ]; then cat "$files_section"
+    else echo '(kein touches-Umfang: erlaubt ist jeder Pfad außerhalb der Steuerungspfade)'; fi
   fi
   echo
   echo '## Ausgabeformat'
