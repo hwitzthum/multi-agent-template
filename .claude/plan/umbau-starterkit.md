@@ -14,7 +14,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | gemergt | 424   | 2026-09-06 |
 | F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | gemergt | 402   | 2026-09-06 |
 | F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | gemergt | 395   | 2026-09-06 |
-| F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | umgesetzt | 449 | –          |
+| F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | gemergt | 449   | 2026-09-06 |
 | F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | offen  | –     | –          |
 | F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | offen  | –     | –          |
 | F8  | Prüftor verschlanken                     | `refactor/verify-gate`            | offen  | –     | –          |
@@ -27,6 +27,8 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F5 · Nach `main` gemergt (`82460fe`), Suite auf `main` grün ·
+  `./scripts/verify.sh` → `tests: GREEN (449 Zusicherungen in 24 Dateien)`
 - 2026-09-06 · F5 · Frontmatter auf zwölf Felder gekürzt, Parser auf einen
   awk-Durchlauf gestellt (60 Tasks 9,2 s → 0,3 s), Prüfbeleg je Task unter
   `docs/verification/<id>.md`, `scripts/task.sh reopen|approve` als einzige
@@ -648,7 +650,7 @@ Review:
 
 ### F5 · Ledger-Schema und Task-Kommandos
 
-Branch `refactor/ledger-schema` · Status: **umgesetzt**
+Branch `refactor/ledger-schema` · Status: **gemergt**
 
 Ziel: Schlankes Frontmatter, schneller Parser, menschliche Übergänge als Kommandos.
 
