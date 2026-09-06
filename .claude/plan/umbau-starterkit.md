@@ -13,7 +13,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | F1  | Ballast entfernen                        | `chore/remove-ballast`            | gemergt | 400   | 2026-09-06 |
 | F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | gemergt | 424   | 2026-09-06 |
 | F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | gemergt | 402   | 2026-09-06 |
-| F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | umgesetzt | 395 | –          |
+| F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | gemergt | 395   | 2026-09-06 |
 | F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | offen  | –     | –          |
 | F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | offen  | –     | –          |
 | F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | offen  | –     | –          |
@@ -27,6 +27,8 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F4 · Nach `main` gemergt (`6ac7fd2`), Suite auf `main` grün ·
+  `./scripts/verify.sh` → `tests: GREEN (395 Zusicherungen in 23 Dateien)`
 - 2026-09-06 · F4 · Laufzustand nach `.agent-runs/<run>/run.env` verlegt,
   Metrik-Subsystem, `--resume` und Checkpoints entfernt, EXIT-Trap gibt
   `in_progress` frei, Stale-Lauf wird beim Start übernommen ·
@@ -582,7 +584,7 @@ Review:
 
 ### F4 · Laufzustand unversioniert
 
-Branch `refactor/run-state-unversioned` · Status: **umgesetzt**
+Branch `refactor/run-state-unversioned` · Status: **gemergt**
 
 Ziel: Kein Lauf macht den Git-Stand ausserhalb der fachlichen Belege schmutzig;
 kein Resume, keine Checkpoints, kein Metrik-Subsystem.
