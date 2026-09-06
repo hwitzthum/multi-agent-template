@@ -61,7 +61,8 @@ Das Skript prüft:
 - ✓ Sind alle notwendigen Tools vorhanden (`jq`, `awk`, `sed`, etc.)?
 - ✓ Ist die `.agent/config.env` Konfiguration korrekt?
 
-**Ergebnis:** Jede Zeile beginnt mit `OK` oder `BEFUND`; die letzte Zeile ist
+**Ergebnis:** Jede Zeile beginnt mit `OK`, `BEFUND` (behebbar und blockierend)
+oder `HINWEIS` (nur beachtenswert); die letzte Zeile ist
 `doctor: GREEN (einsatzbereit)` oder `doctor: RED (N Befund(e))`. Ein `BEFUND`
 sagt, was fehlt — er hält dich nicht auf, solange die letzte Zeile grün ist.
 
@@ -436,15 +437,17 @@ das Hochladen machst du selbst.
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│               ROUTER: "Was ist der nächste Task?"            │
-│                    "Wer sollte ihn bearbeiten?"              │
+│               ROUTER: "Was ist der nächste Task?"           │
+│                    "Wer sollte ihn bearbeiten?"             │
 ├─────────────────────────────────────────────────────────────┤
-│ Einfach (mechanical)? → Ein Worker erledigt es allein       │
-│ Mittelschwer (patterned)? → Worker + Verifier-Prüfung       │
-│ Komplex/offen (open)? → Manager plant, Worker arbeitet,     │
-│                         Verifier prüft                       │
-│                                                              │
-│ Fehler entdeckt? → Eine Stufe höher wieder versuchen        │
+│ Einfach (mechanical)? → single: Worker, dann Prüftor        │
+│ Mittelschwer (patterned)? → verified: gleicher Ablauf,      │
+│                             eine Stufe höher                │
+│ Komplex/offen (open)? → managed: Manager plant, Worker      │
+│                         arbeitet, dann Prüftor              │
+│                                                             │
+│ Geprüft wird in JEDEM Modus — keiner überspringt das.       │
+│ Rot? → Eine Stufe höher noch einmal versuchen               │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -476,16 +479,17 @@ das Hochladen machst du selbst.
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   SICHERHEIT (immer aktiv)                   │
+│                   SICHERHEIT (immer aktiv)                  │
 ├─────────────────────────────────────────────────────────────┤
-│ Ein Agent (Worker/Manager) darf NICHT:                       │
+│ Ein Agent (Worker/Manager) darf NICHT:                      │
 │  • Dateien ins Internet hochladen (git push, curl, wget)    │
-│  • Ordner rekursiv löschen (rm -r)                           │
+│  • Ordner rekursiv löschen (rm -r)                          │
 │  • Ungespeicherte Arbeit verwerfen (git reset --hard)       │
-│  • Prüfungs-Hooks umgehen (--no-verify)                      │
-│                                                              │
-│ Diese Sperren sind in den Skripten hart codiert.             │
-│ Sie gelten immer, überall, versteckt oder offen.             │
+│  • Prüfungs-Hooks umgehen (--no-verify)                     │
+│                                                             │
+│ Diese Sperren sind in den Skripten hart codiert und         │
+│ greifen auch versteckt in einem längeren Befehl.            │
+│ Im Headless-Lauf des Orchestrators kommen weitere dazu.     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -502,10 +506,16 @@ das Hochladen machst du selbst.
 
 | Modus        | Aufwand | Wann?               | Ablauf                                    |
 | ------------ | ------- | ------------------- | ----------------------------------------- |
-| **single**   | niedrig | einfache Tasks      | nur Worker → Verifier → Status-Gate       |
-| **verified** | mittel  | mittelschwere Tasks | Worker → Verifier → Status-Gate           |
-| **managed**  | hoch    | komplexe Tasks      | Manager → Worker → Verifier → Status-Gate |
-| **blocked**  | stoppt  | zu viele Fehler     | Task wartet auf menschliche Entscheidung  |
+| **single**   | niedrig | `mechanical`        | Worker → Verifier → Status-Gate. Rot hebt auf `verified`.       |
+| **verified** | mittel  | `patterned`         | Derselbe Ablauf wie `single`, nur eine Stufe höher: Rot hebt direkt auf `managed`. |
+| **managed**  | hoch    | `open` oder riskant | Manager → Worker → Verifier → Status-Gate. Der letzte erlaubte Versuch läuft ohne Vorgeschichte. |
+| **blocked**  | stoppt  | Versuchslimit voll  | Task wartet auf eine menschliche Entscheidung.                  |
+
+`single` und `verified` führen innerhalb eines Laufs dieselben Rollen aus — der
+Unterschied ist ihre Sprosse auf der Leiter. Ein `patterned`-Task startet eine
+Stufe höher, sein erster Fehlschlag landet deshalb sofort im Manager-Modus,
+während ein `mechanical`-Task zuerst noch einen einfachen zweiten Anlauf
+bekommt. Erst `managed` ändert den Ablauf wirklich.
 
 ### Der Ablauf eines Tasks
 
@@ -539,12 +549,12 @@ Hier sind alle Skripte, die du brauchst, erklärt in Laien-Sprache:
 
 | Skript                                | Was tut es?                                                                                                               | Wann nutzen?                                                      | Beispiel                                                                                |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `./scripts/next-tasks.sh`             | Zeigt die nächsten Tasks, die bereit sind.                                                                                | Zu Beginn einer Session: "Was soll ich als nächstes bearbeiten?"  | `./scripts/next-tasks.sh` → zeigt "Task 001, Task 003 (Task 002 wartet noch)"           |
+| `./scripts/next-tasks.sh`             | Zeigt die nächsten Tasks, die bereit sind.                                                                                | Zu Beginn einer Session: "Was soll ich als nächstes bearbeiten?"  | `./scripts/next-tasks.sh` → `READY: 001 \| Startseite aufbauen \| mechanical`           |
 | `./scripts/orchestrate.sh --next`     | Startet den nächsten bereiten Task. Der Router entscheidet automatisch: braucht er Manager? Nur Worker? Mehrere Versuche? | Nach `next-tasks.sh`: Starte die Arbeit.                          | `./scripts/orchestrate.sh --next` → arbeitet an Task 001, prüft es, aktualisiert Status |
 | `./scripts/orchestrate.sh --task 003` | Startet einen bestimmten Task (z.B. 003).                                                                                 | Du willst einen spezifischen Task, nicht den nächsten.            | `./scripts/orchestrate.sh --task 003`                                                   |
-| `./scripts/state-summary.sh`          | Zeigt in zwei Zeilen: Wie viele Tasks sind `todo`/`in_progress`/`done`? Welche sind blockiert?                            | Schneller Überblick über den Projektstand.                        | `./scripts/state-summary.sh` → "5 todo, 1 in_progress, 3 done, 1 blocked"               |
+| `./scripts/state-summary.sh`          | Zeigt in zwei Zeilen den letzten Prüfstand und die offene Arbeit: wie viele Tasks bereitstehen, auf Freigabe warten, blockiert sind. | Schneller Überblick über den Projektstand.                        | `./scripts/state-summary.sh` → `verify: GREEN` und `ready: 1 \| review: 1 \| blocked: 0` |
 | `./scripts/verify.sh`                 | Prüft das ganze Projekt: Ist die Task-Struktur korrekt? Gibt es Fehler in den Dateien?                                    | Nach Änderungen an Task-Dateien: "Habe ich etwas kaputt gemacht?" | `./scripts/verify.sh` → OK oder Liste von Fehlern                                       |
-| `./scripts/verify.sh --quick`         | Schnelle Prüfung (pre-commit Hook).                                                                                       | Vor dem Commit: "Ist der aktuelle Stand in Ordnung?"              | Git Hook, läuft automatisch                                                             |
+| `./scripts/verify.sh --quick`         | Schnelle Prüfung; lässt die e2e-Stufe weg.                                                                                | Vor dem Commit: "Ist der aktuelle Stand in Ordnung?"              | Läuft automatisch, wenn ein **Agent** committet (`commit-gate.sh`). Dein eigener `git commit` im Terminal wird nicht geprüft — ruf es dort selbst auf. |
 | `./scripts/verify.sh --deep`          | Komplette Prüfung (alles durchschauen).                                                                                   | Wenn `--quick` fehlschlägt oder du alle Details brauchst.         | `./scripts/verify.sh --deep`                                                            |
 
 ### Task-Verwaltung (du änderst Task-Status manuell)
@@ -577,7 +587,7 @@ Diese brauchst du normalerweise nicht direkt. Sie werden von `orchestrate.sh` au
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `scripts/agent/config.sh`   | Liest und validiert `.agent/config.env`. Prüft: Sind alle 13 Konfigurationsschlüssel vorhanden? Sind die Werte korrekt? | `orchestrate.sh` prüft damit, dass die Konfiguration stimmt, bevor ein Agent startet.                    |
 | `scripts/agent/context.sh`  | Baut das Kontext-Paket für einen Agent: Ziel, Task, Plan, bisherige Fehler, Dateiliste.                                 | Der Agent bekommt nicht das ganze Projekt als Kontext — nur, was er braucht.                             |
-| `scripts/agent/policy.sh`   | Prüft Pfad-Grenzen. Darf der Agent diese Datei anfassen?                                                                | Sperrt den Agent: "Du darfst nur in deinem Task-Ordner arbeiten, nicht im Projekt-Konfigurationsordner." |
+| `scripts/agent/policy.sh`   | Prüft Pfad-Grenzen. Darf der Agent diese Datei anfassen?                                                                | Der Schreibbereich einer Rolle ergibt sich aus dem `touches`-Feld des Tasks; Dinge wie `.env`, `.git` oder `.agent-runs` sind generell gesperrt. |
 | `scripts/agent/runner.sh`   | Adapter für den gewählten Runner (`claude` oder `codex`). Startet den Agent mit den richtigen Optionen.                 | Versteckt die Unterschiede zwischen Claude und Codex.                                                    |
 | `scripts/agent/status.sh`   | Einzige Komponente, die Task-Status ändern darf. Validiert: Ist der Prüfbericht grün? Dann kann ich den Status ändern.  | "Nur ich darf Task-Status ändern — kein Agent, kein Mensch per Hand."                                    |
 | `scripts/agent/ledger.sh`   | Liest Task-Dateien. Extrahiert Felder wie Status, Abhängigkeiten, Akzeptanzkriterien.                                   | Der Orchestrator fragt: "Was steht im Task 003?" — Ledger antwortet.                                     |
@@ -597,7 +607,7 @@ Diese brauchst du normalerweise nicht direkt. Sie werden von `orchestrate.sh` au
 | Skript                | Was tut es?                                                  |
 | --------------------- | ------------------------------------------------------------ |
 | `tests/run.sh`        | Startet die Test-Suite. Prüft alle Skripte, Logik, Struktur. |
-| `tests/run.sh --fast` | Schnelle Tests (überspringt langsame Integration/E2E).       |
+| `tests/run.sh --fast` | Schnelle Tests; lässt nur die e2e-Stufe weg.                 |
 
 ---
 
@@ -618,7 +628,7 @@ Diese 13 Schlüssel kontrollieren, wie Agenten arbeiten:
 | `MAX_INFRA_RETRIES`      | `1`                   | Wie oft bei Provider-Fehler wiederholen? (Default: 1)            |
 | `RETRY_BACKOFF_SECONDS`  | `1`                   | Warten vor Retry? (Default: 1s)                                  |
 | `AGENT_RUNNER`           | `claude` oder `codex` | Welcher Runner? Claude oder Codex? (Default: claude)             |
-| `AGENT_MODEL`            | `default`             | Welches Modell? `default` = Läuft nur davon ab                   |
+| `AGENT_MODEL`            | `default`             | Welches Modell der Runner nutzt. `default` überlässt die Wahl dem CLI. |
 | `FINALIZER`              | `off` oder `llm`      | Zusätzlicher Modellaufruf bei Blockade? (Default: off)           |
 
 ---
@@ -662,7 +672,7 @@ braucht zusätzlich `--allow-dirty`. Die globale Projektprüfung bleibt immer
 
 Der Router entscheidet pro Aufgabe, wie viel Begleitung sie braucht, und diese
 Entscheidung wird sofort ausgeführt: Routine läuft mit einem Worker (`single`),
-Fachlogik mit Korrekturschleife (`verified`), offene oder riskante Aufgaben im
+Fachlogik eine Stufe höher (`verified`), offene oder riskante Aufgaben im
 Manager-Worker-Loop (`managed`). Jede rote Prüfung hebt die Stufe um genau eine
 Position; der letzte erlaubte Versuch läuft ohne Vorgeschichte. Eine bewusste
 Vorgabe ist über `--mode` oder `orchestration:` im Task möglich, kann aber nie
