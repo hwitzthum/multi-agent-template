@@ -74,6 +74,20 @@ printf '%s\n' good > "$fixture/src/app.txt"
 printf '%s\n' '#!/usr/bin/env bash' 'echo 0' > "$fixture/scripts/agent/config.sh"
 expect_success "abweichender Konfigurationsleser im Projekt zählt nicht" "$project_dir/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" 017
 
+# Die Task-ID ist eine Ziffernfolge, keine dreistellige Schablone: der
+# Validator laesst 1234 zu, also muss das Gateway sie auch pruefen koennen.
+new_project_fixture --with-scripts
+make_task --id 1234 --title 'Kandidat verifizieren' --status in_progress \
+  --class patterned --orchestration verified --touches src/app.txt \
+  --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
+  --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
+printf '%s\n' good > "$fixture/src/app.txt"
+expect_success "vierstellige Task-ID passiert das Gateway" \
+  "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --timeout 3 1234
+assert_file "der Beleg liegt unter der vollen ID" "$fixture/docs/verification/1234.md"
+expect_failure "eine Run-ID ohne Zeitstempel bleibt ungueltig" \
+  "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id nicht-echt --timeout 3 1234
+
 # Derselbe Satz am Verifierstand: gleiche Prüflogik ergibt denselben Stand, egal
 # aus welchem Ordner sie läuft, und eine abweichende Kopie im Projekt gar keinen.
 new_project_fixture --with-scripts

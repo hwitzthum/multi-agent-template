@@ -48,4 +48,14 @@ make_task --id 004 --status blocked --blocked-reason ASK_HUMAN
 assert_eq "die offene Arbeit wird nach Zustand gezaehlt" \
   'ready: 1 | review: 1 | blocked: 1' "$(line 2)"
 
+# Ein ungueltiges Ledger ergaebe sonst dieselbe Zeile wie «nichts zu tun» — und
+# das ist die erste Zeile, die ein Mensch pro Sitzung sieht.
+new_project_fixture
+make_task --id 001 --status todo
+make_task --id 002 --status todo
+sed 's/^id: 002$/id: 001/' "$fixture/docs/tasks/002.md" > "$fixture/docs/tasks/002.new"
+mv "$fixture/docs/tasks/002.new" "$fixture/docs/tasks/002.md"
+assert_eq "ein ungueltiges Ledger wird benannt statt als leer gezaehlt" \
+  'ledger: UNGÜLTIG (./scripts/validate-ledger.sh zeigt die Fehler) | review: 0 | blocked: 0' "$(line 2)"
+
 finish_suite

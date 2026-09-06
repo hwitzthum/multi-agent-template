@@ -27,6 +27,11 @@ expect_contains "doctor nennt den gewählten Runner" 'AGENT_RUNNER=claude' \
   env PATH="$stub_bin:$PATH" "$doctor" --project-dir "$fixture"
 expect_contains "doctor meldet den sauberen Arbeitsbaum" 'Arbeitsbaum sauber' \
   env PATH="$stub_bin:$PATH" "$doctor" --project-dir "$fixture"
+# Genau die Werkzeuge, die docs/ARCHITECTURE.md als Voraussetzung nennt.
+for tool in bash git awk sed shasum jq perl; do
+  expect_contains "doctor prüft $tool" "$tool gefunden" \
+    env PATH="$stub_bin:$PATH" "$doctor" --project-dir "$fixture"
+done
 
 fixture_config AGENT_RUNNER codex
 expect_success "doctor ist grün, wenn codex antwortet" \
@@ -72,7 +77,7 @@ new_project_fixture
 fixture_git_init
 no_cli_bin="$fixture/.agent-runs/no-agent-cli"
 mkdir -p "$no_cli_bin"
-for tool in bash sh env dirname basename git jq perl grep head sed awk cat mktemp; do
+for tool in bash sh env dirname basename git jq perl grep head sed awk shasum cat mktemp; do
   tool_path=$(command -v "$tool" 2>/dev/null) || continue
   case "$tool_path" in /*) ln -sf "$tool_path" "$no_cli_bin/$tool" ;; esac
 done
@@ -92,12 +97,36 @@ expect_contains "doctor benennt die ungültige Konfiguration" 'Konfiguration ist
   sh -c "PATH='$stub_bin:$PATH' '$doctor' --project-dir '$fixture' 2>&1 || true"
 
 # --- Repository ohne Basiscommit ---------------------------------------------
-# Manifeste und der Fresh-Versuch brauchen einen versionierten Stand.
+# Manifest und Snapshot beziehen ihre Inhalte ueber `git hash-object -w` aus dem
+# Arbeitsbaum, nicht aus HEAD: ein Lauf braucht keinen Commit. Der fehlende
+# Stand ist ein Hinweis, kein Befund.
 new_project_fixture
 fixture_agent_cli_stubs
-expect_failure "Repository ohne Basiscommit ist ein Befund" \
+expect_success "Repository ohne Basiscommit ist kein Befund" \
   env PATH="$stub_bin:$PATH" "$doctor" --project-dir "$fixture"
-expect_contains "doctor benennt den fehlenden Basiscommit" 'ohne Basiscommit' \
-  sh -c "PATH='$stub_bin:$PATH' '$doctor' --project-dir '$fixture' 2>&1 || true"
+expect_contains "doctor benennt den fehlenden Basiscommit" 'HINWEIS  Repository ohne Basiscommit' \
+  env PATH="$stub_bin:$PATH" "$doctor" --project-dir "$fixture"
+
+# --- Schmutzig heisst dasselbe wie beim Orchestrator -------------------------
+# Der Orchestrator uebergeht docs/tasks, docs/state und docs/verification, weil
+# er sie selbst schreibt. Sagte doctor hier «schmutzig», verlangte er ein
+# --allow-dirty, das der Lauf gar nicht braucht.
+new_project_fixture
+fixture_agent_cli_stubs
+fixture_git_init
+printf '%s\n' '- eine Notiz mehr' >> "$fixture/docs/state/notes.md"
+expect_contains "geaenderte Ledger-Pfade sind kein schmutziger Arbeitsbaum" 'Arbeitsbaum sauber' \
+  env PATH="$stub_bin:$PATH" "$doctor" --project-dir "$fixture"
+
+# --- Ein CLI ohne die Sicherheitsoptionen ------------------------------------
+# Der Adapter reicht sie bei jedem Rollenaufruf durch; fehlt eine, bricht der
+# Lauf mit einem CLI-Fehler ab. Das gehoert vor den Lauf.
+new_project_fixture
+fixture_agent_cli_stubs
+fixture_git_init
+expect_failure "claude ohne Sicherheitsoptionen ist ein Befund" \
+  env PATH="$stub_bin:$PATH" STUB_HELP='  --json-schema <schema>' "$doctor" --project-dir "$fixture"
+expect_contains "doctor sagt, welche Option fehlt" '--restricted' \
+  sh -c "PATH='$stub_bin:$PATH' STUB_HELP='  --json-schema <schema>' '$doctor' --project-dir '$fixture' 2>&1 || true"
 
 finish_suite

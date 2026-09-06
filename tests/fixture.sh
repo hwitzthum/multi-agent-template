@@ -135,7 +135,7 @@ case "${1:-}" in
     if [ -n "${STUB_HELP:-}" ]; then printf '%s\n' "$STUB_HELP"; exit 0; fi
     printf '%s\n' '  --json-schema <schema>' \
       '  --max-budget-usd <amount>' '  --permission-prompts <target>' '  --restricted' \
-      '  --settings <file-or-json>' '  --tools <tools...>'
+      '  --settings <file-or-json>' '  --strict-mcp-config' '  --tools <tools...>'
     exit 0 ;;
   --version) echo '9.9.9 (Claude Code Stub)'; exit 0 ;;
 esac

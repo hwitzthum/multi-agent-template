@@ -2,7 +2,8 @@
 # bash-guard.sh — PreToolUse-Hook (matcher: Bash). Harte Sperre für das, was
 # der Agent nie tun darf: hochladen (git push, curl, wget), rekursiv löschen
 # (rm -r…) und ungespeicherte Arbeit verwerfen (git reset --hard, git clean -f,
-# git checkout -- / . / -f, git restore).
+# git checkout -- / . / -f, git restore). Dazu `git --no-verify`, das die
+# Pruef-Hooks selbst umginge.
 # Die deny-Regeln in .claude/settings.json bleiben als erste Schicht, sind aber
 # Präfix-Muster: `rm -fr`, `bash -c "git push"` oder `echo x && curl …` rutschen
 # durch. Dieses Skript prüft deshalb den GANZEN Befehlstext, auch innerhalb
@@ -14,11 +15,14 @@
 # Claude Code (/sandbox).
 set -uo pipefail
 
-# Befehl aus dem Hook-JSON auf stdin lesen (kein jq — nicht überall vorhanden).
-cmd=""
-[ -t 0 ] || cmd=$(sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"//p' | head -n 1)
-cmd=${cmd%%'","'*}            # alles ab dem nächsten JSON-Feld abschneiden
-cmd=$(printf '%s' "$cmd" | sed 's/\\n/;/g; s/\\[tr]/ /g')   # JSON \n = Befehlstrenner; \t und \r = Leerzeichen
+# Befehl aus dem Hook-JSON auf stdin lesen. Der Leser steht in
+# scripts/agent/hook-input.sh, damit beide Hooks dieselbe Eingabe sehen.
+# Faellt er aus, wird blockiert: ein Guard, der seinen Befehl nicht lesen kann,
+# darf nicht durchwinken.
+guard_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 2
+. "$guard_dir/agent/hook-input.sh" 2>/dev/null || {
+  echo "Blockiert durch scripts/bash-guard.sh: die Hook-Eingabe ist nicht lesbar." >&2; exit 2; }
+cmd=$(hook_command_text)
 [ -n "$cmd" ] || exit 0
 
 hit() { printf '%s' "$cmd" | grep -Eq "$1"; }

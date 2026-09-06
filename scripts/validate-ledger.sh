@@ -15,8 +15,8 @@ case "${1:-}" in
 esac
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --project-dir) project_dir=$2; shift 2 ;;
-    --task-file) only_task=$2; shift 2 ;;
+    --project-dir) [ "$#" -ge 2 ] || { echo "validate-ledger: --project-dir braucht einen Pfad" >&2; exit 2; }; project_dir=$2; shift 2 ;;
+    --task-file) [ "$#" -ge 2 ] || { echo "validate-ledger: --task-file braucht eine Datei" >&2; exit 2; }; only_task=$2; shift 2 ;;
     *) echo "validate-ledger: unbekannte Option $1" >&2; exit 2 ;;
   esac
 done

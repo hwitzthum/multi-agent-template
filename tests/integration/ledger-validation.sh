@@ -29,6 +29,27 @@ assert_eq "nur der abhaengigkeitsfreie todo-Task ist bereit" \
   'READY: 002 | Task 002 | patterned' \
   "$("$next_tasks" --project-dir "$fixture")"
 
+# Bereit heisst: der Orchestrator nimmt die Aufgabe auch an. Ein ausgeschoepfter
+# Versuchszaehler schliesst das aus; sie bleibt sichtbar, aber unter eigenem
+# Wort, statt als bereit gemeldet und danach abgewiesen zu werden.
+new_project_fixture
+make_task --id 001 --status todo --attempts 3
+assert_eq "die ausgeschoepfte Aufgabe steht nicht als bereit" \
+  'LIMIT: 001 | Task 001 | Versuchslimit erreicht' \
+  "$("$next_tasks" --project-dir "$fixture")"
+expect_failure "der Orchestrator lehnt genau sie ab" \
+  "$project_dir/scripts/orchestrate.sh" --project-dir "$fixture" --dry-run --task 001
+
+# Eine Option ohne Wert ist ein Bedienfehler mit Meldung, kein Abbruch der
+# Shell. Der Exitcode allein unterschiede das nicht — `unbound variable` endet
+# ebenso ungleich null.
+expect_contains "next-tasks meldet --project-dir ohne Pfad" 'Verwendung:' \
+  sh -c "'$next_tasks' --project-dir 2>&1 || true"
+expect_contains "der Validator meldet --project-dir ohne Pfad" 'braucht einen Pfad' \
+  sh -c "'$validator' --project-dir 2>&1 || true"
+expect_contains "der Validator meldet --task-file ohne Datei" 'braucht eine Datei' \
+  sh -c "'$validator' --task-file 2>&1 || true"
+
 new_project_fixture
 make_task --id 002 --status todo --depends 999
 expect_failure "fehlende Abhaengigkeit" "$validator" --project-dir "$fixture"

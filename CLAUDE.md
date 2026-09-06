@@ -50,7 +50,8 @@ Verbindlicher Vertrag: `docs/ARCHITECTURE.md`.
   offene Arbeit; der SessionStart-Hook spielt ihn automatisch ein. Einen
   laufenden Lauf zeigt er nicht — ein Lauf ist zwischen zwei Aufrufen
   zustandslos.
-- `./scripts/next-tasks.sh` zeigt nur Tasks mit erfüllten Abhängigkeiten.
+- `./scripts/next-tasks.sh` zeigt nur Tasks, die der Orchestrator auch annimmt:
+  erfüllte Abhängigkeiten und ein nicht ausgeschöpftes Versuchslimit.
 - Am Ende `docs/state/handoff.md` nach `docs/templates/handoff.md`
   aktualisieren; den Abschnitt «Laufbeleg» schreibt der Orchestrator selbst. Bei
   Unterbrechung letzten grünen Stand, Fehler und genau den nächsten Schritt

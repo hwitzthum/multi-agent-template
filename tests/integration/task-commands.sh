@@ -19,8 +19,8 @@ fixture_workspace
 
 # reopen: blocked -> todo, und der Grund verschwindet mit dem Zustand.
 new_project_fixture
-make_task --id 001 --status blocked
-sed 's/^blocked_reason: ""$/blocked_reason: ASK_HUMAN/' "$fixture/docs/tasks/001.md" > "$fixture/docs/tasks/001.new"
+make_task --id 001 --status blocked --attempts 3
+sed 's/^blocked_reason: ""$/blocked_reason: ATTEMPT_LIMIT/' "$fixture/docs/tasks/001.md" > "$fixture/docs/tasks/001.new"
 mv "$fixture/docs/tasks/001.new" "$fixture/docs/tasks/001.md"
 expect_success "blockierte Aufgabe ist gueltig" "$validator" --project-dir "$fixture"
 expect_failure "der Orchestrator kann blocked nicht selbst oeffnen" "$status_gate" --project-dir "$fixture" set-status 001 todo blocked
@@ -28,6 +28,13 @@ assert_eq "abgewiesenes Oeffnen laesst den Status stehen" blocked "$(ledger_scal
 expect_success "reopen oeffnet die Aufgabe" "$task_tool" --project-dir "$fixture" reopen 001
 assert_eq "reopen setzt todo" todo "$(ledger_scalar "$fixture/docs/tasks/001.md" status)"
 assert_eq "reopen raeumt den Grund weg" '' "$(ledger_scalar "$fixture/docs/tasks/001.md" blocked_reason)"
+# Ohne neues Versuchsbudget waere die Aufgabe zwar `todo`, aber unbearbeitbar:
+# der Orchestrator weist sie ab, waehrend next-tasks.sh sie als bereit meldet.
+assert_eq "reopen gibt ein neues Versuchsbudget" 0 "$(ledger_scalar "$fixture/docs/tasks/001.md" attempts)"
+expect_contains "die geoeffnete Aufgabe gilt wieder als bereit" 'READY: 001' \
+  "$project_dir/scripts/next-tasks.sh" --project-dir "$fixture"
+expect_success "der Orchestrator nimmt sie wieder an" \
+  "$project_dir/scripts/orchestrate.sh" --project-dir "$fixture" --dry-run --task 001
 expect_success "Ledger bleibt nach reopen gueltig" "$validator" --project-dir "$fixture"
 expect_failure "reopen auf einer offenen Aufgabe wird abgewiesen" "$task_tool" --project-dir "$fixture" reopen 001
 
