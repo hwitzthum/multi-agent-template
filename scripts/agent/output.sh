@@ -6,7 +6,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 . "$script_dir/common.sh"
 
 known_role() {
-  case "$1" in manager-plan|worker-brainstorm|manager-manage|worker-task|worker-fresh|reviewer|finalizer) return 0 ;; *) return 1 ;; esac
+  case "$1" in manager-plan|worker-brainstorm|manager-manage|worker-task|worker-fresh|finalizer) return 0 ;; *) return 1 ;; esac
 }
 
 fail() { echo "role-output: $1" >&2; return 1; }
@@ -26,7 +26,6 @@ validate_lines() {
       if (role == "manager-plan" && key ~ /^(PLAN_UPDATED|TASKS_CREATED|OPEN_RISK)$/) allowed=1
       if (role == "worker-brainstorm" && key ~ /^(NOTES_ADDED|RISKS|TEST_IDEAS)$/) allowed=1
       if ((role == "worker-task" || role == "worker-fresh") && key ~ /^(RESULT|CHANGED_PATHS|TESTS_RUN|NOTES_ADDED)$/) allowed=1
-      if (role == "reviewer" && key ~ /^(RECOMMENDATION|REASON_CODE|REPORTS)$/) allowed=1
       if (role == "finalizer" && key ~ /^(OUTCOME|BEST_GREEN_REF|OPEN_ERROR|HUMAN_DECISION)$/) allowed=1
       if (!allowed) reject("unbekanntes Feld " key)
       values[key]=value
@@ -43,10 +42,6 @@ validate_lines() {
         if (!("RESULT" in seen) || !("CHANGED_PATHS" in seen) || !("TESTS_RUN" in seen) || !("NOTES_ADDED" in seen)) reject("Worker-Ausgabe ist unvollstaendig")
         if (values["RESULT"] !~ /^(implemented|partial|blocked)$/) reject("unbekanntes Worker-RESULT")
         if (role == "worker-fresh" && values["NOTES_ADDED"] != "-") reject("Fresh Worker darf keine historischen Notes fortschreiben")
-      }
-      if (role == "reviewer") {
-        if (!("RECOMMENDATION" in seen) || !("REASON_CODE" in seen) || !("REPORTS" in seen)) reject("Reviewer-Ausgabe ist unvollstaendig")
-        if (values["RECOMMENDATION"] !~ /^(candidate-a|candidate-b|neither|human)$/) reject("unbekannte Reviewer-Empfehlung")
       }
       if (role == "finalizer") {
         if (!("OUTCOME" in seen) || !("BEST_GREEN_REF" in seen) || !("OPEN_ERROR" in seen) || !("HUMAN_DECISION" in seen)) reject("Finalizer-Ausgabe ist unvollstaendig")
@@ -100,7 +95,6 @@ role_fields() {
     worker-brainstorm) echo 'NOTES_ADDED RISKS TEST_IDEAS' ;;
     manager-manage) echo 'action task_id worker_kind reason_code' ;;
     worker-task|worker-fresh) echo 'RESULT CHANGED_PATHS TESTS_RUN NOTES_ADDED' ;;
-    reviewer) echo 'RECOMMENDATION REASON_CODE REPORTS' ;;
     finalizer) echo 'OUTCOME BEST_GREEN_REF OPEN_ERROR HUMAN_DECISION' ;;
     *) return 1 ;;
   esac
@@ -122,8 +116,6 @@ role_schema() {
       printf '{"type":"object","additionalProperties":false,"required":["RESULT","CHANGED_PATHS","TESTS_RUN","NOTES_ADDED"],"properties":{"RESULT":{"type":"string","enum":["implemented","partial","blocked"]},"CHANGED_PATHS":{"type":"string","minLength":1,"description":"Kommagetrennte Repository-Pfade oder %s"},"TESTS_RUN":{"type":"string","minLength":1,"description":"Nur tatsaechlich ausgefuehrte Befehle, kommagetrennt, oder %s"},"NOTES_ADDED":{"type":"string","minLength":1,"description":"Kommagetrennte Notiz-IDs oder %s"}}}\n' "$dash" "$dash" "$dash" ;;
     worker-fresh)
       printf '{"type":"object","additionalProperties":false,"required":["RESULT","CHANGED_PATHS","TESTS_RUN","NOTES_ADDED"],"properties":{"RESULT":{"type":"string","enum":["implemented","partial","blocked"]},"CHANGED_PATHS":{"type":"string","minLength":1,"description":"Kommagetrennte Repository-Pfade oder %s"},"TESTS_RUN":{"type":"string","minLength":1,"description":"Nur tatsaechlich ausgefuehrte Befehle, kommagetrennt, oder %s"},"NOTES_ADDED":{"type":"string","enum":["-"],"description":"Fresh Worker schreiben keine Notes"}}}\n' "$dash" "$dash" ;;
-    reviewer)
-      printf '{"type":"object","additionalProperties":false,"required":["RECOMMENDATION","REASON_CODE","REPORTS"],"properties":{"RECOMMENDATION":{"type":"string","enum":["candidate-a","candidate-b","neither","human"]},"REASON_CODE":{"type":"string","pattern":"^[A-Z][A-Z0-9_]*$"},"REPORTS":{"type":"string","minLength":1,"description":"Verwendete Pruefberichte, kommagetrennt"}}}\n' ;;
     finalizer)
       printf '{"type":"object","additionalProperties":false,"required":["OUTCOME","BEST_GREEN_REF","OPEN_ERROR","HUMAN_DECISION"],"properties":{"OUTCOME":{"type":"string","enum":["done","blocked","budget_exhausted"]},"BEST_GREEN_REF":{"type":"string","minLength":1,"description":"Git-Referenz, Pruefsumme oder %s"},"OPEN_ERROR":{"type":"string","minLength":1,"description":"Kurzer Fehler oder %s"},"HUMAN_DECISION":{"type":"string","minLength":1,"description":"Naechste menschliche Entscheidung oder %s"}}}\n' "$dash" "$dash" "$dash" ;;
     *) return 1 ;;

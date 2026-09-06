@@ -63,7 +63,7 @@ Erzeuge genau:
    - Muss HEUTE auf dem Skelett grün laufen.
 
 3. NICHT anfassen: scripts/state-summary.sh, scripts/next-tasks.sh,
-   scripts/orchestrate.sh, scripts/route-task.sh, scripts/validate-ledger.sh,
+   scripts/orchestrate.sh, scripts/validate-ledger.sh,
    scripts/verify-task.sh und alles unter scripts/agent/ sind fertige,
    getestete Orchestrierung (tests/orchestrator/). Sie lesen das Ledger über
    scripts/agent/ledger.sh und brauchen keine Anpassung an den Stack.

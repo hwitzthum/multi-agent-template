@@ -2,7 +2,7 @@
 
 ## Laufbeleg
 - Run-ID: <Run-ID oder `none`>
-- Modus: <single | verified | managed | managed-fresh | keiner>
+- Modus: <single | verified | managed | keiner>
 - Verifierstatus: <GREEN | RED | NEVER> — <Berichtspfad oder Grund>
 - Letzter grüner Stand: <Git-Referenz/Prüfsumme oder `keiner`>
 

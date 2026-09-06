@@ -9,7 +9,6 @@ project_dir=$(CDPATH= cd -- "$tests_dir/.." && pwd) || exit 1
 . "$tests_dir/fixture.sh"
 
 metrics_tool="$project_dir/scripts/agent/metrics.sh"
-router="$project_dir/scripts/route-task.sh"
 
 begin_suite metrics
 fixture_workspace
@@ -21,7 +20,6 @@ make_task --id 017 --title 'Offene Pilotaufgabe' --features F-017 --class open -
 
 expected_header='run_id,task_id,class,mode,model,prompt_version,manager_calls,worker_calls,verifier_runs,rounds,attempts,tokens_in,tokens_out,cost_estimate,duration_seconds,verification,human_review,outcome,date'
 assert_eq "CSV ist auf das Phase-08-Schema migriert" "$expected_header" "$(sed -n '1p' "$fixture/docs/state/metrics.csv")"
-expect_contains "Router entscheidet fuer open direkt auf managed" 'REASON_CODE=OPEN_DECISION' "$router" --project-dir "$fixture" 017
 
 base_a=$(printf 'a%.0s' {1..64})
 

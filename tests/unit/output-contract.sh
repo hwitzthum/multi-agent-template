@@ -9,7 +9,7 @@ project_dir=$(CDPATH= cd -- "$tests_dir/.." && pwd) || exit 1
 . "$tests_dir/fixture.sh"
 
 output_tool="$project_dir/scripts/agent/output.sh"
-roles='manager-plan worker-brainstorm manager-manage worker-task worker-fresh reviewer finalizer'
+roles='manager-plan worker-brainstorm manager-manage worker-task worker-fresh finalizer'
 
 begin_suite output-contract
 fixture_workspace
@@ -76,14 +76,6 @@ TESTS_RUN=tests
 NOTES_ADDED=N-9999
 EOF
 expect_failure "Fresh Worker darf keine historischen Notes fortschreiben" "$output_tool" validate worker-fresh "$invalid_fresh"
-
-valid_reviewer="$tmp_root/valid-reviewer.txt"
-cat > "$valid_reviewer" <<'EOF'
-RECOMMENDATION=neither
-REASON_CODE=NO_GREEN_CANDIDATE
-REPORTS=report-a,report-b
-EOF
-expect_success "gueltiger Reviewer-Output" "$output_tool" validate reviewer "$valid_reviewer"
 
 valid_finalizer="$tmp_root/valid-finalizer.txt"
 cat > "$valid_finalizer" <<'EOF'

@@ -94,23 +94,6 @@ metrics_write_start() {
   rm -f "$tmp"
 }
 
-metrics_record_route() {
-  run_dir=$1 actual=$2 reason=$3 rule_version=$4 human_gate=$5
-  file="$run_dir/metadata/run.env"
-  if [ ! -f "$file" ]; then
-    mkdir -p "$run_dir/metadata" || return 1
-    tmp=$(mktemp "$run_dir/metadata/.route.env.tmp.XXXXXX") || return 1
-    printf 'mode=%s\nroute_reason_code=%s\nroute_rule_version=%s\nhuman_review=%s\n' "$actual" "$reason" "$rule_version" "$human_gate" > "$tmp"
-    agent_atomic_write "$run_dir/metadata/route.env" "$tmp"
-    rm -f "$tmp"
-    return
-  fi
-  metrics_set_value "$file" mode "$actual" || return 1
-  metrics_set_value "$file" route_reason_code "$reason" || return 1
-  metrics_set_value "$file" route_rule_version "$rule_version" || return 1
-  [ "$human_gate" != true ] || metrics_set_value "$file" human_review true
-}
-
 metrics_append_unique() (
   project_dir=$1 run_id=$2 line=$3
   file="$project_dir/docs/state/metrics.csv"
@@ -234,7 +217,7 @@ metrics_finalize() {
   tokens_in=$(metrics_sum_field tokens_in "${metadata_files[@]}" 2>/dev/null || true)
   tokens_out=$(metrics_sum_field tokens_out "${metadata_files[@]}" 2>/dev/null || true)
   cost_estimate=$(metrics_sum_decimal_field cost_estimate "${metadata_files[@]}" 2>/dev/null || true)
-  verifier_runs=$(find "$run_dir" -type f \( -name '*-verify.log' -o -path '*/candidates/*/report.md' \) -print 2>/dev/null | awk 'END { print NR+0 }')
+  verifier_runs=$(find "$run_dir" -type f -name '*-verify.log' -print 2>/dev/null | awk 'END { print NR+0 }')
   rounds=$(find "$run_dir/metadata" -maxdepth 1 -type f -name '*manager-manage*.env' -print 2>/dev/null | awk 'END { print NR+0 }')
   duration=$(metrics_duration "$started_at" "$finished_at")
   current_run="$project_dir/docs/state/current-run.md"
@@ -245,8 +228,6 @@ metrics_finalize() {
   latest="$project_dir/docs/verification/latest.md"
   if [ -f "$latest" ] && [ "$(ledger_scalar "$latest" run_id 2>/dev/null || true)" = "$run_id" ]; then
     verification=$(ledger_scalar "$latest" result 2>/dev/null || true)
-  elif find "$run_dir/candidates" -type f -name report.md -exec grep -q '^result: red$' {} \; -print -quit 2>/dev/null | grep -q .; then
-    verification=red
   fi
   case "$outcome" in
     success|review)
@@ -261,12 +242,9 @@ metrics_finalize() {
     human_review=not_required
   fi
   changed_paths="$run_dir/metadata/changed-paths.txt"
-  {
-    find "$run_dir/manifests" -maxdepth 1 -type f -name '*.changed' -exec cat {} \; 2>/dev/null || true
-    find "$run_dir/candidates" -type f -name changed-paths.txt -exec cat {} \; 2>/dev/null || true
-  } | sed '/^$/d' | LC_ALL=C sort -u > "$changed_paths"
+  find "$run_dir/manifests" -maxdepth 1 -type f -name '*.changed' -exec cat {} \; 2>/dev/null \
+    | sed '/^$/d' | LC_ALL=C sort -u > "$changed_paths"
   changed_files=$(awk 'END {print NR+0}' "$changed_paths")
-  if [ -f "$run_dir/rollback.performed" ]; then rollback_performed=true; else rollback_performed=false; fi
   for value_label in "$run_id:run_id" "$task_id:task_id" "$task_class:class" "$mode:mode" "$model:model" "$prompt_version:prompt_version" "$verification:verification" "$human_review:human_review"; do
     metrics_safe_value "${value_label%:*}" "${value_label#*:}" || return 1
   done
@@ -286,7 +264,6 @@ metrics_finalize() {
   metrics_set_value "$run_file" human_review "$human_review" || return 1
   metrics_set_value "$run_file" changed_files "$changed_files" || return 1
   metrics_set_value "$run_file" diff_lines '' || return 1
-  metrics_set_value "$run_file" rollback_performed "$rollback_performed" || return 1
   metrics_set_value "$run_file" new_defects '' || return 1
   tmp=$(mktemp "$run_dir/metadata/.summary.csv.tmp.XXXXXX") || return 1
   printf '%s\n' "$line" > "$tmp"
@@ -297,7 +274,7 @@ metrics_finalize() {
 }
 
 metrics_record_dry_run() {
-  project_dir=$1 task_id=$2 actual=$3 reason=$4 base_fingerprint=$5
+  project_dir=$1 task_id=$2 actual=$3 base_fingerprint=$4
   dry_id="dry-$(date -u +%Y%m%dT%H%M%SZ)-T$(printf '%03d' "$((10#$task_id))")-$$"
   run_dir="$project_dir/.agent-runs/$dry_id"
   mkdir -p "$run_dir/metadata" || return 1
@@ -308,7 +285,7 @@ metrics_record_dry_run() {
     echo "task_id=$task_id"
     echo "class=$(ledger_scalar "$task_file" class)"
     echo "mode=$actual"
-    echo "route_reason_code=$reason"
+    echo 'route_reason_code=none'
     echo 'route_rule_version=1'
     echo "base_fingerprint=$base_fingerprint"
     echo "recorded_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -321,16 +298,15 @@ metrics_record_dry_run() {
 }
 
 usage() {
-  echo 'Verwendung: metrics.sh ensure-schema PROJECT | start PROJECT RUN_DIR RUN_ID TASK MODE START ATTEMPT BASE | route RUN_DIR MODE REASON RULE HUMAN_GATE | finalize PROJECT RUN_DIR OUTCOME | reopen PROJECT RUN_DIR | dry-run PROJECT TASK MODE REASON BASE' >&2
+  echo 'Verwendung: metrics.sh ensure-schema PROJECT | start PROJECT RUN_DIR RUN_ID TASK MODE START ATTEMPT BASE | finalize PROJECT RUN_DIR OUTCOME | reopen PROJECT RUN_DIR | dry-run PROJECT TASK MODE BASE' >&2
   exit 2
 }
 
 case "${1:-}" in
   ensure-schema) [ "$#" -eq 2 ] || usage; metrics_ensure_schema "$2" ;;
   start) [ "$#" -eq 9 ] || usage; metrics_write_start "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" ;;
-  route) [ "$#" -eq 6 ] || usage; metrics_record_route "$2" "$3" "$4" "$5" "$6" ;;
   finalize) [ "$#" -eq 4 ] || usage; metrics_finalize "$2" "$3" "$4" ;;
   reopen) [ "$#" -eq 3 ] || usage; metrics_reopen "$2" "$3" ;;
-  dry-run) [ "$#" -eq 6 ] || usage; metrics_record_dry_run "$2" "$3" "$4" "$5" "$6" ;;
+  dry-run) [ "$#" -eq 5 ] || usage; metrics_record_dry_run "$2" "$3" "$4" "$5" ;;
   *) usage ;;
 esac

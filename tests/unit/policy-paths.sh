@@ -36,7 +36,7 @@ expect_success "Manager-Manage-Alias nutzt Task-Schreibgrenze" "$policy" role-wr
 expect_success "Brainstorm-Alias darf Notes schreiben" "$policy" role-write worker-brainstorm docs/state/notes.md
 expect_success "Task-Worker-Alias darf Produktpfad schreiben" "$policy" role-write worker-task src/app.txt
 expect_success "Fresh-Worker-Alias darf Produktpfad schreiben" "$policy" role-write worker-fresh src/app.txt
-expect_failure "Reviewer bleibt schreibgeschuetzt" "$policy" role-write reviewer docs/verification/latest.md
+expect_failure "unbekannte Rolle darf nirgends schreiben" "$policy" role-write pruefer docs/verification/latest.md
 expect_failure "Prompt-Rolle erweitert keine Worker-Rechte" "$policy" role-write worker-task docs/state/plan.md
 
 finish_suite

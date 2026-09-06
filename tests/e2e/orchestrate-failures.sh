@@ -39,15 +39,27 @@ assert_eq "Pfadverletzung markiert Lauf failed" failed "$(ledger_scalar "$fixtur
 
 new_app_fixture
 fake_response worker-task 1 'RESULT=implemented' 'CHANGED_PATHS=src/app.txt' 'TESTS_RUN=-' 'NOTES_ADDED=-'
+fake_response worker-task 2 'RESULT=implemented' 'CHANGED_PATHS=src/app.txt' 'TESTS_RUN=-' 'NOTES_ADDED=-'
 fake_action worker-task 1 timeout
-expect_failure "Timeout stoppt kontrolliert" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
-assert_eq "Timeout markiert Lauf failed" failed "$(ledger_scalar "$fixture/docs/state/current-run.md" phase)"
+fake_action worker-task 2 write-good
+expect_success "Providerfehler erhält einen begrenzten Infrastruktur-Retry" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
+assert_eq "Infrastruktur-Retry startet genau einen zweiten Aufruf" 2 "$(sed -n '1p' "$fixture/.agent-runs/fake/worker-task.count")"
+assert_eq "Infrastruktur-Retry verbraucht keinen Task-Fehlversuch" 0 "$(ledger_scalar "$fixture/docs/tasks/017.md" attempts)"
+
+new_app_fixture
+fake_response worker-task 1 'RESULT=implemented' 'CHANGED_PATHS=src/app.txt' 'TESTS_RUN=-' 'NOTES_ADDED=-'
+fake_response worker-task 2 'RESULT=implemented' 'CHANGED_PATHS=src/app.txt' 'TESTS_RUN=-' 'NOTES_ADDED=-'
+fake_action worker-task 1 timeout
+fake_action worker-task 2 timeout
+expect_failure "Erschöpfter Infrastruktur-Retry stoppt kontrolliert" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
+assert_eq "Erschöpfter Retry markiert Lauf failed" failed "$(ledger_scalar "$fixture/docs/state/current-run.md" phase)"
 
 new_app_fixture
 fake_response worker-task 1 'RESULT=implemented' 'CHANGED_PATHS=src/app.txt' 'TESTS_RUN=-' 'NOTES_ADDED=-'
 fake_action worker-task 1 truncated
 expect_failure "Abgeschnittene Antwort wird nicht ausgewertet" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
 assert_eq "Abgeschnittene Antwort markiert Lauf failed" failed "$(ledger_scalar "$fixture/docs/state/current-run.md" phase)"
+assert_eq "Abgeschnittene Antwort gilt nicht als Providerfehler" 1 "$(sed -n '1p' "$fixture/.agent-runs/fake/worker-task.count")"
 
 new_app_fixture --attempts 3 --max-attempts 9
 expect_failure "Globales Versuchslimit bleibt trotz höherem Taskwert hart" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017

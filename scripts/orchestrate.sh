@@ -5,6 +5,7 @@ set -uo pipefail
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 . "$script_dir/agent/common.sh"
 . "$script_dir/agent/ledger.sh"
+. "$script_dir/agent/route.sh"
 
 project_dir=$(agent_project_root "$script_dir") || exit 1
 selection=''
@@ -47,18 +48,16 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$selection" ] || { [ "$dry_run" = true ] && selection=next || usage; }
 [ "$selection" != resume ] || { [ "$dry_run" = false ] && [ -z "$manual_mode" ] || usage; }
-case "$manual_mode" in ''|single|verified|managed|managed-fresh) ;; *) echo "orchestrate: unbekannter Modus '$manual_mode'" >&2; exit 1 ;; esac
+case "$manual_mode" in ''|single|verified|managed) ;; *) echo "orchestrate: unbekannter Modus '$manual_mode'" >&2; exit 1 ;; esac
 
 project_dir=$(CDPATH= cd -- "$project_dir" 2>/dev/null && pwd -P) || { echo "orchestrate: Projektpfad fehlt" >&2; exit 1; }
 validator="$script_dir/validate-ledger.sh"
 config_reader="$script_dir/agent/config.sh"
-router="$script_dir/route-task.sh"
 status_gate="$script_dir/agent/status.sh"
 verification_gateway="$script_dir/verify-task.sh"
 context_builder="$script_dir/agent/context.sh"
 output_tool="$script_dir/agent/output.sh"
 runner_adapter="$script_dir/agent/runner.sh"
-candidate_tool="$script_dir/agent/candidates.sh"
 metrics_tool="$script_dir/agent/metrics.sh"
 runner=${ORCHESTRATOR_RUNNER:-$runner_adapter}
 current_run="$project_dir/docs/state/current-run.md"
@@ -106,18 +105,12 @@ select_next_task() {
   "$script_dir/next-tasks.sh" --project-dir "$project_dir" | awk -F '[ |]+' '$1 == "READY:" { print $2; exit }'
 }
 
-route_task() {
-  if [ -n "$manual_mode" ]; then
-    "$router" --project-dir "$project_dir" --mode "$manual_mode" "$task_id"
-  else
-    "$router" --project-dir "$project_dir" "$task_id"
-  fi
-}
-
-route_value() {
-  key=$1
-  file=$2
-  awk -F= -v wanted="$key" '$1 == wanted { if (found++) exit 2; print substr($0,length(wanted)+2) } END { if (!found) exit 1 }' "$file"
+# Das harte Limit der Konfiguration gilt auch dann, wenn ein Task ein hoeheres
+# max_attempts traegt.
+task_max_attempts() {
+  value=$(ledger_scalar "$task_file" max_attempts) || return 1
+  [ "$value" -le "$max_task_attempts" ] || value=$max_task_attempts
+  printf '%s\n' "$value"
 }
 
 validate_run_candidate() {
@@ -135,7 +128,7 @@ create_active_run() {
 ---
 run_id: $run_id
 task_id: $task_id
-mode: auto
+mode: $mode
 phase: plan
 iteration: 1
 attempt: ${run_attempt:-1}
@@ -143,7 +136,7 @@ last_progress_fingerprint: none
 started_at: $started_at
 route_rule_version: "1"
 route_reason_code: none
-route_human_gate: false
+route_human_gate: $human_gate
 route_signals: []
 ---
 EOF
@@ -197,6 +190,29 @@ task_control_snapshot() {
   done <<EOF
 $(ledger_task_files "$tasks_dir")
 EOF
+}
+
+# Setzt Pfade auf den Stand eines Manifests zurueck. Was das Manifest nicht
+# kennt, ist nach dem Snapshot entstanden und wandert in die Quarantaene des
+# Laufs statt geloescht zu werden.
+restore_paths() {
+  manifest=$1
+  shift
+  [ "$#" -gt 0 ] || return 0
+  mkdir -p "$run_dir/quarantine" || return 1
+  agent_snapshot_restore "$project_dir" "$manifest" "$run_dir/quarantine" "$@"
+}
+
+restore_changed_paths() {
+  manifest=$1
+  changes_file=$2
+  restore_list=()
+  while IFS= read -r changed; do
+    [ -n "$changed" ] || continue
+    restore_list+=("$changed")
+  done < "$changes_file"
+  [ "${#restore_list[@]}" -gt 0 ] || return 0
+  restore_paths "$manifest" "${restore_list[@]}"
 }
 
 path_in_task_scope() {
@@ -255,20 +271,29 @@ $(ledger_list "$task_file" touches 2>/dev/null || true)
 EOF
     ;;
   esac
-  if [ "$role" = reviewer ]; then
-    context_args+=(
-      --candidate-a-diff "$reviewer_a_diff" --candidate-b-diff "$reviewer_b_diff"
-      --candidate-a-report "$reviewer_a_report" --candidate-b-report "$reviewer_b_report"
-    )
-  fi
   context=$("$context_builder" "${context_args[@]}") || return 1
   agent_repo_manifest "$project_dir" "$before" || return 1
   task_control_snapshot "$controls_before" || return 1
-  "$runner" run_agent "$role" "$context" "$project_dir" "$raw" "$metadata"
-  runner_status=$?
-  "$runner_adapter" validate_metadata "$metadata" >/dev/null 2>&1 || { run_outcome=infrastructure_error; echo "orchestrate: ungültige Runner-Metadaten für $role" >&2; return 1; }
-  [ "$runner_status" -eq 0 ] || { run_outcome=infrastructure_error; echo "orchestrate: Agentenaufruf $role scheiterte (Exit $runner_status)" >&2; return 1; }
-  [ "$(awk -F= '$1 == "output_status" { print $2; exit }' "$metadata")" = ok ] || { run_outcome=infrastructure_error; echo "orchestrate: Agentenausgabe $role ist leer, abgeschnitten oder fehlerhaft" >&2; return 1; }
+  # Nur ein Providerfehler wird wiederholt: Exit ungleich null oder
+  # output_status=error. Eine leere oder abgeschnittene Antwort ist eine Aussage
+  # des Modells und wird nie als Infrastrukturfehler umgedeutet. Ein Retry
+  # zaehlt keinen Task-Versuch.
+  infra_retry=0
+  while :; do
+    "$runner" run_agent "$role" "$context" "$project_dir" "$raw" "$metadata"
+    runner_status=$?
+    "$runner_adapter" validate_metadata "$metadata" >/dev/null 2>&1 || { run_outcome=infrastructure_error; echo "orchestrate: ungültige Runner-Metadaten für $role" >&2; return 1; }
+    output_status=$(awk -F= '$1 == "output_status" { print $2; exit }' "$metadata")
+    if [ "$runner_status" -eq 0 ] && [ "$output_status" != error ]; then break; fi
+    if [ "$infra_retry" -ge "$max_infra_retries" ]; then
+      run_outcome=infrastructure_error
+      echo "orchestrate: Agentenaufruf $role scheiterte endgültig (Exit $runner_status, Ausgabe $output_status)" >&2
+      return 1
+    fi
+    infra_retry=$((infra_retry + 1))
+    sleep "$retry_backoff"
+  done
+  [ "$output_status" = ok ] || { run_outcome=infrastructure_error; echo "orchestrate: Agentenausgabe $role ist leer, abgeschnitten oder fehlerhaft" >&2; return 1; }
   "$output_tool" validate "$role" "$raw" >/dev/null || return 1
   agent_repo_manifest "$project_dir" "$after" || return 1
   agent_manifest_changes "$before" "$after" > "$changes"
@@ -276,7 +301,10 @@ EOF
   mv -f "$controls_before" "$run_dir/manifests/$label.controls-before" || return 1
   before="$run_dir/manifests/$label.before"
   controls_before="$run_dir/manifests/$label.controls-before"
-  check_role_changes "$role" "$changes" || return 1
+  if ! check_role_changes "$role" "$changes"; then
+    restore_changed_paths "$before" "$changes" || echo "orchestrate: Ruecksetzen nach Regelverstoss scheiterte" >&2
+    return 1
+  fi
   task_control_snapshot "$controls_after" || return 1
   case "$role" in manager-plan|manager-manage|worker-brainstorm|worker-task|worker-fresh|finalizer)
     case "$role" in manager-plan|manager-manage)
@@ -350,8 +378,7 @@ append_failure_note() {
 
 record_failure() {
   attempts=$(ledger_scalar "$task_file" attempts) || return 1
-  max_attempts=$(ledger_scalar "$task_file" max_attempts) || return 1
-  [ "$max_attempts" -le "$max_task_attempts" ] || max_attempts=$max_task_attempts
+  max_attempts=$(task_max_attempts) || return 1
   [ "$attempts" -lt "$max_attempts" ] || return 1
   new_attempts=$((attempts + 1))
   validate_task_candidate() { "$validator" --project-dir "$project_dir" --task-file "$1" >/dev/null; }
@@ -479,178 +506,28 @@ run_finalizer() {
   block_current_task "$reason"
 }
 
-pause_with_finalizer() {
-  reason=$1
-  if run_finalizer_role; then :; else echo "orchestrate: Finalizer scheiterte" >&2; fi
-  update_run_field phase paused || return 1
-  run_active=false
-  echo "orchestrate: Lauf pausiert ($reason)" >&2
-}
-
-run_candidate_worker() {
-  candidate_name=$1
-  candidate_role=$2
-  candidate_root="$run_dir/candidates/$candidate_name/worktree"
-  [ -d "$candidate_root" ] || { echo "orchestrate: Kandidaten-Worktree fehlt: $candidate_name" >&2; return 1; }
-  update_run_field phase work || return 1
-  candidate_run_dir="$candidate_root/.agent-runs/$run_id"
-  mkdir -p "$candidate_run_dir/outputs" "$candidate_run_dir/metadata" "$candidate_run_dir/manifests" || return 1
-  context_args=(build --project-dir "$candidate_root" --role "$candidate_role" --run-id "$run_id" --task-id "$task_id")
-  while IFS= read -r include; do [ -n "$include" ] && context_args+=(--include "$include"); done <<EOF
-$(ledger_list "$task_file" touches 2>/dev/null || true)
+# Ein Fresh-Versuch beginnt beim Laufstart: alles, was der Task anfassen darf
+# und seither anders ist, wird auf den Snapshot zurueckgesetzt. Die Rolle
+# worker-fresh bekommt Kontext ohne Notizen und ohne Vorbericht.
+run_fresh_attempt() {
+  now="$scratch_dir/fresh-now.manifest"
+  agent_repo_manifest "$project_dir" "$now" || return 1
+  restore_list=()
+  while IFS= read -r changed; do
+    [ -n "$changed" ] || continue
+    path_in_task_scope "$changed" || continue
+    restore_list+=("$changed")
+  done <<EOF
+$(agent_manifest_changes "$run_start_manifest" "$now")
 EOF
-  candidate_context=$("$context_builder" "${context_args[@]}") || return 1
-  # Auch hier ausserhalb des Arbeitsbaums: der Kandidaten-Worker darf unter
-  # .agent-runs/ schreiben und koennte sein eigenes Vorher-Manifest faelschen.
-  candidate_before="$scratch_dir/$candidate_name-$candidate_role.before"
-  candidate_after="$candidate_run_dir/manifests/$candidate_role.after"
-  candidate_changes="$candidate_run_dir/manifests/$candidate_role.changed"
-  agent_repo_manifest "$candidate_root" "$candidate_before" || return 1
-  fresh_git_link=''
-  if [ "$candidate_role" = worker-fresh ]; then
-    [ -f "$candidate_root/.git" ] && [ ! -L "$candidate_root/.git" ] || { echo "orchestrate: Fresh-Kandidat besitzt keinen sicheren Git-Verweis" >&2; return 1; }
-    fresh_git_link=$(sed -n '1p' "$candidate_root/.git")
-    case "$fresh_git_link" in gitdir:\ *) ;; *) echo "orchestrate: Fresh-Kandidat besitzt einen ungueltigen Git-Verweis" >&2; return 1 ;; esac
-    rm -f "$candidate_root/.git" || return 1
-  fi
-  infra_retry=0
-  invocation=1
-  while :; do
-    candidate_raw="$candidate_run_dir/outputs/$candidate_role-$invocation.raw"
-    candidate_metadata="$candidate_run_dir/metadata/$candidate_role-$invocation.env"
-    "$runner" run_agent "$candidate_role" "$candidate_context" "$candidate_root" "$candidate_raw" "$candidate_metadata"
-    candidate_runner_status=$?
-    if [ "$candidate_role" = worker-fresh ] && [ ! -f "$candidate_root/.git" ]; then printf '%s\n' "$fresh_git_link" > "$candidate_root/.git"; fi
-    if ! "$runner_adapter" validate_metadata "$candidate_metadata" >/dev/null 2>&1; then
-      run_outcome=infrastructure_error
-      echo "orchestrate: ungueltige Runner-Metadaten fuer $candidate_name" >&2
+  rm -f "$now"
+  if [ "${#restore_list[@]}" -gt 0 ]; then
+    restore_paths "$run_start_manifest" "${restore_list[@]}" || {
+      echo "orchestrate: Ruecksetzen auf den Laufstart scheiterte" >&2
       return 1
-    fi
-    cp "$candidate_metadata" "$run_dir/metadata/$candidate_name-$candidate_role-$invocation.env" || return 1
-    candidate_output_status=$(awk -F= '$1 == "output_status" { print $2; exit }' "$candidate_metadata")
-    if [ "$candidate_runner_status" -eq 0 ] && [ "$candidate_output_status" != error ]; then break; fi
-    if [ "$infra_retry" -ge "$max_infra_retries" ]; then
-      run_outcome=infrastructure_error
-      echo "orchestrate: Infrastruktur-Retry fuer $candidate_name ist erschoepft" >&2
-      return 1
-    fi
-    infra_retry=$((infra_retry + 1))
-    sleep "$retry_backoff"
-    invocation=$((invocation + 1))
-    if [ "$candidate_role" = worker-fresh ]; then rm -f "$candidate_root/.git" || return 1; fi
-  done
-  if [ "$candidate_role" = worker-fresh ] && [ ! -f "$candidate_root/.git" ]; then printf '%s\n' "$fresh_git_link" > "$candidate_root/.git"; fi
-  [ "$candidate_output_status" = ok ] || { echo "orchestrate: Kandidatenausgabe $candidate_name ist $candidate_output_status" >&2; return 1; }
-  "$output_tool" validate "$candidate_role" "$candidate_raw" >/dev/null || return 1
-  agent_repo_manifest "$candidate_root" "$candidate_after" || return 1
-  agent_manifest_changes "$candidate_before" "$candidate_after" > "$candidate_changes"
-  mv -f "$candidate_before" "$candidate_run_dir/manifests/$candidate_role.before" || return 1
-  check_role_changes "$candidate_role" "$candidate_changes" || return 1
-  "$validator" --project-dir "$candidate_root" >/dev/null || return 1
-  "$candidate_tool" capture --project-dir "$project_dir" --run-dir "$run_dir" --candidate "$candidate_name" --task-id "$task_id" || return 1
-}
-
-verify_isolated_candidate() {
-  candidate_name=$1
-  candidate_root="$run_dir/candidates/$candidate_name/worktree"
-  candidate_dir="$run_dir/candidates/$candidate_name"
-  update_run_field phase verify || return 1
-  if "$verification_gateway" --project-dir "$candidate_root" --run-id "$run_id" --attempt 1 --timeout "$verify_timeout" "$task_id" > "$candidate_dir/verify.log" 2>&1; then
-    candidate_result=green
-  else
-    candidate_result=red
+    }
   fi
-  cp "$candidate_root/docs/verification/latest.md" "$candidate_dir/report.md" || return 1
-  report_result=$(ledger_scalar "$candidate_dir/report.md" result 2>/dev/null || true)
-  [ "$report_result" = "$candidate_result" ] || { echo "orchestrate: widerspruechlicher Kandidatenbericht" >&2; return 1; }
-  printf 'candidate=%s\nresult=%s\nbase_commit=%s\npatch_sha256=%s\n' \
-    "$candidate_name" "$candidate_result" "$(sed -n '1p' "$run_dir/candidates/base.commit")" \
-    "$(sed -n '1p' "$candidate_dir/patch.sha256")" > "$candidate_dir/result.env"
-}
-
-record_candidate_decision() {
-  selected_candidate=$1
-  decision_reason=$2
-  {
-    echo "selected=$selected_candidate"
-    echo "reason_code=$decision_reason"
-    echo "candidate_a_result=$candidate_a_result"
-    echo "candidate_b_result=$candidate_b_result"
-    echo 'requires_reverify=true'
-  } > "$run_dir/candidates/decision.env"
-}
-
-managed_fresh_loop() {
-  git -C "$project_dir" rev-parse --git-dir >/dev/null 2>&1 || { run_finalizer GIT_REQUIRED; return 1; }
-  "$candidate_tool" init --project-dir "$project_dir" --run-dir "$run_dir" >/dev/null || { run_finalizer CANDIDATE_INIT_FAILED; return 1; }
-
-  if ! run_candidate_worker candidate-a worker-task; then
-    "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true
-    run_finalizer CANDIDATE_A_INVALID
-    return 1
-  fi
-  verify_isolated_candidate candidate-a || { "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true; run_finalizer CANDIDATE_A_VERIFY_ERROR; return 1; }
-  candidate_a_result=$candidate_result
-
-  if ! run_candidate_worker candidate-b worker-fresh; then
-    "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true
-    run_finalizer CANDIDATE_B_INVALID
-    return 1
-  fi
-  verify_isolated_candidate candidate-b || { "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true; run_finalizer CANDIDATE_B_VERIFY_ERROR; return 1; }
-  candidate_b_result=$candidate_result
-
-  selected_candidate=''
-  decision_reason=''
-  if [ "$candidate_a_result" = green ] && [ "$candidate_b_result" = red ]; then
-    selected_candidate=candidate-a; decision_reason=ONLY_A_GREEN
-  elif [ "$candidate_a_result" = red ] && [ "$candidate_b_result" = green ]; then
-    selected_candidate=candidate-b; decision_reason=ONLY_B_GREEN
-  elif [ "$candidate_a_result" = red ] && [ "$candidate_b_result" = red ]; then
-    record_candidate_decision neither BOTH_RED
-    "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true
-    run_finalizer BOTH_CANDIDATES_RED
-    return 1
-  else
-    reviewer_a_diff="$run_dir/candidates/candidate-a/candidate.patch"
-    reviewer_b_diff="$run_dir/candidates/candidate-b/candidate.patch"
-    reviewer_a_report="$run_dir/candidates/candidate-a/report.md"
-    reviewer_b_report="$run_dir/candidates/candidate-b/report.md"
-    if ! run_role reviewer "$task_id" finalize; then
-      "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true
-      run_finalizer REVIEWER_INVALID
-      return 1
-    fi
-    recommendation=$(output_value RECOMMENDATION "$last_raw")
-    decision_reason=$(output_value REASON_CODE "$last_raw")
-    case "$recommendation" in
-      candidate-a|candidate-b) selected_candidate=$recommendation ;;
-      neither) record_candidate_decision neither "$decision_reason"; "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true; run_finalizer REVIEWER_NEITHER; return 1 ;;
-      human) record_candidate_decision human "$decision_reason"; "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true; run_finalizer HUMAN_DECISION; return 1 ;;
-      *) "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true; run_finalizer REVIEWER_INVALID; return 1 ;;
-    esac
-  fi
-
-  record_candidate_decision "$selected_candidate" "$decision_reason"
-  if ! "$candidate_tool" check-main --project-dir "$project_dir" --run-dir "$run_dir"; then
-    pause_with_finalizer EXTERNAL_CHANGE
-    return 1
-  fi
-  "$candidate_tool" apply --project-dir "$project_dir" --run-dir "$run_dir" --candidate "$selected_candidate" || { pause_with_finalizer APPLY_CONFLICT; return 1; }
-  if verify_candidate; then
-    "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true
-    finish_success
-    return 0
-  fi
-  "$candidate_tool" rollback --project-dir "$project_dir" --run-dir "$run_dir" --candidate "$selected_candidate" || {
-    pause_with_finalizer ROLLBACK_FAILED
-    return 1
-  }
-  : > "$run_dir/rollback.performed"
-  "$candidate_tool" cleanup --project-dir "$project_dir" --run-dir "$run_dir" || true
-  record_failure || true
-  run_finalizer MAIN_REVERIFY_RED
-  return 1
+  run_role worker-fresh "$task_id" work
 }
 
 switch_to_task() {
@@ -714,9 +591,16 @@ managed_loop() {
 
     switch_to_task "$selected" || { update_run_field phase failed || true; return 1; }
     worker_kind=$(manager_value worker_kind "$decision")
-    if [ "$worker_kind" = fresh ]; then managed_fresh_loop; return; fi
-    [ "$worker_kind" = normal ] || { echo "orchestrate: unbekannte Worker-Art" >&2; update_run_field phase paused; return 1; }
-    run_role worker-task "$task_id" work || return 1
+    case "$worker_kind" in normal|fresh) ;; *) echo "orchestrate: unbekannte Worker-Art" >&2; update_run_field phase paused; return 1 ;; esac
+    # Der letzte erlaubte Versuch laeuft immer fresh: eine Runde ohne die
+    # Vorgeschichte, die bis hierher nicht getragen hat.
+    attempts=$(ledger_scalar "$task_file" attempts) || return 1
+    attempt_limit=$(task_max_attempts) || return 1
+    if [ "$worker_kind" = fresh ] || [ "$((attempts + 1))" -ge "$attempt_limit" ]; then
+      run_fresh_attempt || return 1
+    else
+      run_role worker-task "$task_id" work || return 1
+    fi
     worker_result=$(output_value RESULT "$last_raw")
     [ "$worker_result" != blocked ] || { run_finalizer WORKER_BLOCKED; return 1; }
     if verify_candidate; then finish_success; return; fi
@@ -776,6 +660,8 @@ if [ "$resume" = true ]; then
   run_dir="$project_dir/.agent-runs/$run_id"
   scratch_dir=$(mktemp -d "${TMPDIR:-/tmp}/agent-scratch.XXXXXX") || exit 1
   checkpoint_matches || exit 1
+  run_start_manifest="$scratch_dir/run-start.manifest"
+  agent_repo_manifest "$project_dir" "$run_start_manifest" || exit 1
   "$metrics_tool" reopen "$project_dir" "$run_dir" || exit 1
   metrics_started=true
   call_sequence=$(find "$run_dir/outputs" -maxdepth 1 -type f -name '[0-9][0-9]-*' -print 2>/dev/null | sed 's#.*/##; s/-.*//' | LC_ALL=C sort -n | tail -n 1)
@@ -791,24 +677,23 @@ else
   attempts_at_start=$(ledger_scalar "$task_file" attempts) || exit 1
   [ "$attempts_at_start" -lt "$max_task_attempts" ] || { echo "orchestrate: hartes Versuchslimit für Task $task_id ist erreicht" >&2; exit 1; }
   run_attempt=$((attempts_at_start + 1))
-  route_file=$(mktemp "${TMPDIR:-/tmp}/route.XXXXXX") || exit 1
-  route_task > "$route_file" || { rm -f "$route_file"; exit 1; }
-  mode=$(route_value MODE "$route_file") || { rm -f "$route_file"; exit 1; }
-  reason_code=$(route_value REASON_CODE "$route_file") || { rm -f "$route_file"; exit 1; }
-  rm -f "$route_file"
+  mode=$(agent_route_mode "$task_file" "$manual_mode" "$max_task_attempts") || exit 1
+  # Ein offener Task und ein ausdruecklich verlangtes Review enden nie
+  # unbesehen auf done.
+  human_gate=$(ledger_scalar "$task_file" human_review) || exit 1
+  [ "$(ledger_scalar "$task_file" class)" != open ] || human_gate=true
   if [ "$dry_run" = true ]; then
     base_file=$(mktemp "${TMPDIR:-/tmp}/agent-dry-base.XXXXXX") || exit 1
     product_fingerprint "$base_file" || { rm -f "$base_file"; exit 1; }
     base_fingerprint=$(sed -n '1p' "$base_file")
     rm -f "$base_file"
-    dry_metadata=$("$metrics_tool" dry-run "$project_dir" "$task_id" "$mode" "$reason_code" "$base_fingerprint") || exit 1
-    printf 'DRY_RUN=true\nTASK_ID=%s\nMODE=%s\nREASON_CODE=%s\nMETADATA=%s\nMAX_GLOBAL_ITERATIONS=%s\nMAX_TASK_ATTEMPTS=%s\nMAX_NO_PROGRESS=%s\n' \
-      "$task_id" "$mode" "$reason_code" "${dry_metadata#"$project_dir/"}" "$max_iterations" "$max_task_attempts" "$max_no_progress"
+    dry_metadata=$("$metrics_tool" dry-run "$project_dir" "$task_id" "$mode" "$base_fingerprint") || exit 1
+    printf 'DRY_RUN=true\nTASK_ID=%s\nMODE=%s\nHUMAN_GATE=%s\nMETADATA=%s\nMAX_GLOBAL_ITERATIONS=%s\nMAX_TASK_ATTEMPTS=%s\nMAX_NO_PROGRESS=%s\n' \
+      "$task_id" "$mode" "$human_gate" "${dry_metadata#"$project_dir/"}" "$max_iterations" "$max_task_attempts" "$max_no_progress"
     case "$mode" in
       single) echo 'PLANNED_CALLS=worker-task,verify' ;;
       verified) echo 'PLANNED_CALLS=worker-task,verify,worker-task-if-red,verify-if-fixed,manager-if-still-red' ;;
-      managed) echo 'PLANNED_CALLS=manager-plan-if-needed,worker-brainstorm-once,manager-manage,worker-task,verify,repeat-bounded' ;;
-      managed-fresh) echo 'PLANNED_CALLS=worker-task-isolated,verify-a,worker-fresh-isolated,verify-b,reviewer-if-both-green,apply-selected,reverify-main' ;;
+      managed) echo 'PLANNED_CALLS=manager-plan-if-needed,worker-brainstorm-once,manager-manage,worker-task-or-fresh,verify,repeat-bounded' ;;
     esac
     exit 0
   fi
@@ -820,10 +705,6 @@ else
   if git -C "$project_dir" rev-parse --verify -q HEAD >/dev/null 2>&1 &&
      [ -n "$(git -C "$project_dir" status --porcelain -- \
        ':(exclude)docs/tasks' ':(exclude)docs/state' ':(exclude)docs/verification' 2>/dev/null)" ]; then
-    if [ "$mode" = managed-fresh ]; then
-      echo "orchestrate: managed-fresh benoetigt einen sauberen, eindeutig versionierten Basisstand" >&2
-      exit 1
-    fi
     if [ "$allow_dirty" = false ]; then
       echo "orchestrate: Arbeitsverzeichnis ist nicht sauber; wiederhole bewusst mit --allow-dirty" >&2
       exit 1
@@ -845,12 +726,10 @@ else
   "$status_gate" --project-dir "$project_dir" set-status "$task_id" in_progress todo >/dev/null || exit 1
   run_active=true
   create_active_run || exit 1
-  if [ -n "$manual_mode" ]; then
-      "$router" --project-dir "$project_dir" --mode "$manual_mode" --record "$task_id" >/dev/null || exit 1
-  else
-    "$router" --project-dir "$project_dir" --record "$task_id" >/dev/null || exit 1
-  fi
-  mode=$(ledger_scalar "$current_run" mode) || exit 1
+  # Der Snapshot des Laufstarts liegt ausserhalb des Arbeitsbaums: ein Agent
+  # duerfte ihn sonst passend zu seinen Aenderungen umschreiben.
+  run_start_manifest="$scratch_dir/run-start.manifest"
+  agent_repo_manifest "$project_dir" "$run_start_manifest" || exit 1
   checkpoint_product || exit 1
 fi
 
@@ -869,26 +748,14 @@ case "$mode" in
     [ "$(output_value RESULT "$last_raw")" != blocked ] || { block_current_task WORKER_BLOCKED; exit 1; }
     if verify_candidate; then finish_success; exit 0; fi
     record_failure || { run_finalizer ATTEMPT_LIMIT; exit 1; }
-    attempts=$(ledger_scalar "$task_file" attempts)
-    max_attempts=$(ledger_scalar "$task_file" max_attempts)
-    [ "$max_attempts" -le "$max_task_attempts" ] || max_attempts=$max_task_attempts
-    if [ "$attempts" -lt "$max_attempts" ]; then
-      run_role worker-task "$task_id" work || exit 1
-      [ "$(output_value RESULT "$last_raw")" != blocked ] || { block_current_task WORKER_BLOCKED; exit 1; }
-      if verify_candidate; then finish_success; exit 0; fi
-      escalation=$(mktemp "${TMPDIR:-/tmp}/route-escalation.XXXXXX") || exit 1
-      "$router" --project-dir "$project_dir" --record --escalate-from verified --expected-attempts "$attempts" "$task_id" > "$escalation" || { rm -f "$escalation"; run_finalizer ATTEMPT_LIMIT; exit 1; }
-      mode=$(route_value MODE "$escalation") || { rm -f "$escalation"; exit 1; }
-      rm -f "$escalation"
-      # Der Router hat den zweiten Fehlversuch gezaehlt; der Laufzaehler folgt.
-      attempts=$(ledger_scalar "$task_file" attempts) || exit 1
-      update_run_field attempt "$((attempts + 1))" || exit 1
-      if [ "$mode" = managed ]; then managed_loop; else run_finalizer ATTEMPT_LIMIT; exit 1; fi
-    else
-      run_finalizer ATTEMPT_LIMIT
-      exit 1
-    fi ;;
+    run_role worker-task "$task_id" work || exit 1
+    [ "$(output_value RESULT "$last_raw")" != blocked ] || { block_current_task WORKER_BLOCKED; exit 1; }
+    if verify_candidate; then finish_success; exit 0; fi
+    record_failure || { run_finalizer ATTEMPT_LIMIT; exit 1; }
+    # Zwei rote Versuche heben den Rang: der Router liest die neuen attempts.
+    mode=$(agent_route_mode "$task_file" "$manual_mode" "$max_task_attempts") || exit 1
+    update_run_field mode "$mode" || exit 1
+    if [ "$mode" = managed ]; then managed_loop; else run_finalizer ATTEMPT_LIMIT; exit 1; fi ;;
   managed) managed_loop ;;
-  managed-fresh) managed_fresh_loop ;;
   *) echo "orchestrate: Modus $mode wird nicht ausgeführt" >&2; update_run_field phase paused || true; exit 1 ;;
 esac

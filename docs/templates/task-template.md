@@ -5,10 +5,9 @@ depends_on: [<ids — nur technische Unmöglichkeit, keine Reihenfolge-Präferen
 features: [<Anforderungs-IDs, die diese Aufgabe erfüllt>]
 status: todo
 class: patterned # mechanical | patterned | open — siehe Test unten
-orchestration: auto # auto | single | verified | managed | managed-fresh
-fresh_perspective: auto # auto | required | off
-touches: [] # optionale Pfade/Komponenten für deterministisches Risiko-Routing
-risk_flags: [] # cross-component | high-risk-domain | repeated-failure | conflicting-ledger
+orchestration: auto # auto | single | verified | managed
+touches: [] # Pfade, die dieser Task ändern darf; leer heisst unbeschränkt
+risk_flags: [] # high-risk | cross-component | repeated-failure
 attempts: 0
 max_attempts: 3
 last_verification: never # never | green | red
@@ -28,23 +27,23 @@ Zulässige Statusübergänge: `todo -> in_progress`; von `in_progress` nach
 `done`, `review`, `todo` oder `blocked`; von `review` nach `done`, `todo` oder
 `blocked`. `done` setzt einen passenden grünen Prüfbericht voraus. Das Feld
 `orchestration` ist eine ausdrückliche Vorgabe; `auto` überlässt die Wahl dem
-Router. `touches` nennt betroffene Pfade oder Komponenten. `risk_flags` wird nur
-für bereits kuratierte Signale verwendet, die sich nicht zuverlässig aus dem
-Umfang ableiten lassen; freie oder unbekannte Werte sind ungültig.
+Router. `touches` nennt die Pfade, die der Worker ändern darf; alles ausserhalb
+wird zurückgesetzt und stoppt den Lauf. `risk_flags` wird nur für bereits
+kuratierte Signale verwendet und hebt den Modus auf mindestens `managed`; freie
+oder unbekannte Werte sind ungültig.
 
 Modusbeispiele:
 
-- Routineänderung: `class: mechanical`, `orchestration: auto`,
-  `fresh_perspective: off` — empfohlen wird `single`.
+- Routineänderung: `class: mechanical`, `orchestration: auto`; empfohlen wird `single`.
 - Fachlogik nach vorhandenem Muster: `class: patterned`,
-  `orchestration: auto`, `fresh_perspective: auto` — empfohlen wird
-  `verified`.
+  `orchestration: auto`; empfohlen wird `verified`.
 - Offene oder strittige Entscheidung: `class: open`, `human_review: true` —
   empfohlen wird `managed`, die Aufgabe bleibt bis zur menschlichen Freigabe
   auf `review`.
-- Festgefahrener Hochrisiko-Task: `risk_flags: [repeated-failure]` oder
-  `fresh_perspective: required` — empfohlen wird `managed-fresh`. Dieser Modus
-  braucht einen sauberen, versionierten Git-Ausgangsstand.
+- Festgefahrener Hochrisiko-Task: `risk_flags: [repeated-failure]` — empfohlen
+  wird `managed`. Der letzte erlaubte Versuch läuft dort als Fresh-Versuch: die
+  `touches`-Pfade werden auf den Laufstart zurückgesetzt, und der Worker
+  arbeitet ohne Notizen und ohne den vorherigen Prüfbericht.
 
 # Kontext
 

@@ -65,7 +65,6 @@ validate_task() {
   status=$(ledger_scalar "$file" status 2>/dev/null) || { problem "$label: Pflichtfeld 'status' fehlt oder ist doppelt"; status=''; }
   class=$(ledger_scalar "$file" class 2>/dev/null) || { problem "$label: Pflichtfeld 'class' fehlt oder ist doppelt"; class=''; }
   orchestration=$(ledger_scalar "$file" orchestration 2>/dev/null) || { problem "$label: Pflichtfeld 'orchestration' fehlt oder ist doppelt"; orchestration=''; }
-  fresh=$(ledger_scalar "$file" fresh_perspective 2>/dev/null) || { problem "$label: Pflichtfeld 'fresh_perspective' fehlt oder ist doppelt"; fresh=''; }
   attempts=$(ledger_scalar "$file" attempts 2>/dev/null) || { problem "$label: Pflichtfeld 'attempts' fehlt oder ist doppelt"; attempts=''; }
   max_attempts=$(ledger_scalar "$file" max_attempts 2>/dev/null) || { problem "$label: Pflichtfeld 'max_attempts' fehlt oder ist doppelt"; max_attempts=''; }
   verification=$(ledger_scalar "$file" last_verification 2>/dev/null) || { problem "$label: Pflichtfeld 'last_verification' fehlt oder ist doppelt"; verification=''; }
@@ -81,7 +80,7 @@ validate_task() {
     if flags=$(ledger_list "$file" risk_flags 2>/dev/null); then
       while IFS= read -r flag; do
         [ -n "$flag" ] || continue
-        one_of "$flag" cross-component high-risk-domain repeated-failure conflicting-ledger || problem "$label: unbekanntes risk_flag '$flag'"
+        one_of "$flag" high-risk cross-component repeated-failure || problem "$label: unbekanntes risk_flag '$flag'"
       done <<EOF
 $flags
 EOF
@@ -96,8 +95,7 @@ EOF
   [ -n "$title" ] || problem "$label: title darf nicht leer sein"
   one_of "$status" todo in_progress review done blocked || problem "$label: unbekannter status '$status'"
   one_of "$class" mechanical patterned open || problem "$label: unbekannte class '$class'"
-  one_of "$orchestration" auto single verified managed managed-fresh || problem "$label: unbekannte orchestration '$orchestration'"
-  one_of "$fresh" auto required off || problem "$label: unbekannte fresh_perspective '$fresh'"
+  one_of "$orchestration" auto single verified managed || problem "$label: unbekannte orchestration '$orchestration'"
   one_of "$verification" never green red || problem "$label: unbekannte last_verification '$verification'"
   one_of "$human_review" true false || problem "$label: human_review muss true oder false sein"
   case "$attempts" in ''|*[!0-9]*) problem "$label: attempts muss eine nichtnegative ganze Zahl sein" ;; esac
@@ -187,7 +185,7 @@ validate_ledger_files() {
     $1 !~ /^[0-9]{8}T[0-9]{6}Z-T[0-9]{3}$/ { fail() }
     $2 !~ /^[0-9]+$/ { fail() }
     $3 !~ /^(mechanical|patterned|open)$/ { fail() }
-    $4 !~ /^(single|verified|managed|managed-fresh)$/ { fail() }
+    $4 !~ /^(single|verified|managed)$/ { fail() }
     $7 !~ /^[0-9]+$/ || $8 !~ /^[0-9]+$/ || $9 !~ /^[0-9]+$/ || $10 !~ /^[0-9]+$/ || $11 !~ /^[0-9]+$/ { fail() }
     $12 !~ /^([0-9]+)?$/ || $13 !~ /^([0-9]+)?$/ || $14 !~ /^([0-9]+([.][0-9]+)?)?$/ || $15 !~ /^([0-9]+)?$/ { fail() }
     $16 !~ /^$/ && $16 !~ /^(green|red)$/ { fail() }
@@ -275,7 +273,7 @@ EOF
     route_reason=$(ledger_scalar "$run_file" route_reason_code 2>/dev/null) || { problem "current-run.md: Pflichtfeld route_reason_code fehlt"; route_reason=''; }
     route_gate=$(ledger_scalar "$run_file" route_human_gate 2>/dev/null) || { problem "current-run.md: Pflichtfeld route_human_gate fehlt"; route_gate=''; }
     route_signals=$(ledger_list "$run_file" route_signals 2>/dev/null) || { problem "current-run.md: Pflichtliste route_signals fehlt"; route_signals=''; }
-    one_of "$mode" auto single verified managed managed-fresh blocked || problem "current-run.md: unbekannter mode '$mode'"
+    one_of "$mode" auto single verified managed blocked || problem "current-run.md: unbekannter mode '$mode'"
     one_of "$phase" plan brainstorm work verify finalize paused failed finished || problem "current-run.md: unbekannte phase '$phase'"
     case "$iteration:$attempt" in *[!0-9:]*) problem "current-run.md: iteration und attempt muessen nichtnegative ganze Zahlen sein" ;; esac
     case "$run_id" in none|[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z-T[0-9][0-9][0-9]) ;; *) problem "current-run.md: run_id hat nicht das erwartete Format" ;; esac
@@ -286,11 +284,11 @@ EOF
     fi
     case "$started_at" in never|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;; *) problem "current-run.md: started_at muss eine UTC-Zeit oder never sein" ;; esac
     case "$route_version" in ''|*[!0-9]*) problem "current-run.md: route_rule_version muss numerisch sein" ;; esac
-    one_of "$route_reason" none EXPLICIT_OVERRIDE MECHANICAL_LOCAL PATTERNED_LOCAL OPEN_DECISION CROSS_COMPONENT HIGH_RISK_DOMAIN FAILED_ATTEMPTS CONFLICTING_LEDGER REPEATED_FAILURE FRESH_REQUIRED ESCALATED_AFTER_FAILURE MODE_EXHAUSTED ATTEMPT_LIMIT || problem "current-run.md: unbekannter route_reason_code '$route_reason'"
+    one_of "$route_reason" none EXPLICIT_OVERRIDE MECHANICAL_LOCAL PATTERNED_LOCAL OPEN_DECISION CROSS_COMPONENT HIGH_RISK FAILED_ATTEMPTS REPEATED_FAILURE ATTEMPT_LIMIT || problem "current-run.md: unbekannter route_reason_code '$route_reason'"
     one_of "$route_gate" true false || problem "current-run.md: route_human_gate muss true oder false sein"
     while IFS= read -r route_signal; do
       [ -n "$route_signal" ] || continue
-      one_of "$route_signal" CLI_OVERRIDE TASK_OVERRIDE OPEN_CLASS MULTIPLE_FAILURES CROSS_COMPONENT HIGH_RISK_DOMAIN CONFLICTING_LEDGER REPEATED_FAILURE FRESH_REQUIRED FAILURE_RECORDED MODE_EXHAUSTED ATTEMPT_LIMIT || problem "current-run.md: unbekanntes route_signal '$route_signal'"
+      one_of "$route_signal" CLI_OVERRIDE TASK_OVERRIDE OPEN_CLASS MULTIPLE_FAILURES CROSS_COMPONENT HIGH_RISK REPEATED_FAILURE FAILURE_RECORDED ATTEMPT_LIMIT || problem "current-run.md: unbekanntes route_signal '$route_signal'"
     done <<EOF
 $route_signals
 EOF
