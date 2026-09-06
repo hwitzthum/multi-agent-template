@@ -1,4 +1,4 @@
-  # Adaptives Agentensystem für Projektarbeit
+# Adaptives Agentensystem für Projektarbeit
 
 Dieses Template hält Ziel, Aufgaben, Prüfungen und Übergaben in Dateien fest.
 Es wählt für jede Aufgabe den kleinsten sicheren Arbeitsmodus: eine einfache
@@ -10,6 +10,240 @@ nicht der Standard für jede Aufgabe.
 Der technische Betriebs- und Sicherheitsvertrag steht in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Dieses README ist die
 Bedienanleitung.
+
+---
+
+## Was ist dieses System? (Überblick für Laien)
+
+Stell dir vor, du hast ein großes Projekt mit vielen Aufgaben und möchtest KI-Agenten bei der Arbeit nutzen. Dieses System ist wie ein **Projektmanager, der Aufgaben verwaltet und KI-Helfer kontrolliert einsetzt**.
+
+### Das Kernprinzip
+
+Das System:
+
+1. **Zerlegt dein Projekt** in kleine, nachvollziehbare Aufgaben (jede in einer Datei)
+2. **Überwacht jeden KI-Agenten** — Was darf der Agent anfassen? Wann muss es doppelt geprüft werden?
+3. **Prüft das Ergebnis** — War die Arbeit fehlerfrei? Passt sie zu deinen Anforderungen?
+4. **Entscheidet automatisch** — Einfache Aufgaben erledigt ein Agent allein. Komplexe Aufgaben bekommen einen Manager, der Plant, einen Worker, der umgesetzt, und einen Verifier, der prüft.
+
+Das macht es sicher: Der Agent kann nicht einfach Dateien löschen, ins Internet hochladen oder Code verstümmeln. Der Menschen behält die Kontrolle.
+
+---
+
+## Wie funktioniert die Architektur?
+
+### Die Kernkomponenten
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   PROJEKT-MANAGEMENT                        │
+├─────────────────────────────────────────────────────────────┤
+│ docs/state/goal.md     → Was ist das Ziel?                  │
+│ docs/state/plan.md     → Wie erreichen wir es?              │
+│ docs/state/notes.md    → Was haben wir gelernt?             │
+│ docs/state/decisions.md→ Welche Entscheidungen trafen wir?  │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                   AUFGABENVERWALTUNG                         │
+├─────────────────────────────────────────────────────────────┤
+│ docs/tasks/001.md      → Task 1 mit Status, Abhängigkeiten  │
+│ docs/tasks/002.md      → Task 2 (hängt von Task 1 ab)       │
+│ docs/tasks/003.md      → Task 3 usw.                        │
+│                                                              │
+│ Jeder Task hat:                                              │
+│  • Status: todo / in_progress / review / done / blocked      │
+│  • Schwierigkeit: mechanical / patterned / open              │
+│  • Akzeptanzkriterien: Wie wissen wir, es ist fertig?       │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│               ROUTER: "Was ist der nächste Task?"            │
+│                    "Wer sollte ihn bearbeiten?"              │
+├─────────────────────────────────────────────────────────────┤
+│ Einfach (mechanical)? → Ein Worker erledigt es allein       │
+│ Mittelschwer (patterned)? → Worker + Verifier-Prüfung       │
+│ Komplex/offen (open)? → Manager plant, Worker arbeitet,     │
+│                         Verifier prüft                       │
+│                                                              │
+│ Fehler entdeckt? → Eine Stufe höher wieder versuchen        │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                  AUSFÜHRUNG DES TASKS                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│ 1. MANAGER (bei komplexen Tasks):                           │
+│    • Liest Ziel, Task, Plan und bisherige Erkenntnisse      │
+│    • Entscheidet: Was genau tun? Brauche ich Rückfragen?    │
+│    • Kann sagen: "Ich brauche eine Entscheidung vom Mensch" │
+│                                                              │
+│ 2. WORKER:                                                   │
+│    • Erhält klare Anweisung und Kontextinformationen        │
+│    • Liest und bearbeitet Dateien im Projekt                │
+│    • Kann nur die Dateien anfassen, die im Task stehen       │
+│    • Kann nicht löschen, nicht hochladen, nicht verstümmeln │
+│    • Schreibt Ergebnis auf (was wurde gemacht?)             │
+│                                                              │
+│ 3. VERIFIER:                                                 │
+│    • Führt die Akzeptanzkommandos des Tasks aus             │
+│    • Prüft: "Ist das Ergebnis fehlerfrei?"                  │
+│    • Schreibt einen Prüfbericht: grün ✓ oder rot ✗          │
+│                                                              │
+│ 4. STATUS-GATE (automatisch):                               │
+│    • Nur diese Komponente darf Task-Status ändern           │
+│    • Ist der Bericht grün? → Task auf "review" oder "done"  │
+│    • Ist der Bericht rot? → Task bleibt "in_progress",      │
+│      Manager versucht es erneut (eine Stufe höher)          │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                   SICHERHEIT (immer aktiv)                   │
+├─────────────────────────────────────────────────────────────┤
+│ Ein Agent (Worker/Manager) darf NICHT:                       │
+│  • Dateien ins Internet hochladen (git push, curl, wget)    │
+│  • Ordner rekursiv löschen (rm -r)                           │
+│  • Ungespeicherte Arbeit verwerfen (git reset --hard)       │
+│  • Prüfungs-Hooks umgehen (--no-verify)                      │
+│                                                              │
+│ Diese Sperren sind in den Skripten hart codiert.             │
+│ Sie gelten immer, überall, versteckt oder offen.             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Die vier Rollen
+
+| Rolle           | Wer?     | Was tut sie?                                                                                             |
+| --------------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| **Manager**     | KI-Agent | Liest das Ziel und alle bisherigen Notizen. Entscheidet, was zu tun ist, oder fragt den Menschen um Rat. |
+| **Worker**      | KI-Agent | Führt den Plan aus. Bearbeitet Dateien. Meldet Ergebnis zurück.                                          |
+| **Verifier**    | Skript   | Führt automatische Tests aus. Prüft: "Ist das Ergebnis richtig?"                                         |
+| **Status-Gate** | Skript   | Einzige Komponente, die Task-Status ändern darf. Sperrt Missbrauch.                                      |
+
+### Die vier Betriebsmodi
+
+| Modus        | Aufwand | Wann?               | Ablauf                                    |
+| ------------ | ------- | ------------------- | ----------------------------------------- |
+| **single**   | niedrig | einfache Tasks      | nur Worker → Verifier → Status-Gate       |
+| **verified** | mittel  | mittelschwere Tasks | Worker → Verifier → Status-Gate           |
+| **managed**  | hoch    | komplexe Tasks      | Manager → Worker → Verifier → Status-Gate |
+| **blocked**  | stoppt  | zu viele Fehler     | Task wartet auf menschliche Entscheidung  |
+
+### Der Ablauf eines Tasks
+
+```
+1. ./scripts/next-tasks.sh
+   → Zeigt Tasks mit erfüllten Abhängigkeiten an
+   → "Welche Tasks kann ich jetzt starten?"
+
+2. ./scripts/orchestrate.sh --next
+   → Startet den nächsten Task
+   → Router entscheidet Modus
+   → Agenten arbeiten (Manager? Worker? Verifier?)
+   → Status-Gate aktualisiert Task-Status
+
+3. ./scripts/state-summary.sh
+   → Zeigt aktuellen Stand: Wie viele Tasks sind done? Wie viele blockiert?
+   → Gibt es Fehler?
+
+4. ./scripts/verify.sh
+   → Globale Projektprüfung (nicht Task-spezifisch)
+   → Validiert: Ist die Ledger-Struktur korrekt? Gibt es Fehler?
+```
+
+---
+
+## Skript-Referenz: Was tut jedes Skript?
+
+Hier sind alle Skripte, die du brauchst, erklärt in Laien-Sprache:
+
+### Haupt-Befehle (du nutzt sie täglich)
+
+| Skript                                | Was tut es?                                                                                                               | Wann nutzen?                                                      | Beispiel                                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `./scripts/next-tasks.sh`             | Zeigt die nächsten Tasks, die bereit sind.                                                                                | Zu Beginn einer Session: "Was soll ich als nächstes bearbeiten?"  | `./scripts/next-tasks.sh` → zeigt "Task 001, Task 003 (Task 002 wartet noch)"           |
+| `./scripts/orchestrate.sh --next`     | Startet den nächsten bereiten Task. Der Router entscheidet automatisch: braucht er Manager? Nur Worker? Mehrere Versuche? | Nach `next-tasks.sh`: Starte die Arbeit.                          | `./scripts/orchestrate.sh --next` → arbeitet an Task 001, prüft es, aktualisiert Status |
+| `./scripts/orchestrate.sh --task 003` | Startet einen bestimmten Task (z.B. 003).                                                                                 | Du willst einen spezifischen Task, nicht den nächsten.            | `./scripts/orchestrate.sh --task 003`                                                   |
+| `./scripts/state-summary.sh`          | Zeigt in zwei Zeilen: Wie viele Tasks sind `todo`/`in_progress`/`done`? Welche sind blockiert?                            | Schneller Überblick über den Projektstand.                        | `./scripts/state-summary.sh` → "5 todo, 1 in_progress, 3 done, 1 blocked"               |
+| `./scripts/verify.sh`                 | Prüft das ganze Projekt: Ist die Task-Struktur korrekt? Gibt es Fehler in den Dateien?                                    | Nach Änderungen an Task-Dateien: "Habe ich etwas kaputt gemacht?" | `./scripts/verify.sh` → OK oder Liste von Fehlern                                       |
+| `./scripts/verify.sh --quick`         | Schnelle Prüfung (pre-commit Hook).                                                                                       | Vor dem Commit: "Ist der aktuelle Stand in Ordnung?"              | Git Hook, läuft automatisch                                                             |
+| `./scripts/verify.sh --deep`          | Komplette Prüfung (alles durchschauen).                                                                                   | Wenn `--quick` fehlschlägt oder du alle Details brauchst.         | `./scripts/verify.sh --deep`                                                            |
+
+### Task-Verwaltung (du änderst Task-Status manuell)
+
+| Skript                          | Was tut es?                                                                                                                                                      | Wann nutzen?                                                                                      | Beispiel                                                             |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `./scripts/task.sh approve 003` | Gibt einen Task frei, der auf `review` wartet. Ein Agent hat ihn gemacht, Prüfung war grün, aber der Mensch muss freigeben (z.B. für Design, Text, Rechtliches). | Ein Task steht auf `review`, du hast ihn überprüft, er sieht gut aus.                             | `./scripts/task.sh approve 003` → Task wird `done`                   |
+| `./scripts/task.sh reopen 003`  | Öffnet einen blockierten Task wieder. Der Agent konnte nicht weiterkommen, hat gefragt, und du hast die Frage beantwortet.                                       | Ein Task steht auf `blocked` mit einer Frage unter `# Offene Frage`. Du hast die Antwort gegeben. | Schreib die Antwort in den Task, dann `./scripts/task.sh reopen 003` |
+
+### Diagnose & Validierung (wenn es Fehler gibt)
+
+| Skript                         | Was tut es?                                                                                   | Wann nutzen?                                                              | Beispiel                                                                      |
+| ------------------------------ | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `./scripts/doctor.sh`          | Prüft: Ist alles installiert? Ist der Runner konfiguriert? Ist das Git-Repository in Ordnung? | Beim ersten Mal oder nach Fehler-Meldungen.                               | `./scripts/doctor.sh` → "OK" oder "BEFUND: Claude CLI nicht gefunden"         |
+| `./scripts/validate-ledger.sh` | Prüft die Task-Dateien auf Fehler: Sind alle Pflichtfelder da? Sind die Status korrekt?       | Nach Änderungen an Task-Dateien: "Habe ich die Struktur richtig gemacht?" | `./scripts/validate-ledger.sh` → OK oder "Fehler: Task 005 hat keinen Status" |
+| `./scripts/verify-task.sh 003` | Prüft nur einen Task: Laufen die Akzeptanzbefehle?                                            | Du willst nur einen Task testen, nicht das ganze Projekt.                 | `./scripts/verify-task.sh 003` → OK oder Fehler mit Details                   |
+
+### Debug & Kontrolle (Profis)
+
+| Skript                                   | Was tut es?                                                                                                                | Wann nutzen?                                                                                       | Beispiel                                                                          |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `./scripts/orchestrate.sh --dry-run`     | Zeigt, was passieren würde: Welcher Task? Welcher Modus? Wie viele Manager/Worker/Verifier-Runden? Schreibt KEINE Dateien. | Bevor du `orchestrate.sh --next` aufrufst: "Lass mich checken, was passiert, bevor ich es starte." | `./scripts/orchestrate.sh --dry-run` → "TASK_ID=003 MODE=managed PLANNED_CALLS=3" |
+| `./scripts/orchestrate.sh --allow-dirty` | Erlaubt, einen Task zu starten, auch wenn es ungespeicherte Änderungen im Projekt gibt.                                    | Du hast lokal Änderungen und willst nicht committen, sondern trotzdem einen Task starten.          | `./scripts/orchestrate.sh --task 003 --allow-dirty`                               |
+
+### Interne Skripte (die `orchestrate.sh` selbst nutzt)
+
+Diese brauchst du normalerweise nicht direkt. Sie werden von `orchestrate.sh` aufgerufen:
+
+| Skript                      | Was tut es?                                                                                                             | Innere Funktionsweise                                                                                    |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `scripts/agent/config.sh`   | Liest und validiert `.agent/config.env`. Prüft: Sind alle 13 Konfigurationsschlüssel vorhanden? Sind die Werte korrekt? | `orchestrate.sh` prüft damit, dass die Konfiguration stimmt, bevor ein Agent startet.                    |
+| `scripts/agent/context.sh`  | Baut das Kontext-Paket für einen Agent: Ziel, Task, Plan, bisherige Fehler, Dateiliste.                                 | Der Agent bekommt nicht das ganze Projekt als Kontext — nur, was er braucht.                             |
+| `scripts/agent/policy.sh`   | Prüft Pfad-Grenzen. Darf der Agent diese Datei anfassen?                                                                | Sperrt den Agent: "Du darfst nur in deinem Task-Ordner arbeiten, nicht im Projekt-Konfigurationsordner." |
+| `scripts/agent/runner.sh`   | Adapter für den gewählten Runner (`claude` oder `codex`). Startet den Agent mit den richtigen Optionen.                 | Versteckt die Unterschiede zwischen Claude und Codex.                                                    |
+| `scripts/agent/status.sh`   | Einzige Komponente, die Task-Status ändern darf. Validiert: Ist der Prüfbericht grün? Dann kann ich den Status ändern.  | "Nur ich darf Task-Status ändern — kein Agent, kein Mensch per Hand."                                    |
+| `scripts/agent/ledger.sh`   | Liest Task-Dateien. Extrahiert Felder wie Status, Abhängigkeiten, Akzeptanzkriterien.                                   | Der Orchestrator fragt: "Was steht im Task 003?" — Ledger antwortet.                                     |
+| `scripts/agent/route.sh`    | Der Router. Entscheidet: Welcher Modus für diesen Task? `single`? `verified`? `managed`?                                | Berücksichtigt: Task-Klasse, Fehlversuche, Risikoflaggen.                                                |
+| `scripts/agent/rolecall.sh` | Startet eine Rolle (Manager/Worker/Verifier). Setzt Timeouts, Limits, überwacht die Ausführung.                         | Der Orchestrator ruft ihn auf: "Starte einen Worker mit diesen Grenzen."                                 |
+| `scripts/agent/common.sh`   | Hilfsfunktionen: Manifeste erstellen (Snapshot des Zustands vor einem Agent), Zeiten limitieren, etc.                   | Intern genutzt von anderen `agent/*`-Skripten.                                                           |
+
+### Hooks & Sperren (Sicherheit)
+
+| Skript                   | Was tut es?                                                                  | Wann aktiv?                                                              |
+| ------------------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `scripts/bash-guard.sh`  | Blockiert gefährliche Befehle: `git push`, `rm -r`, `git reset --hard`, etc. | Läuft als `PreToolUse`-Hook, bevor ein Agent einen Bash-Befehl ausführt. |
+| `scripts/commit-gate.sh` | Blockiert Commits, bis `./scripts/verify.sh --quick` grün ist.               | Läuft als `PreToolUse`-Hook, bevor ein Agent `git commit` ausführt.      |
+
+### Tests (du brauchst diese normalerweise nicht)
+
+| Skript                | Was tut es?                                                  |
+| --------------------- | ------------------------------------------------------------ |
+| `tests/run.sh`        | Startet die Test-Suite. Prüft alle Skripte, Logik, Struktur. |
+| `tests/run.sh --fast` | Schnelle Tests (überspringt langsame Integration/E2E).       |
+
+---
+
+## Konfiguration: `.agent/config.env`
+
+Diese 13 Schlüssel kontrollieren, wie Agenten arbeiten:
+
+| Schlüssel                | Beispiel              | Was bedeutet es?                                                 |
+| ------------------------ | --------------------- | ---------------------------------------------------------------- |
+| `MAX_GLOBAL_ITERATIONS`  | `10`                  | Wie viele Runden einer Task darf es geben? (Default: 10)         |
+| `MAX_TASK_ATTEMPTS`      | `3`                   | Wie viele rote Versuche, bevor Task blockiert? (Default: 3)      |
+| `MAX_NO_PROGRESS`        | `1`                   | Wie viele Runden ohne Fortschritt, bevor blockiert? (Default: 1) |
+| `CONTEXT_MAX_CHARS`      | `48000`               | Wie groß darf der Kontextpaket sein? (Default: 48000)            |
+| `NOTES_MAX_CHARS`        | `12000`               | Wie viel Platz für Notizen im Kontext? (Default: 12000)          |
+| `VERIFY_TIMEOUT_SECONDS` | `90`                  | Zeitlimit für einen Prüfbefehl. (Default: 90s)                   |
+| `AGENT_TIMEOUT_SECONDS`  | `900`                 | Zeitlimit für einen Modellaufruf. (Default: 900s = 15 Min)       |
+| `AGENT_MAX_TURNS`        | `60`                  | Max. Runden in einer Agent-Konversation. (Default: 60)           |
+| `MAX_INFRA_RETRIES`      | `1`                   | Wie oft bei Provider-Fehler wiederholen? (Default: 1)            |
+| `RETRY_BACKOFF_SECONDS`  | `1`                   | Warten vor Retry? (Default: 1s)                                  |
+| `AGENT_RUNNER`           | `claude` oder `codex` | Welcher Runner? Claude oder Codex? (Default: claude)             |
+| `AGENT_MODEL`            | `default`             | Welches Modell? `default` = Läuft nur davon ab                   |
+| `FINALIZER`              | `off` oder `llm`      | Zusätzlicher Modellaufruf bei Blockade? (Default: off)           |
+
+---
 
 ## Vor dem ersten Lauf
 
