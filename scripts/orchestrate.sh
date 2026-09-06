@@ -384,12 +384,9 @@ mode=$(agent_route_mode "$task_file" "$manual_mode" "$max_task_attempts") || exi
 human_gate=$(ledger_scalar "$task_file" human_review) || exit 1
 [ "$(ledger_scalar "$task_file" class)" != open ] || human_gate=true
 
-# Ohne Commit gibt es keinen Stand, gegen den «schmutzig» etwas bedeuten
-# koennte. Das Ledger zaehlt nicht mit: der Orchestrator schreibt es selbst.
-if git -C "$project_dir" rev-parse --verify -q HEAD >/dev/null 2>&1 &&
-   [ -n "$(git -C "$project_dir" status --porcelain -- \
-     ':(exclude)docs/tasks' ':(exclude)docs/state' ':(exclude)docs/verification' 2>/dev/null)" ] &&
-   [ "$allow_dirty" = false ]; then
+# Was «schmutzig» heisst, steht in agent_worktree_is_dirty — dieselbe Antwort
+# bekommt scripts/doctor.sh, damit beide dem Menschen dasselbe sagen.
+if agent_worktree_is_dirty "$project_dir" && [ "$allow_dirty" = false ]; then
   echo "orchestrate: Arbeitsverzeichnis ist nicht sauber; wiederhole bewusst mit --allow-dirty" >&2
   exit 1
 fi

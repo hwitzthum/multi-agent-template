@@ -8,12 +8,15 @@
 # Deshalb zuerst in die Projektwurzel wechseln — sonst fände `git commit`
 # aus einem Unterordner verify.sh nicht, und das Gate liefe ins Leere.
 set -uo pipefail
-cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/..}" || { echo "commit-gate: Projektwurzel nicht gefunden" >&2; exit 2; }
+# Zuerst den eigenen Ort merken: das `cd` unten zeigt auf die Daten, die
+# Pruefskripte kommen weiter von hier.
+gate_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || { echo "commit-gate: eigener Ort nicht auflösbar" >&2; exit 2; }
+cd "${CLAUDE_PROJECT_DIR:-$gate_dir/..}" || { echo "commit-gate: Projektwurzel nicht gefunden" >&2; exit 2; }
 
-# Befehl aus dem Hook-JSON auf stdin lesen (kein jq — nicht überall vorhanden).
-cmd=""
-[ -t 0 ] || cmd=$(sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"//p' | head -n 1)
-cmd=${cmd%%'","'*}   # alles ab dem nächsten JSON-Feld abschneiden
+# Befehl aus dem Hook-JSON auf stdin lesen; derselbe Leser wie im bash-guard.
+. "$gate_dir/agent/hook-input.sh" 2>/dev/null || {
+  echo "commit-gate: die Hook-Eingabe ist nicht lesbar" >&2; exit 2; }
+cmd=$(hook_command_text)
 case "$cmd" in
   *"git commit"*) ;;
   *) exit 0 ;;
@@ -25,7 +28,9 @@ if [ $? -ne 0 ]; then
   echo "$out" | tail -n 20 >&2
   exit 2
 fi
-ledger_out=$(./scripts/validate-ledger.sh --project-dir "$PWD" 2>&1)
+# `verify.sh` ist die Pruefung des Projekts und kommt aus dem Projekt; der
+# Ledger-Validator gehoert zur Implementierung und kommt von hier.
+ledger_out=$("$gate_dir/validate-ledger.sh" --project-dir "$PWD" 2>&1)
 if [ $? -ne 0 ]; then
   echo "Commit blockiert — das Datei-Ledger ist inkonsistent:" >&2
   echo "$ledger_out" | tail -n 20 >&2

@@ -562,7 +562,7 @@ Hier sind alle Skripte, die du brauchst, erklärt in Laien-Sprache:
 | Skript                          | Was tut es?                                                                                                                                                      | Wann nutzen?                                                                                      | Beispiel                                                             |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | `./scripts/task.sh approve 003` | Gibt einen Task frei, der auf `review` wartet. Ein Agent hat ihn gemacht, Prüfung war grün, aber der Mensch muss freigeben (z.B. für Design, Text, Rechtliches). | Ein Task steht auf `review`, du hast ihn überprüft, er sieht gut aus.                             | `./scripts/task.sh approve 003` → Task wird `done`                   |
-| `./scripts/task.sh reopen 003`  | Öffnet einen blockierten Task wieder. Der Agent konnte nicht weiterkommen, hat gefragt, und du hast die Frage beantwortet.                                       | Ein Task steht auf `blocked` mit einer Frage unter `# Offene Frage`. Du hast die Antwort gegeben. | Schreib die Antwort in den Task, dann `./scripts/task.sh reopen 003` |
+| `./scripts/task.sh reopen 003`  | Öffnet einen blockierten Task wieder und gibt ihm neue Versuche. Der Agent konnte nicht weiterkommen, hat gefragt, und du hast die Frage beantwortet.                                       | Ein Task steht auf `blocked` mit einer Frage unter `# Offene Frage`. Du hast die Antwort gegeben. | Schreib die Antwort in den Task, dann `./scripts/task.sh reopen 003` |
 
 ### Diagnose & Validierung (wenn es Fehler gibt)
 
@@ -682,7 +682,7 @@ Rechtliches bleiben unter menschlicher Aufsicht.
 ## Die zwei menschlichen Statuswechsel
 
 ```bash
-./scripts/task.sh reopen 017    # blockierte Aufgabe wieder öffnen
+./scripts/task.sh reopen 017    # blockierte Aufgabe wieder öffnen (Versuche zurück auf 0)
 ./scripts/task.sh approve 017   # Aufgabe im Review freigeben
 ```
 

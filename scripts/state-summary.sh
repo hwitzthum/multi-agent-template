@@ -21,7 +21,11 @@ failure_kind=$(ledger_scalar docs/verification/latest.md failure_kind 2>/dev/nul
 verify_upper=$(printf '%s' "$verify_result" | tr '[:lower:]' '[:upper:]')
 if [ -n "$failure_kind" ] && [ "$failure_kind" != none ]; then echo "verify: $verify_upper ($failure_kind)"; else echo "verify: $verify_upper"; fi
 
-ready=$("$script_dir/next-tasks.sh" --project-dir "$project_dir" 2>/dev/null | awk -F: '$1 == "READY" { count++ } END { print count+0 }')
+# Die Fehlerausgabe bleibt draussen, der Exitcode nicht: ein ungueltiges Ledger
+# ergaebe sonst dieselbe Zeile wie «nichts zu tun».
+ready_lines=$("$script_dir/next-tasks.sh" --project-dir "$project_dir" 2>/dev/null)
+ready_status=$?
+ready=$(printf '%s\n' "$ready_lines" | awk -F: '$1 == "READY" { count++ } END { print count+0 }')
 review=0 blocked=0
 while IFS= read -r file; do
   [ -n "$file" ] || continue
@@ -31,4 +35,8 @@ while IFS= read -r file; do
 done <<EOF
 $(ledger_task_files docs/tasks)
 EOF
-echo "ready: $ready | review: $review | blocked: $blocked"
+if [ "$ready_status" -ne 0 ]; then
+  echo "ledger: UNGÜLTIG (./scripts/validate-ledger.sh zeigt die Fehler) | review: $review | blocked: $blocked"
+else
+  echo "ready: $ready | review: $review | blocked: $blocked"
+fi

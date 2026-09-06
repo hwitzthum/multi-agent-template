@@ -144,6 +144,16 @@ agent_release_lock() {
   rmdir "$lock_dir" 2>/dev/null || true
 }
 
+# Schmutzig ist ein Arbeitsbaum, wenn ausserhalb der Ledger-Pfade etwas steht:
+# docs/tasks, docs/state und docs/verification schreibt der Orchestrator selbst.
+# Ohne Commit gibt es keinen Stand, gegen den «schmutzig» etwas bedeuten
+# koennte; dann ist die Antwort «nein».
+agent_worktree_is_dirty() {
+  git -C "$1" rev-parse --verify -q HEAD >/dev/null 2>&1 || return 1
+  [ -n "$(git -C "$1" status --porcelain -- \
+    ':(exclude)docs/tasks' ':(exclude)docs/state' ':(exclude)docs/verification' 2>/dev/null)" ]
+}
+
 agent_run_with_timeout() {
   timeout_seconds=$1
   shift

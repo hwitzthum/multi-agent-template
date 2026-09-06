@@ -46,7 +46,14 @@ if [ -z "$attempt" ]; then attempt=$(ledger_scalar "$task_file" attempts) || exi
 case "$attempt" in ''|*[!0-9]*|0) echo "verify-task: ungueltiger Versuch" >&2; exit 2 ;; esac
 
 if [ -z "$run_id" ]; then run_id="$(date -u +%Y%m%dT%H%M%SZ)-T$(printf '%03d' "$((10#$task_id))")"; fi
-case "$run_id" in [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z-T[0-9][0-9][0-9]) ;; *) echo "verify-task: ungueltige Run-ID" >&2; exit 2 ;; esac
+# Zeitstempel und Task-Nummer getrennt geprueft: der Orchestrator fuellt die
+# Nummer auf mindestens drei Ziffern auf, laengere Task-IDs sind gueltig, und
+# eine dreistellige Schablone wies sie bisher erst hier ab.
+run_stamp=${run_id%-T*}
+run_number=${run_id##*-T}
+case "$run_stamp" in [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z) ;; *) echo "verify-task: ungueltige Run-ID" >&2; exit 2 ;; esac
+case "$run_number" in ''|*[!0-9]*) echo "verify-task: ungueltige Run-ID" >&2; exit 2 ;; esac
+[ "${#run_number}" -ge 3 ] || { echo "verify-task: ungueltige Run-ID" >&2; exit 2; }
 
 started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 log_relative=".agent-runs/$run_id/verify/attempt-$attempt.log"

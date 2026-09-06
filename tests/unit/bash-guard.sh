@@ -17,6 +17,19 @@ expect_failure "Bash-Guard blockiert Push mit JSON-Tabulator" sh -c "printf '%s'
 expect_failure "Bash-Guard blockiert rekursives Löschen mit JSON-Tabulator" sh -c "printf '%s' '{\"command\":\"rm\\\\t-rf build\"}' | '$guard'"
 expect_failure "Bash-Guard blockiert --no-verify" sh -c "printf '%s' '{\"command\":\"git commit --no-verify -m x\"}' | '$guard'"
 expect_success "Bash-Guard lässt normalen Commit zu" sh -c "printf '%s' '{\"command\":\"git commit -m x\"}' | '$guard'"
+expect_failure "Bash-Guard blockiert Push in einer zweiten Zeile" sh -c "printf '%s' '{\"command\":\"echo eins\\\\ngit push origin main\"}' | '$guard'"
+
+# Der Befehlstext kommt aus scripts/agent/hook-input.sh. Faellt der Leser aus,
+# muss der Guard blockieren statt durchzuwinken — geprueft an einer Kopie,
+# damit der Guard dieser Sitzung unangetastet bleibt.
+guard_copy=$(mktemp -d "${TMPDIR:-/tmp}/guard-copy.XXXXXX") || exit 1
+trap 'command rm -r -f -- "$guard_copy"' EXIT HUP INT TERM
+mkdir -p "$guard_copy/agent"
+cp "$guard" "$guard_copy/bash-guard.sh"
+cp "$project_dir/scripts/agent/hook-input.sh" "$guard_copy/agent/hook-input.sh"
+expect_success "die Kopie laesst Harmloses durch" sh -c "printf '%s' '{\"command\":\"git status\"}' | '$guard_copy/bash-guard.sh'"
+rm -f "$guard_copy/agent/hook-input.sh"
+expect_failure "ohne lesbaren Hook-Leser blockiert der Guard" sh -c "printf '%s' '{\"command\":\"git status\"}' | '$guard_copy/bash-guard.sh'"
 
 # Verwerfen ungespeicherter Arbeit und Netzzugriff: die Gruppe, die README und
 # ARCHITECTURE am lautesten bewerben und die bis hierher kein Test beruehrt hat.

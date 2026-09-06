@@ -20,7 +20,7 @@ Kopie der Kit-Skripte, läuft sie nicht mit und entscheidet nichts.
 | Skript                        | Zweck                                            | Optionen                                                                        |
 | ----------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------- |
 | `scripts/orchestrate.sh`      | einziger Einstieg für einen kontrollierten Lauf  | `--task ID`, `--next`, `--dry-run`, `--mode MODUS`, `--allow-dirty`, `--project-dir` |
-| `scripts/next-tasks.sh`       | `todo`-Tasks mit erfüllten Abhängigkeiten        | `--project-dir`                                                                 |
+| `scripts/next-tasks.sh`       | `todo`-Tasks, die der Orchestrator annimmt       | `--project-dir`                                                                 |
 | `scripts/state-summary.sh`    | Prüfstand und offene Arbeit in zwei Zeilen       | keine                                                                           |
 | `scripts/doctor.sh`           | Werkzeuge, Runner und Repository-Zustand prüfen  | `--project-dir`                                                                 |
 | `scripts/task.sh`             | die zwei menschlichen Statuswechsel              | `reopen ID`, `approve ID`, `--project-dir`                                      |
@@ -28,6 +28,7 @@ Kopie der Kit-Skripte, läuft sie nicht mit und entscheidet nichts.
 | `scripts/verify-task.sh`      | Prüf-Gateway eines Tasks, schreibt den Bericht   | `--run-id`, `--attempt`, `--timeout`, `--project-dir`, `TASK-ID`                |
 | `scripts/validate-ledger.sh`  | Task-Graph, Ledger-Schema, Status-/Prüfbezüge    | `--task-file DATEI`, `--project-dir`                                            |
 | `scripts/bash-guard.sh`       | `PreToolUse`-Hook: harte Befehlssperren          | keine (liest Hook-JSON von stdin)                                               |
+| `scripts/agent/hook-input.sh` | Hook-JSON auf stdin zerlegen                     | wird eingebunden (`hook_command_text`)                                          |
 | `scripts/commit-gate.sh`      | `PreToolUse`-Hook: `verify.sh --quick` vor Commit | keine (liest Hook-JSON von stdin)                                              |
 | `scripts/agent/config.sh`     | `.agent/config.env` lesen und validieren         | `--check [datei]`, `--get KEY [datei]`                                          |
 | `scripts/agent/context.sh`    | Kontextpaket einer Rolle bauen                   | `build --role`, `--run-id`, `--task-id`, `--fresh`, `--include`, `--project-dir` |
@@ -51,7 +52,7 @@ ersetzt ihn durch seine eigene Prüfung. Alles andere bleibt unverändert.
 | Gesamtstrategie           | `docs/state/plan.md`             | Manager                                                  |
 | Task-Inhalt/Zerlegung     | `docs/tasks/*.md`                | Manager                                                  |
 | Task-Status               | `docs/tasks/*.md`                | ausschließlich Status-Gate                               |
-| Task-Versuchszähler       | `docs/tasks/*.md`                | Router bei Eskalation, Orchestrator bei roter Prüfung    |
+| Task-Versuchszähler       | `docs/tasks/*.md`                | Orchestrator bei roter Prüfung, Mensch beim Wiederöffnen |
 | Erkenntnisse und Fehler   | `docs/state/notes.md`            | Rollen im Schreibbereich, Orchestrator bei roter Prüfung |
 | technische Entscheidungen | `docs/state/decisions.md`        | zuständiger Agent, in Alltagssprache                     |
 | aktueller Lauf            | `.agent-runs/<run-id>/run.env`   | Orchestrator                                             |
@@ -224,6 +225,14 @@ Bei `human_review: true` verlangt auch der letzte Übergang von `review` nach
 `done` ausdrücklich `status.sh --human-approved`; ein automatischer Aufruf ohne
 diese Freigabe wird abgewiesen.
 
+`./scripts/task.sh reopen` setzt die Versuche auf `0` zurück. Ohne das wäre eine
+wieder geöffnete Aufgabe zwar `todo`, aber für den Orchestrator nicht bereit —
+sichtbar offen und trotzdem unbearbeitbar. Wer die Vorgeschichte behalten will,
+setzt `risk_flags: [repeated-failure]`: das ist das kuratierte Signal für
+wiederholtes Scheitern, nicht der rohe Zähler. `next-tasks.sh` meldet eine
+Aufgabe mit ausgeschöpftem Zähler als `LIMIT:` statt als `READY:`, damit die
+Liste nur nennt, was der Orchestrator auch annimmt.
+
 ## Prompt-, Kontext- und Ausgabevertrag
 
 Die drei Rollenverträge `docs/prompts/{manager,worker,finalizer}.md` trennen
@@ -278,7 +287,8 @@ Ledger-Fakt.
 ## Laufzustand und Metrik
 
 Der Laufzustand ist unversioniert. Die Lauf-ID ist
-`<YYYYMMDD>T<HHMMSS>Z-T<task>`, etwa `20260906T094500Z-T017`.
+`<YYYYMMDD>T<HHMMSS>Z-T<task>`, etwa `20260906T094500Z-T017`; die Task-Nummer ist
+auf mindestens drei Ziffern aufgefüllt und darf länger sein.
 `.agent-runs/<run-id>/run.env` führt `run_id`, `task_id`, `mode`, `phase`,
 `iteration`, `attempt`, `last_progress_fingerprint`, `started_at`, `human_gate`
 und `outcome`; `phase` ist `plan`, `work`, `verify`, `finalize`, `finished` oder
@@ -388,15 +398,24 @@ Projekteigenschaft sind:
 | `AGENT_MAX_BUDGET_USD` | Kostenobergrenze eines Modellaufrufs (`--max-budget-usd`); leer = keine | leer     |
 | `ORCHESTRATOR_RUNNER`  | Pfad zu einem alternativen Runner, z.B. `tests/fake-runner.sh`          | Adapter  |
 
-`scripts/bash-guard.sh` blockt in jedem Fall Hochladen, rekursives Löschen und
-das Verwerfen ungespeicherter Arbeit. Unter `AGENT_HEADLESS=1` — das setzt der
+`scripts/bash-guard.sh` blockt in jedem Fall Hochladen, rekursives Löschen, das
+Verwerfen ungespeicherter Arbeit und `git --no-verify`, das die Prüf-Hooks
+umginge. Den Befehlstext liest er wie `commit-gate.sh` über
+`scripts/agent/hook-input.sh`; ist die Eingabe unlesbar, blockieren beide,
+statt durchzuwinken. Unter `AGENT_HEADLESS=1` — das setzt der
 Runner — kommen `git commit|merge|rebase|stash|worktree`, `git branch -D`,
 `pip install` und `npm publish` dazu: Historie und Zweige führt der
 Orchestrator, nicht der Agent.
 
 `scripts/doctor.sh` prüft vor dem ersten Lauf Werkzeuge, Konfiguration, den
 gewählten Runner und den Repository-Zustand. Ein kaputt installiertes CLI ist
-dort ein Befund mit Text, kein Absturz.
+dort ein Befund mit Text, kein Absturz. Beim Claude-Runner prüft er die
+Optionen, die der Adapter bei jedem Rollenaufruf durchreicht — `--json-schema`
+und die Sicherheitshülle —, weil ein CLI ohne sie jeden Lauf mit einem
+CLI-Fehler beendet. Ein Basiscommit ist keine Bedingung: Manifest und Snapshot
+beziehen ihre Inhalte über `git hash-object -w` aus dem Arbeitsbaum, nicht aus
+`HEAD`. Ohne Commit fehlt nur dem Menschen eine Rückfallebene, und der doctor
+sagt das als Hinweis.
 
 Die Skripte brauchen außer Bash nur `git`, `awk`, `sed`, `shasum`, `jq` und
 `perl` (für Zeitlimits, Laufdauern und JSON). Unter macOS, Linux und Git Bash
@@ -422,7 +441,9 @@ Budgets und geplante Rollen ohne jeden Schreibzugriff. Ein Lauf endet nie mit
 einem Task in `in_progress`: der EXIT-Trap gibt ihn frei. Ein absichtlich
 schmutziger Git-Stand benötigt `--allow-dirty`; der Schmutz-Check übergeht
 `docs/tasks`, `docs/state` und `docs/verification`, weil der Orchestrator diese
-Pfade selbst schreibt.
+Pfade selbst schreibt. Was «schmutzig» heißt, steht einmal in
+`agent_worktree_is_dirty`; `scripts/doctor.sh` fragt dieselbe Funktion, damit
+beide dem Menschen dasselbe sagen.
 
 Rollenänderungen werden aus tatsächlichen Dateihashes ermittelt. Verbotene
 Steuerungspfade, Änderungen an geschützten Task-Feldern, Produktpfade

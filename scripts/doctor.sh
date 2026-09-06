@@ -12,6 +12,7 @@ set -uo pipefail
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 project_dir=$(CDPATH= cd -- "$script_dir/.." && pwd) || exit 1
 config_reader="$script_dir/agent/config.sh"
+. "$script_dir/agent/common.sh"
 
 usage() {
   echo "Verwendung: $0 [--project-dir PFAD]"
@@ -38,9 +39,9 @@ finding() { printf 'BEFUND   %s\n' "$1"; findings=$((findings + 1)); }
 note() { printf 'HINWEIS  %s\n' "$1"; }
 
 # --- Werkzeuge --------------------------------------------------------------
-# bash, git, jq und perl tragen Ledger, Manifeste, Schemapruefung und
-# Zeitlimits. Ohne eines davon laeuft kein Lauf durch.
-for tool in bash git jq perl; do
+# Genau die Werkzeuge, die docs/ARCHITECTURE.md als Voraussetzung nennt: sie
+# tragen Ledger, Manifeste, Fingerprints, Schemapruefung und Zeitlimits.
+for tool in bash git awk sed shasum jq perl; do
   if command -v "$tool" >/dev/null 2>&1; then
     ok "$tool gefunden ($(command -v "$tool"))"
   else
@@ -72,10 +73,18 @@ check_claude() {
     finding "claude ist installiert, antwortet aber nicht auf --version: $(printf '%s' "$version" | head -n 1)"
     return
   fi
-  if claude --help 2>/dev/null | grep -q -- '--json-schema'; then
+  # Der Adapter reicht diese Optionen bei jedem Rollenaufruf durch: das
+  # Rollenschema und die Sicherheitshuelle. Fehlt eine, bricht jeder Lauf mit
+  # einem CLI-Fehler ab — das gehoert hierher, vor den Lauf.
+  help=$(claude --help 2>/dev/null)
+  missing=''
+  for option in --json-schema --restricted --strict-mcp-config --tools --settings; do
+    printf '%s\n' "$help" | grep -q -- "$option" || missing="$missing $option"
+  done
+  if [ -z "$missing" ]; then
     ok "claude einsatzbereit ($(printf '%s' "$version" | head -n 1))"
   else
-    finding "claude kennt --json-schema nicht ($(printf '%s' "$version" | head -n 1)); bitte aktualisieren"
+    finding "claude kennt nicht:$missing ($(printf '%s' "$version" | head -n 1)); bitte aktualisieren"
   fi
 }
 
@@ -98,15 +107,21 @@ esac
 
 # --- Repository -------------------------------------------------------------
 # Manifeste und Fingerprints beziehen Dateiliste und Hashes von Git; ohne
-# Repository gibt es keinen Snapshot und keinen Fresh-Versuch.
+# Repository gibt es keinen Snapshot und keinen Fresh-Versuch. Ein Basiscommit
+# ist dagegen keine Bedingung: die Inhalte kommen ueber `git hash-object -w`
+# aus dem Arbeitsbaum, nicht aus HEAD. Ohne Commit fehlt nur dem Menschen eine
+# Rueckfallebene.
 if ! git -C "$project_dir" rev-parse --git-dir >/dev/null 2>&1; then
   finding "kein Git-Repository: $project_dir"
-elif [ -z "$(git -C "$project_dir" rev-parse --verify -q HEAD 2>/dev/null)" ]; then
-  finding "Repository ohne Basiscommit; ein Fresh Worker braucht einen versionierten Stand"
-elif [ -n "$(git -C "$project_dir" status --porcelain 2>/dev/null)" ]; then
-  note "Arbeitsbaum ist schmutzig; ein Lauf verlangt --allow-dirty"
 else
-  ok "Arbeitsbaum sauber auf $(git -C "$project_dir" rev-parse --short HEAD)"
+  head_commit=$(git -C "$project_dir" rev-parse --short HEAD 2>/dev/null || true)
+  if [ -z "$head_commit" ]; then
+    note "Repository ohne Basiscommit; Snapshot und Rücksetzen arbeiten trotzdem, nur ein committeter Stand zum Zurückfallen fehlt"
+  elif agent_worktree_is_dirty "$project_dir"; then
+    note "Arbeitsbaum ist schmutzig; ein Lauf verlangt --allow-dirty"
+  else
+    ok "Arbeitsbaum sauber auf $head_commit"
+  fi
 fi
 
 if [ "$findings" -eq 0 ]; then

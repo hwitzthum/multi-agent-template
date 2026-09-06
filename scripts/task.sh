@@ -9,7 +9,7 @@ project_dir=$(CDPATH= cd -- "$script_dir/.." && pwd) || exit 1
 
 usage() {
   echo "Verwendung: $0 [--project-dir PFAD] (reopen TASK-ID | approve TASK-ID)"
-  echo "  reopen   blockierte Aufgabe wieder auf todo setzen (Antwort steht im Task)"
+  echo "  reopen   blockierte Aufgabe auf todo setzen (Antwort steht im Task); Versuche zurück auf 0"
   echo "  approve  Aufgabe im Review freigeben und auf done setzen"
 }
 
@@ -36,12 +36,21 @@ validate_task_candidate() {
 
 case "$command" in
   reopen)
+    task_file=$(ledger_task_path_by_id "$project_dir/docs/tasks" "$task_id") || exit 1
+    actual_status=$(ledger_scalar "$task_file" status) || exit 1
+    [ "$actual_status" = blocked ] || {
+      echo "task: $task_id ist nicht blockiert, sondern '$actual_status'" >&2; exit 1; }
+    # Die Versuche fallen vor dem Statuswechsel. Eine wieder offene Aufgabe mit
+    # ausgeschoepftem Zaehler waere sonst `todo` und trotzdem unbearbeitbar: der
+    # Orchestrator weist sie ab, waehrend next-tasks.sh sie als bereit meldet.
+    # Ein `attempts: 0` ist auch im blockierten Zustand gueltig, ein leerer
+    # blocked_reason nicht — deshalb diese Reihenfolge.
+    ledger_atomic_replace_scalar "$task_file" attempts 0 validate_task_candidate || exit 1
     "$status_gate" --project-dir "$project_dir" --human-approved set-status "$task_id" todo blocked || exit 1
     # Der Grund gehoert zum blockierten Zustand; eine wieder offene Aufgabe
     # traegt ihn nicht weiter.
-    task_file=$(ledger_task_path_by_id "$project_dir/docs/tasks" "$task_id") || exit 1
     ledger_atomic_replace_scalar "$task_file" blocked_reason '""' validate_task_candidate || exit 1
-    echo "task: $task_id ist wieder offen" ;;
+    echo "task: $task_id ist wieder offen (Versuche zurückgesetzt)" ;;
   approve)
     "$status_gate" --project-dir "$project_dir" --human-approved set-status "$task_id" done review || exit 1
     echo "task: $task_id ist freigegeben" ;;
