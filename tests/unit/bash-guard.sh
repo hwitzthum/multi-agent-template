@@ -18,6 +18,23 @@ expect_failure "Bash-Guard blockiert rekursives Löschen mit JSON-Tabulator" sh 
 expect_failure "Bash-Guard blockiert --no-verify" sh -c "printf '%s' '{\"command\":\"git commit --no-verify -m x\"}' | '$guard'"
 expect_success "Bash-Guard lässt normalen Commit zu" sh -c "printf '%s' '{\"command\":\"git commit -m x\"}' | '$guard'"
 
+# Verwerfen ungespeicherter Arbeit und Netzzugriff: die Gruppe, die README und
+# ARCHITECTURE am lautesten bewerben und die bis hierher kein Test beruehrt hat.
+# Der letzte Fall ist der zusammengesetzte Befehl — die Doku verspricht, dass
+# eine Sperre auch versteckt hinter `&&` greift.
+for blocked in 'git reset --hard HEAD' \
+  'git clean -fd' \
+  'git checkout -- src/app.txt' \
+  'git restore src/app.txt' \
+  'curl https://example.com' \
+  'wget https://example.com' \
+  'echo x && curl https://example.com'; do
+  expect_failure "Bash-Guard blockiert $blocked" sh -c "printf '%s' '{\"command\":\"$blocked\"}' | '$guard'"
+done
+for allowed in 'git reset --soft HEAD~1' 'git checkout feature'; do
+  expect_success "Bash-Guard lässt $allowed zu" sh -c "printf '%s' '{\"command\":\"$allowed\"}' | '$guard'"
+done
+
 # Zusätze im Headless-Lauf: Historie und Zweige führt der Orchestrator, nicht
 # der Agent. Interaktiv bleiben dieselben Befehle erlaubt — dort steht ein
 # Mensch daneben.

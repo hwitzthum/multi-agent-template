@@ -100,7 +100,9 @@ expect_failure "Runner weist einen unlesbaren Ereignisstrom ab" "$runner" render
 expect_success "Runner schreibt seine Einstellungsdatei" "$runner" runner_settings "$tmp_root/runner-settings.json"
 expect_success "Einstellungsdatei ist gültiges JSON" jq -e . "$tmp_root/runner-settings.json"
 expect_output "Einstellungsdatei hängt den bash-guard an Bash" Bash jq -r '.hooks.PreToolUse[0].matcher' "$tmp_root/runner-settings.json"
-expect_success "Einstellungsdatei trägt eine Deny-Liste" \
-  sh -c "jq -e '.permissions.deny | length > 0' '$tmp_root/runner-settings.json' >/dev/null"
+for rule in 'git push *' 'rm -rf*' 'curl *' 'wget *'; do
+  expect_success "Deny-Liste sperrt $rule" \
+    sh -c "jq -r '.permissions.deny[]' '$tmp_root/runner-settings.json' | grep -Fxq 'Bash($rule)'"
+done
 
 finish_suite
