@@ -21,10 +21,10 @@ make_task --id 018 --title 'Zweite App-Datei' --class mechanical \
   --depends 017 --touches src/app.txt --context 'Folgeaufgabe.' \
   --scope '`src/app.txt` erneut bearbeiten.' --not-scope 'Steuerungsdateien ändern.' \
   --criteria 'Die Datei enthält `good`.'
-fake_response worker-task 1 'RESULT=implemented' 'CHANGED_PATHS=src/app.txt' 'TESTS_RUN=-' 'NOTES_ADDED=-'
-fake_response worker-task 2 'RESULT=implemented' 'CHANGED_PATHS=src/app.txt' 'TESTS_RUN=-' 'NOTES_ADDED=-'
-fake_action worker-task 1 write-good
-fake_action worker-task 2 write-good
+fake_worker_result 1
+fake_worker_result 2
+fake_action worker 1 write-good
+fake_action worker 2 write-good
 expect_success "Erster Task einer Folge wird done" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
 printf '%s\n' 'unabhaengige Aenderung' > "$fixture/src/other.txt"
 expect_success "Ledger bleibt gueltig, obwohl das Produkt sich nach done weiterentwickelt" "$validator" --project-dir "$fixture"
@@ -32,5 +32,9 @@ expect_success "Folgetask wird trotz erledigtem Vorgaenger frei" env ORCHESTRATO
 assert_eq "Erster Task bleibt done" done "$(ledger_scalar "$fixture/docs/tasks/017.md" status)"
 assert_eq "Zweiter Task wird done" done "$(ledger_scalar "$fixture/docs/tasks/018.md" status)"
 expect_success "Ledger ist nach zwei Laeufen gueltig" "$validator" --project-dir "$fixture"
+assert_eq "Der Laufbeleg wird ersetzt, nicht angehaeuft" 1 \
+  "$(grep -Fc '## Laufbeleg' "$fixture/docs/state/handoff.md")"
+assert_file_has "Der Laufbeleg nennt den zuletzt gelaufenen Task" "$fixture/docs/state/handoff.md" '- Task: 018 (done)'
+assert_file_has "Der Handoff behaelt seine uebrigen Abschnitte" "$fixture/docs/state/handoff.md" '## Fehler und Wiederaufnahme'
 
 finish_suite

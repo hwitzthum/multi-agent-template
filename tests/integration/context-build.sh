@@ -15,67 +15,79 @@ begin_suite context-build
 fixture_workspace
 
 new_populated_fixture
-manager_plan=$("$builder" build --project-dir "$fixture" --role manager-plan --run-id "$run_id")
-brainstorm=$("$builder" build --project-dir "$fixture" --role worker-brainstorm --run-id "$run_id" --task-id 017)
-manager_manage=$("$builder" build --project-dir "$fixture" --role manager-manage --run-id "$run_id")
-worker=$("$builder" build --project-dir "$fixture" --role worker-task --run-id "$run_id" --task-id 017 --include src/app.txt)
-fresh=$("$builder" build --project-dir "$fixture" --role worker-fresh --run-id "$run_id" --task-id 017 --include src/app.txt --include .env --include .agent-runs/prior/raw.log --include docs/state/notes.md --include docs/state/plan.md)
-finalizer=$("$builder" build --project-dir "$fixture" --role finalizer --run-id "$run_id")
+manager=$("$builder" build --project-dir "$fixture" --role manager --run-id "$run_id" --task-id 017)
+worker=$("$builder" build --project-dir "$fixture" --role worker --run-id "$run_id" --task-id 017 --include src/app.txt)
+fresh=$("$builder" build --project-dir "$fixture" --role worker --run-id "$run_id" --task-id 017 --fresh \
+  --include src/app.txt --include .env --include .agent-runs/prior/raw.log --include docs/state/notes.md)
+finalizer=$("$builder" build --project-dir "$fixture" --role finalizer --run-id "$run_id" --task-id 017)
 
-assert_file_has "Manager-Plan erhaelt Plan" "$manager_plan" '## Relevanter Plan-Auszug'
-assert_file_lacks "Manager-Plan erhaelt keine Notes" "$manager_plan" '## Kuratierte aktive Notes'
-assert_file_lacks "Manager-Plan erhaelt keinen Code" "$manager_plan" '## Freigegebene Codeausschnitte'
-assert_file_has "Brainstorm erhaelt Notes" "$brainstorm" 'RELEVANTE_NOTIZ'
-assert_file_lacks "Brainstorm erhaelt keine Verifikation" "$brainstorm" '## Letzte Verifikation'
-assert_file_has "Manage erhaelt Plan" "$manager_manage" '## Relevanter Plan-Auszug'
-assert_file_has "Manage erhaelt letzte Verifikation" "$manager_manage" 'PRIOR_ERROR'
-assert_file_has "Task Worker erhaelt freigegebenen Code" "$worker" 'VISIBLE_CODE=hello'
-assert_file_has "Task Worker erhaelt relevanten Fehler" "$worker" 'PRIOR_ERROR'
-assert_file_lacks "Task Worker erhaelt keine fremde Note" "$worker" 'FREMDE_NOTIZ'
-assert_file_lacks "Task Worker erhaelt keine verworfene Note" "$worker" 'VERWORFENE_NOTIZ'
-assert_file_has "Finalizer erhaelt Notes" "$finalizer" '## Kuratierte aktive Notes'
-assert_file_lacks "Finalizer erhaelt keinen Produktcode" "$finalizer" '## Freigegebene Codeausschnitte'
+# Der Headless-Rahmen steht im Kontext, damit ihn jeder Runner weiterreicht.
+for context in "$manager" "$worker" "$fresh" "$finalizer"; do
+  assert_file_has "Kontext trägt den Headless-Rahmen" "$context" '## Headless-Rahmen'
+done
+assert_file_has "Der Rahmen nennt die Rolle" "$manager" 'als Rolle «manager»'
+assert_file_has "Der Rahmen verlangt strukturiertes JSON" "$worker" 'strukturiertes JSON-Objekt'
 
-assert_file_has "Fresh Worker erhaelt Goal" "$fresh" '## Goal-Auszug'
-assert_file_has "Fresh Worker erhaelt Task" "$fresh" 'Kontext sicher bauen'
-assert_file_has "Fresh Worker erhaelt unveraenderten Code" "$fresh" 'VISIBLE_CODE=hello'
-assert_file_lacks "Fresh Worker erhaelt keine Notes" "$fresh" 'RELEVANTE_NOTIZ'
-assert_file_lacks "Fresh Worker erhaelt keinen bisherigen Fehler" "$fresh" 'PRIOR_ERROR'
-assert_file_lacks "Fresh Worker erhaelt keine Manager-Begruendung" "$fresh" '## Relevanter Plan-Auszug'
+assert_file_has "Manager erhält Plan und Entscheidungen" "$manager" '## Relevanter Plan-Auszug'
+assert_file_has "Manager erhält das Task-Inventar" "$manager" '### Task-Inventar'
+assert_file_has "Manager erhält den letzten Prüfbericht" "$manager" 'PRIOR_ERROR'
+assert_file_lacks "Manager erhält keine Dateiliste" "$manager" '## Dateien im Umfang'
+
+assert_file_has "Worker erhält die Dateiliste statt der Inhalte" "$worker" '## Dateien im Umfang'
+assert_file_has "Die Dateiliste nennt den freigegebenen Pfad" "$worker" '- `src/app.txt`'
+assert_file_lacks "Worker erhält keinen Dateiinhalt" "$worker" 'VISIBLE_CODE=hello'
+assert_file_has "Worker erhält den relevanten Fehler" "$worker" 'PRIOR_ERROR'
+assert_file_has "Worker erhält die relevante Note" "$worker" 'RELEVANTE_NOTIZ'
+assert_file_lacks "Worker erhält keine fremde Note" "$worker" 'FREMDE_NOTIZ'
+assert_file_lacks "Worker erhält keine verworfene Note" "$worker" 'VERWORFENE_NOTIZ'
+assert_file_lacks "Worker erhält keinen Plan" "$worker" '## Relevanter Plan-Auszug'
+
+assert_file_has "Fresh Worker erhält Goal" "$fresh" '## Goal-Auszug'
+assert_file_has "Fresh Worker erhält den Task" "$fresh" 'Kontext sicher bauen'
+assert_file_has "Fresh Worker wird als zweiter Anlauf benannt" "$fresh" 'Unabhängiger zweiter Anlauf'
+assert_file_lacks "Fresh Worker erhält keine Notes" "$fresh" 'RELEVANTE_NOTIZ'
+assert_file_lacks "Fresh Worker erhält keinen bisherigen Fehler" "$fresh" 'PRIOR_ERROR'
+assert_file_lacks "Fresh Worker erhält keinen Plan" "$fresh" '## Relevanter Plan-Auszug'
+assert_file_has "Ausgeschlossene Pfade werden sichtbar entfernt" "$fresh" '[AUSGESCHLOSSENER PFAD ENTFERNT]'
 assert_file_lacks ".env-Pfad erscheint nie" "$fresh" '.env'
 assert_file_lacks ".agent-runs-Pfad erscheint nie" "$fresh" '.agent-runs'
-assert_file_lacks "Secret-Wert wird redigiert" "$worker" 'should-not-leak'
-assert_file_has "Redaktion ist sichtbar" "$worker" '[REDACTED:'
+
+assert_file_has "Finalizer erhält Notes" "$finalizer" '## Kuratierte aktive Notes'
+assert_file_lacks "Finalizer erhält keine Dateiliste" "$finalizer" '## Dateien im Umfang'
+assert_file_lacks "Secret-Wert wird redigiert" "$manager" 'should-not-leak'
+assert_file_has "Redaktion ist sichtbar" "$manager" '[REDACTED:'
+
+expect_failure "Worker ohne Task ist kein Kontext" "$builder" build --project-dir "$fixture" --role worker --run-id "$run_id"
+expect_failure "Fresh gilt nur für den Worker" "$builder" build --project-dir "$fixture" --role manager --run-id "$run_id" --fresh
+expect_failure "abgelöste Rolle wird abgewiesen" "$builder" build --project-dir "$fixture" --role worker-task --run-id "$run_id" --task-id 017
 
 new_populated_fixture
-first=$("$builder" build --project-dir "$fixture" --role worker-task --run-id "$run_id" --task-id 017 --include src/app.txt)
+first=$("$builder" build --project-dir "$fixture" --role worker --run-id "$run_id" --task-id 017 --include src/app.txt)
 first_hash=$(shasum -a 256 "$first" | awk '{print $1}')
-second=$("$builder" build --project-dir "$fixture" --role worker-task --run-id "$run_id" --task-id 017 --include src/app.txt)
+second=$("$builder" build --project-dir "$fixture" --role worker --run-id "$run_id" --task-id 017 --include src/app.txt)
 [ "$first" = "$second" ] && [ "$first_hash" = "$(shasum -a 256 "$second" | awk '{print $1}')" ] \
   && ok || bad "gleiche Inputs und Prompt-Version sind deterministisch"
-case "$first" in *"worker-task-017-$first_hash.md") ok ;; *) bad "Kontext-Hash und Rolle stehen im lokalen Artefakt" ;; esac
+case "$first" in *"worker-017-$first_hash.md") ok ;; *) bad "Kontext-Hash und Rolle stehen im lokalen Artefakt" ;; esac
 [ ! -e "$fixture/.agent-runs/metrics.csv" ] && ok || bad "Kontextbau erzeugt keine vorzeitige Laufzeile"
 [ ! -w "$first" ] && ok || bad "Kontextdatei ist unveraenderlich markiert"
 
 old_hash=$(shasum -a 256 "$first" | awk '{print $1}')
-printf '%s\n' '<!-- prompt-version-test -->' >> "$fixture/docs/templates/agents/worker-task.md"
-third=$("$builder" build --project-dir "$fixture" --role worker-task --run-id "$run_id" --task-id 017 --include src/app.txt)
+printf '%s\n' '<!-- prompt-version-test -->' >> "$fixture/docs/prompts/worker.md"
+third=$("$builder" build --project-dir "$fixture" --role worker --run-id "$run_id" --task-id 017 --include src/app.txt)
 [ "$third" != "$first" ] && [ "$(shasum -a 256 "$first" | awk '{print $1}')" = "$old_hash" ] \
   && ok || bad "neue Prompt-Version erzeugt neuen Kontext und bewahrt alten"
 
+# Die Budgets sind fest: ein zu kleines Gesamtlimit wird gemeldet, nicht still
+# unterschritten.
 new_populated_fixture
-fixture_config CONTEXT_MAX_CHARS 6000
 fixture_config NOTES_MAX_CHARS 500
 for index in $(seq 1 180); do printf 'Sehr langer Goal-Absatz %s mit kontrolliertem Inhalt.\n\n' "$index" >> "$fixture/docs/state/goal.md"; done
 for index in $(seq 1 160); do printf 'Sehr langer Task-Absatz %s.\n\n' "$index" >> "$fixture/docs/tasks/017.md"; done
-for index in $(seq 10 24); do
-  printf '\n## N-00%s — Lange Notiz\n- tasks: [017]\n- date: 2026-09-04\n- source: worker\n- confidence: observed\n- status: active\n- evidence: test\n- finding: Ausführlicher relevanter Befund Nummer %s.\n' "$index" "$index" >> "$fixture/docs/state/notes.md"
-done
-limited=$("$builder" build --project-dir "$fixture" --role worker-task --run-id "$run_id" --task-id 017 --include src/app.txt)
-[ "$(wc -c < "$limited" | tr -d ' ')" -le 6000 ] && ok || bad "Gesamtbudget wird eingehalten"
+limited=$("$builder" build --project-dir "$fixture" --role worker --run-id "$run_id" --task-id 017 --include src/app.txt)
 assert_file_has "Abschnittskuerzung ist sichtbar markiert" "$limited" '[GEKUERZT:'
 assert_file_has "Task-Frontmatter bleibt als Block erhalten" "$limited" '---'
-notes_excerpt=$(awk '$0 == "## Kuratierte aktive Notes" { take=1; next } take && $0 == "## Letzte Verifikation" { exit } take { print }' "$limited")
-case "$notes_excerpt" in *'[GEKUERZT:'*) ok ;; *) bad "Notes-Budget wird einzeln markiert" ;; esac
+[ "$(wc -c < "$limited" | tr -d ' ')" -le 48000 ] && ok || bad "Feste Budgets halten das Gesamtlimit"
+fixture_config CONTEXT_MAX_CHARS 2000
+expect_failure "zu kleines Gesamtlimit wird gemeldet" "$builder" build --project-dir "$fixture" --role worker --run-id "$run_id" --task-id 017 --include src/app.txt
 
 finish_suite

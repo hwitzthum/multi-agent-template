@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "task_id", "reason", "question"],
+  "properties": {
+    "action": { "type": "string", "enum": ["dispatch", "done", "blocked", "ask_human"] },
+    "task_id": { "type": "string", "pattern": "^[0-9]*$" },
+    "reason": { "type": "string" },
+    "question": { "type": "string" }
+  }
+}

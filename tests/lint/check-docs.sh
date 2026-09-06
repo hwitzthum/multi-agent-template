@@ -18,9 +18,11 @@ for path in \
   assert_file "dokumentierter Pfad existiert: $path" "$project_dir/$path"
 done
 
-for role in manager-plan manager-manage worker-brainstorm worker-task worker-fresh finalizer; do
-  assert_file "Rollen-Prompt existiert: $role" "$project_dir/docs/templates/agents/$role.md"
+for role in manager worker finalizer; do
+  assert_file "Rollen-Prompt existiert: $role" "$project_dir/docs/prompts/$role.md"
+  assert_file "Rollen-Schema existiert: $role" "$project_dir/scripts/agent/schemas/$role.json"
 done
+[ ! -d "$project_dir/docs/templates/agents" ] && ok || bad "keine zweite Sammlung von Rollenvorlagen"
 
 assert_file_has "README beschreibt adaptives System" "$project_dir/README.md" 'Adaptives Agentensystem'
 assert_file_has "README zeigt nächste Tasks" "$project_dir/README.md" './scripts/next-tasks.sh'
@@ -55,7 +57,8 @@ assert_file_has "Task-Vorlage erklärt den Fresh-Versuch" "$project_dir/docs/tem
 assert_file_has "Task-Vorlage nennt das Wiederöffnen" "$project_dir/docs/templates/task.md" './scripts/task.sh reopen'
 assert_file_has "Task-Vorlage nennt die Freigabe" "$project_dir/docs/templates/task.md" './scripts/task.sh approve'
 
-for field in 'Run-ID:' 'Verifierstatus:' 'Letzter grüner Stand:' 'Entscheidung:' 'Erster offener Fehler:'; do
+for field in 'Run-ID:' 'Modus:' 'Ergebnis:' 'Task:' 'Verifierstatus:' 'Letzter grüner Stand:' \
+  'Entscheidung:' 'Erster offener Fehler:'; do
   assert_file_has "Handoff-Vorlage enthält $field" "$project_dir/docs/templates/handoff-template.md" "$field"
 done
 
@@ -84,6 +87,7 @@ expect_contains "verify --help" 'Verwendung:' "$project_dir/scripts/verify.sh" -
 expect_contains "verify-task --help" 'Verwendung:' "$project_dir/scripts/verify-task.sh" --help
 expect_contains "validate-ledger --help" 'Verwendung:' "$project_dir/scripts/validate-ledger.sh" --help
 expect_contains "task --help" 'Verwendung:' "$project_dir/scripts/task.sh" --help
+expect_contains "orchestrate nennt den Laufbeleg" 'Laufbeleg' sed -n '1,12p' "$project_dir/scripts/orchestrate.sh"
 expect_contains "tests/run --help" 'Verwendung:' "$tests_dir/run.sh" --help
 
 if grep -rEq --include='*.md' '(AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{20,}|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY)' "$project_dir/README.md" "$project_dir/CLAUDE.md" "$project_dir/docs"; then

@@ -19,7 +19,6 @@ make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --class patterned --orchestration verified --touches src/app.txt \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
-make_active_run --id 017 --mode verified --phase verify --run-id "$run_id"
 printf '%s\n' good > "$fixture/src/app.txt"
 expect_success "grüner Kandidat passiert das Gateway" "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
 assert_file "grünes Gateway legt den Task-Beleg an" "$fixture/docs/verification/017.md"
@@ -39,7 +38,6 @@ make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --class patterned --orchestration verified --touches src/app.txt \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
-make_active_run --id 017 --mode verified --phase verify --run-id "$run_id"
 printf '%s\n' good > "$fixture/src/app.txt"
 expect_success "Kandidat wird zunächst grün" "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
 printf '%s\n' changed > "$fixture/src/app.txt"
@@ -50,7 +48,6 @@ make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --class patterned --orchestration verified --touches src/app.txt \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
-make_active_run --id 017 --mode verified --phase verify --run-id "$run_id"
 printf '%s\n' good > "$fixture/src/app.txt"
 expect_success "Verifierstand wird zunächst grün" "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
 printf '%s\n' '# verifier changed' >> "$fixture/scripts/verify.sh"
@@ -61,7 +58,6 @@ make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --class patterned --orchestration verified --touches src/app.txt --human-review true \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
-make_active_run --id 017 --mode verified --phase verify --run-id "$run_id"
 printf '%s\n' good > "$fixture/src/app.txt"
 expect_success "Human-Review-Kandidat wird maschinell grün" "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
 expect_failure "Human Review verhindert direktes done" "$fixture/scripts/agent/status.sh" --project-dir "$fixture" set-status 017 done in_progress
@@ -75,7 +71,6 @@ make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --acceptance '"./scripts/verify.sh; touch injected"' \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
-make_active_run --id 017 --mode verified --phase verify --run-id "$run_id"
 printf '%s\n' good > "$fixture/src/app.txt"
 expect_failure "Shell-Metazeichen werden abgewiesen" "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
 [ ! -e "$fixture/injected" ] && ok || bad "abgewiesener Befehl wurde dennoch ausgeführt"
@@ -87,7 +82,6 @@ make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --acceptance '"./scripts/verify.sh", "pytest"' \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
-make_active_run --id 017 --mode verified --phase verify --run-id "$run_id"
 printf '%s\n' good > "$fixture/src/app.txt"
 printf '%s\n' './scripts/verify.sh' > "$fixture/.agent/verification-allowlist"
 expect_failure "Projekt-Allowlist kann Standardpräfixe verschärfen" "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
@@ -99,7 +93,6 @@ make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --acceptance '"./scripts/verify.sh", "runner:release"' \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
-make_active_run --id 017 --mode verified --phase verify --run-id "$run_id"
 printf '%s\n' good > "$fixture/src/app.txt"
 cat > "$fixture/scripts/named-check" <<'EOF'
 #!/usr/bin/env bash
@@ -116,7 +109,6 @@ make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --acceptance '"./scripts/verify.sh", "mypy"' \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
-make_active_run --id 017 --mode verified --phase verify --run-id "$run_id"
 printf '%s\n' good > "$fixture/src/app.txt"
 expect_failure "fehlender erlaubter Befehl ergibt Rot" env PATH=/usr/bin:/bin "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
 assert_file_has "fehlender Befehl wird als technischer Fehler getrennt" "$fixture/docs/verification/latest.md" 'failure_kind: verifier'
@@ -128,7 +120,6 @@ make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --acceptance '"./scripts/verify.sh", "pytest"' \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
-make_active_run --id 017 --mode verified --phase verify --run-id "$run_id"
 printf '%s\n' good > "$fixture/src/app.txt"
 mkdir -p "$fixture/bin"
 cat > "$fixture/bin/pytest" <<'EOF'
@@ -145,7 +136,6 @@ make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --acceptance '"./scripts/verify.sh", "pytest", "ruff"' \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
-make_active_run --id 017 --mode verified --phase verify --run-id "$run_id"
 printf '%s\n' good > "$fixture/src/app.txt"
 mkdir -p "$fixture/bin"
 cat > "$fixture/bin/pytest" <<'EOF'
@@ -169,7 +159,6 @@ make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --class patterned --orchestration verified --touches src/app.txt \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
-make_active_run --id 017 --mode verified --phase verify --run-id "$run_id"
 printf '%s\n' bad > "$fixture/src/app.txt"
 expect_failure "falscher Produktkandidat muss sicher scheitern" "$fixture/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" --timeout 3 017
 assert_eq "Produktfehler bleibt als red im Task-Beleg" red "$(ledger_scalar "$fixture/docs/verification/017.md" result)"

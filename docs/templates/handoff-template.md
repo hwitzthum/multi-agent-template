@@ -1,10 +1,15 @@
 # Handoff — <Datum Uhrzeit>
 
 ## Laufbeleg
+
+Diesen Abschnitt schreibt `scripts/orchestrate.sh` bei jedem Laufende selbst.
+
 - Run-ID: <Run-ID oder `none`>
 - Modus: <single | verified | managed | keiner>
+- Ergebnis: <success | review | blocked | ask_human | no_progress | keiner>
+- Task: <id und Status oder `keiner`>
 - Verifierstatus: <GREEN | RED | NEVER> — <Berichtspfad oder Grund>
-- Letzter grüner Stand: <Git-Referenz/Prüfsumme oder `keiner`>
+- Letzter grüner Stand: <Berichtspfad oder `keiner`>
 
 ## Letzte Sitzung
 - <Task NNN: erledigt | in Arbeit (Branch) | blockiert (Grund)>

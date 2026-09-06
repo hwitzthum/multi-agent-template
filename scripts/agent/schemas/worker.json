@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["result", "summary", "tests_run", "notes"],
+  "properties": {
+    "result": { "type": "string", "enum": ["implemented", "partial", "blocked"] },
+    "summary": { "type": "string" },
+    "tests_run": { "type": "string" },
+    "notes": { "type": "string" }
+  }
+}

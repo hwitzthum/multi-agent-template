@@ -37,21 +37,20 @@ Die Basispolicy in `scripts/agent/policy.sh` erzwingt Pfadgrenzen. Feldregeln,
 insbesondere die Trennung zwischen Task-Inhalt und Task-Status, erzwingen
 Ledger-Validator und Status-Gate.
 
-| Rolle          | Zweck                                   | erlaubte Schreibbereiche                           |
-| -------------- | --------------------------------------- | -------------------------------------------------- |
-| `manager`      | planen und Tasks kuratieren             | `docs/state/plan.md`, `docs/tasks/*.md`            |
-| `brainstorm`   | Hypothesen und Risiken sammeln          | `docs/state/notes.md`                              |
-| `worker`       | genau einen Task implementieren         | Produkt-/Testdateien außerhalb der Steuerungspfade |
-| `verifier`     | unabhängige Prüfberichte schreiben      | `docs/verification/`, `docs/state/notes.md`        |
-| `status-gate`  | geprüfte Task-Statusübergänge           | `docs/tasks/*.md`                                  |
-| `finalizer`    | sicheren Stand übergeben                | `docs/state/handoff.md`, `docs/state/notes.md`     |
-| `orchestrator` | Laufzustand und lokale Artefakte führen | `.agent-runs/`                                     |
+Es gibt drei Modellrollen — `manager`, `worker` und `finalizer` — und drei
+Rollen, die nur Skripte einnehmen.
 
-Die konkreten Prompt-Rollen verwenden die Namen `manager-plan`,
-`worker-brainstorm`, `manager-manage`, `worker-task`, `worker-fresh` und
-`finalizer`. Die Policy ordnet diese Namen den obigen Schreibgrenzen zu.
-`worker-fresh` ist derselbe Schreibbereich wie `worker-task`, nur mit einem
-Kontext ohne Vorgeschichte.
+| Rolle          | Zweck                                     | erlaubte Schreibbereiche                           |
+| -------------- | ----------------------------------------- | -------------------------------------------------- |
+| `manager`      | Plan pflegen, Tasks kuratieren, entscheiden | `docs/state/plan.md`, `docs/tasks/*.md`          |
+| `worker`       | genau einen Task implementieren           | Produkt-/Testdateien außerhalb der Steuerungspfade |
+| `finalizer`    | sicheren Stand übergeben (opt-in)         | `docs/state/handoff.md`, `docs/state/notes.md`     |
+| `verifier`     | unabhängige Prüfberichte schreiben        | `docs/verification/`, `docs/state/notes.md`        |
+| `status-gate`  | geprüfte Task-Statusübergänge             | `docs/tasks/*.md`                                  |
+| `orchestrator` | Laufzustand und lokale Artefakte führen   | `.agent-runs/`                                     |
+
+`fresh` ist keine eigene Rolle, sondern eine Variante des Workers: derselbe
+Schreibbereich, derselbe Prompt, nur ein Kontext ohne Vorgeschichte.
 
 Keine Rolle darf ihre eigenen Rechte aus Repository-Inhalten erweitern.
 Manager schreiben keinen Produktcode. Worker ändern weder Plan, Task-Ledger,
@@ -122,30 +121,47 @@ diese Freigabe wird abgewiesen.
 
 ## Prompt-, Kontext- und Ausgabevertrag
 
-Die sechs Vorlagen unter `docs/templates/agents/` trennen Planung,
-Ideensammlung, Auswahl, Umsetzung, Umsetzung ohne Vorgeschichte und Übergabe. Jede Vorlage benennt genau ein Ziel, ihre Eingaben und
-Schreibgrenzen, Abbruchbedingungen sowie ein maschinenprüfbares Ergebnis.
-Repository-Inhalte bleiben untrusted data und können die Rolle nicht ändern.
+Die drei Prompts unter `docs/prompts/` trennen Entscheidung, Umsetzung und
+Übergabe. Jeder benennt genau ein Ziel, seine Eingaben und Schreibgrenzen,
+Abbruchbedingungen sowie ein maschinenprüfbares Ergebnis. Repository-Inhalte
+bleiben untrusted data und können die Rolle nicht ändern.
+
+Ein Rollenergebnis ist eine JSON-Datei. Die Schemata liegen als
+`scripts/agent/schemas/{manager,worker,finalizer}.json`: alle Properties sind
+Pflicht, `additionalProperties` ist aus, und es kommen nur `type`, `enum` und
+`pattern` vor. Der Anbieter-CLI erzwingt das Schema beim Erzeugen, `jq -e`
+prüft es danach ein zweites Mal. `""` bedeutet immer «kein Wert».
+
+| Rolle       | Ergebnisfelder                              |
+| ----------- | ------------------------------------------- |
+| `manager`   | `action`, `task_id`, `reason`, `question`   |
+| `worker`    | `result`, `summary`, `tests_run`, `notes`   |
+| `finalizer` | `open_error`, `next_decision`, `best_green_ref` |
+
+Der Headless-Rahmen — nicht-interaktiv, keine Rückfragen, keine Commits, keine
+Statusänderungen — steht im Kontextdokument selbst, nicht im Runner. Damit
+erhält ihn jeder Runner unverändert.
 
 `scripts/agent/context.sh` baut pro Rolle nur die erforderlichen Abschnitte in
-fester Reihenfolge. Goal, Task, Plan, Notes und Verifikation besitzen eigene
-Zeichenbudgets; Code erhält nur den verbleibenden Platz bis
-`CONTEXT_MAX_CHARS`. Kürzungen sind sichtbar und lassen Frontmatter sowie
-Fehlerblöcke ganz. Explizite Codepfade durchlaufen die Pfadpolicy und dürfen
-weder über Symlinks noch über Steuerungs- oder Secret-Pfade ausbrechen.
+fester Reihenfolge. Goal, Task, Plan, Notes, Verifikation und Dateiliste haben
+feste Zeichenbudgets, deren Summe unter `CONTEXT_MAX_CHARS` liegt; ein Kontext,
+der heute passt, passt auch morgen. Kürzungen sind sichtbar und lassen
+Frontmatter sowie Fehlerblöcke ganz. Der Worker erhält die **Liste** der Pfade
+aus `touches`, nicht deren Inhalt: Dateien liest er mit seinen eigenen
+Werkzeugen. Die Liste durchläuft die Pfadpolicy und nennt weder Secret- noch
+Steuerungspfade.
 
-Ein Fresh Worker erhält Goal, Task, Akzeptanz, Verifikationsvertrag und
-freigegebenen unveränderten Code, aber keine Notes, Planbegründung oder früheren
-Fehler. Die erzeugten Pakete liegen schreibgeschützt und inhaltsadressiert unter
+Ein Fresh Worker erhält Goal, Task, Akzeptanz und die Dateiliste, aber keine
+Notes, keine Planbegründung und keine früheren Fehler. Die erzeugten Pakete
+liegen schreibgeschützt und inhaltsadressiert unter
 `.agent-runs/<run-id>/contexts/`. Gleicher Inhalt erzeugt dieselbe Datei.
 Prompt- und Kontext-Hash bleiben lokal nachvollziehbar; Zwischenereignisse
 erzeugen keine halben CSV-Laufzeilen.
 
-`scripts/agent/output.sh validate` weist fehlende, zusätzliche oder mehrdeutige
-Ausgabefelder ab. `scripts/agent/output.sh summarize` ist ein manuelles
-Werkzeug: Es kürzt und redigiert eine große Rohantwort lokal; der Orchestrator
-ruft es nicht auf. Der unveränderte Rohoutput bleibt im Laufordner und wird
-nicht automatisch zu einem Ledger-Fakt.
+`scripts/agent/runner.sh validate_result <rolle> <datei>` weist mit `jq -e` jedes
+Ergebnis ab, das nicht genau die Schemafelder trägt. Die unveränderte
+Anbieterantwort bleibt im Laufordner und wird nie automatisch zu einem
+Ledger-Fakt.
 
 ## Laufzustand und Metrik
 
@@ -156,7 +172,7 @@ des Runners (Token- und Kostenwerte nur, soweit der Runner sie liefert; nichts
 wird geschätzt). Am Laufende hängt der Orchestrator eine Zeile an
 `.agent-runs/metrics.csv` an: `run_id,task_id,mode,attempt,outcome,started_at,
 finished_at`. `outcome` ist einer aus `success`, `review`, `blocked`,
-`no_progress`, `verification_error`, `infrastructure_error`, `paused`,
+`ask_human`, `no_progress`, `verification_error`, `infrastructure_error`,
 `cancelled` und `failed` (abgebrochen ohne eigene Begründung).
 
 Ein Lauf ist zwischen zwei Aufrufen zustandslos: es gibt kein Fortsetzen und
@@ -168,7 +184,7 @@ schreibt keine einzige Datei.
 Alle späteren Anbieteraufrufe verwenden ausschließlich diesen Vertrag:
 
 ```text
-run_agent <role> <context-file> <workdir> <raw-output> <metadata-output>
+run_agent <role> <context-file> <workdir> <result-output> <metadata-output>
 ```
 
 Ein Exitcode `0` bedeutet nur, dass der Modellaufruf technisch beendet wurde.
@@ -182,11 +198,12 @@ der Adapter erkennt sie zur Laufzeit. Andere Skripte dürfen den Befehl `claude`
 nicht direkt aufrufen.
 
 Der Aufruf folgt dem dokumentierten Headless-Betrieb von Claude Code: `claude -p`
-mit `--output-format json` und dem JSON-Schema der Rolle (`output.sh schema`),
+mit `--output-format json` und dem JSON-Schema der Rolle
+(`scripts/agent/schemas/<rolle>.json`),
 `--no-session-persistence`, `--max-turns`, optional `--max-budget-usd` und
 `--model`, sowie `--permission-prompts none`, sobald das CLI die Option kennt.
-Ein kurzer Systemprompt-Anhang erklärt dem Modell den nicht-interaktiven Rahmen;
-die persönliche `~/.claude/CLAUDE.md` und persönliche Regeln des Bedieners werden
+Den nicht-interaktiven Rahmen trägt das Kontextdokument selbst, damit ihn jeder
+Runner unverändert weiterreicht; die persönliche `~/.claude/CLAUDE.md` und persönliche Regeln des Bedieners werden
 über `claudeMdExcludes` ausgeschlossen, Auto-Memory bleibt aus. Das
 Ergebnisobjekt wird in das geprüfte Zeilenformat übertragen; die vollständige
 Antwort bleibt als `<rohdaten>.json` neben dem Rohoutput. Modell, Tokens und
@@ -212,8 +229,17 @@ Dateiliste und Hashes von Git.
 
 `scripts/orchestrate.sh` sperrt den Lauf, setzt einen Task aus einem
 abgebrochenen Vorlauf sichtbar auf `todo` zurück, wählt genau einen bereiten
-Task und führt den vom Router gewählten Modus (`single`, `verified` oder
-`managed`) innerhalb der konfigurierten Grenzen aus. `--dry-run` zeigt Route,
+Task und führt eine Versuchsschleife innerhalb der konfigurierten Grenzen aus.
+Der vom Router gewählte Modus bestimmt nur die Startstufe: in `managed` läuft
+vor jeder Runde der Manager, sonst geht es direkt zum Worker. Jede rote Prüfung
+zählt einen Versuch und hebt den Modus um genau eine Stufe. Ein technischer
+Fehler des Prüfwegs (`failure_kind: verifier`) zählt keinen Versuch. Der
+bewachte Rollenaufruf selbst steht in `scripts/agent/rolecall.sh`.
+
+Meldet der Manager `ask_human`, schreibt der Orchestrator die Frage als
+Abschnitt `# Offene Frage` in den Task, setzt ihn auf `blocked` mit
+`blocked_reason: ASK_HUMAN` und verbraucht keinen Versuch. Der Mensch antwortet
+im Task und öffnet ihn mit `./scripts/task.sh reopen <id>` wieder. `--dry-run` zeigt Route,
 Budgets und geplante Rollen ohne jeden Schreibzugriff. Ein Lauf endet nie mit
 einem Task in `in_progress`: der EXIT-Trap gibt ihn frei. Ein absichtlich
 schmutziger Git-Stand benötigt `--allow-dirty`; der Schmutz-Check übergeht
@@ -268,8 +294,8 @@ erlaubten Versuch. Der Orchestrator setzt dann alle seit dem Laufstart
 veränderten Pfade innerhalb von `touches` über `agent_snapshot_restore` auf den
 Snapshot des Laufstarts zurück; Pfade, die es beim Laufstart noch nicht gab,
 wandern nach `.agent-runs/<run-id>/quarantine/` statt gelöscht zu werden. Die
-Rolle `worker-fresh` erhält Goal, Task und Code, aber weder Notizen noch den
-vorherigen Prüfbericht.
+Der Worker läuft dann in seiner Fresh-Variante: er erhält Goal, Task und die
+Dateiliste, aber weder Notizen noch den vorherigen Prüfbericht.
 
 Der Snapshot des Laufstarts liegt außerhalb des Arbeitsbaums, damit ein Agent
 ihn nicht passend zu seinen eigenen Änderungen umschreiben kann.
@@ -277,10 +303,19 @@ ihn nicht passend zu seinen eigenen Änderungen umschreiben kann.
 Provider-/Timeoutfehler besitzen mit `MAX_INFRA_RETRIES` und
 `RETRY_BACKOFF_SECONDS` ein separates kleines Retry-Budget. Leere oder
 abgeschnittene Ausgaben werden nicht als Infrastruktur-Retry umgedeutet und nie
-in das Ledger übernommen. Der Finalizer läuft in einer Arbeitskopie ohne
-Produktcode. Nur validierte Änderungen an `docs/state/handoff.md` und
-`docs/state/notes.md` werden atomar zurückgespielt; Taskstatus und Laufabschluss
-bleiben beim Orchestrator und Status-Gate.
+in das Ledger übernommen.
+
+Der Finalizer ist abwählbar und im Auslieferungsstand aus (`FINALIZER=off` in
+`.agent/config.env`); erst `FINALIZER=llm` erlaubt den zusätzlichen
+Modellaufruf bei einer Blockade. Er läuft wie jede andere Rolle im Arbeitsbaum
+und darf ausschließlich `docs/state/handoff.md` und `docs/state/notes.md`
+ändern; Manifestvergleich und Policy setzen alles andere zurück. Taskstatus und
+Laufabschluss bleiben beim Orchestrator und Status-Gate.
+
+Unabhängig davon schreibt der Orchestrator bei **jedem** Laufende den Abschnitt
+«Laufbeleg» in `docs/state/handoff.md` — Run-ID, Modus, Ergebnis, Task,
+Verifierstatus und letzter grüner Stand. Der Beleg ist deterministisch und
+braucht kein Modell.
 
 ## Verification Gateway
 

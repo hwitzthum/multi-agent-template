@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["open_error", "next_decision", "best_green_ref"],
+  "properties": {
+    "open_error": { "type": "string" },
+    "next_decision": { "type": "string" },
+    "best_green_ref": { "type": "string" }
+  }
+}
