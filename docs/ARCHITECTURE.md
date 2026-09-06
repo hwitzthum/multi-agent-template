@@ -29,9 +29,9 @@ nutzen das gegen ein Fixture.
 | `scripts/agent/config.sh`     | `.agent/config.env` lesen und validieren         | `--check [datei]`, `--get KEY [datei]`                                          |
 | `scripts/agent/context.sh`    | Kontextpaket einer Rolle bauen                   | `build --role`, `--run-id`, `--task-id`, `--fresh`, `--include`, `--project-dir` |
 | `scripts/agent/policy.sh`     | Pfad- und Schreibgrenzen prüfen                  | `context-path PFAD`, `role-write ROLLE PFAD`                                    |
-| `scripts/agent/runner.sh`     | Anbieter-Adapter und Ergebnisprüfung             | `run_agent`, `validate_result`, `validate_metadata`                             |
+| `scripts/agent/runner.sh`     | Anbieter-Adapter und Ergebnisprüfung             | `--contract`, `schema_path ROLLE`, `run_agent`, `validate_result`, `validate_metadata`, `runner_settings`, `render_result`, `render_codex_result` |
 | `scripts/agent/status.sh`     | Status-Gate, einziger maschineller Schreibweg    | `set-status ID NEU ERWARTET`, `--human-approved`, `--project-dir`               |
-| `scripts/agent/ledger.sh`     | Ledger-Leser und atomare Schreibhilfen           | wird eingebunden; `scalar`, `list`, `active-notes`                              |
+| `scripts/agent/ledger.sh`     | Ledger-Leser und atomare Schreibhilfen           | wird eingebunden; `parse`, `scalar`, `list`, `active-notes`                     |
 | `scripts/agent/route.sh`      | Modus-Router                                     | wird eingebunden (`agent_route_mode`)                                           |
 | `scripts/agent/rolecall.sh`   | bewachter Rollenaufruf                           | wird eingebunden (`run_role`)                                                   |
 | `scripts/agent/common.sh`     | Sperren, Zeitlimits, Manifeste, Snapshot         | wird eingebunden                                                                |
@@ -309,9 +309,13 @@ Sicherheitshülle, und dieser Unterschied ist wesentlich.
 **Claude** läuft im dokumentierten Headless-Betrieb von Claude Code: `claude -p`
 mit `--output-format json` und dem JSON-Schema der Rolle
 (`scripts/agent/schemas/<rolle>.json`), `--no-session-persistence`,
-`--max-turns`, optional `--max-budget-usd` und `--model`, sowie
-`--permission-prompts none`, sobald das CLI die Option kennt. Die Grenze ist
-hier eine Rechtegrenze im Prozess, keine Sandbox des Betriebssystems: Der
+`--max-turns`, `--permission-mode acceptEdits`, optional `--max-budget-usd`
+und `--model`, sowie `--permission-prompts none`, sobald das CLI die Option
+kennt. `acceptEdits` heißt: der Agent bestätigt seine Schreibzugriffe nicht
+einzeln, sondern arbeitet sie ab — ein Headless-Lauf hätte sonst niemanden,
+der bestätigt. Was ihn begrenzt, sind deshalb Deny-Liste, `bash-guard` und der
+Manifestvergleich, nicht eine Rückfrage. Die Grenze ist hier eine
+Rechtegrenze im Prozess, keine Sandbox des Betriebssystems: Der
 Worker bekommt `--allowedTools` mit den Lesewerkzeugen plus `Edit`, `Write`
 und `Bash`; Manager und Finalizer laufen mit `--restricted --tools
 Read,Glob,Grep,Edit,Write` und haben damit gar kein Werkzeug, das Befehle
@@ -322,8 +326,8 @@ Auto-Memory bleibt aus. Modell, Tokens und Kosten stammen aus der Antwort.
 
 **Codex** bringt seine Hülle selbst mit: `codex exec --json --output-schema
 <rollenschema> --output-last-message <datei> -C <workdir>
---sandbox workspace-write --color never -c project_doc_max_bytes=0`,
-Prompt über stdin.
+--sandbox workspace-write --color never -c project_doc_max_bytes=0`, bei
+gesetztem Modell zusätzlich `-m <modell>`, Prompt über stdin.
 Schreibzugriffe begrenzt die Sandbox des CLI auf den Arbeitsbaum, das Netz
 bleibt aus; eine Werkzeugauswahl pro Rolle gibt es dort nicht. Tokens kommen
 aus `turn.completed.usage`, ein `turn.failed` wird zum Abbruchgrund, Kosten
@@ -445,13 +449,15 @@ seinen eigenen Änderungen umschreiben.
 ## Fresh- und Finalizer-Vertrag
 
 Fresh ist kein eigener Modus, sondern eine Versuchsvariante innerhalb von
-`managed`. Sie greift, wenn der Manager sie verlangt, und immer beim letzten
-erlaubten Versuch. Der Orchestrator setzt dann alle seit dem Laufstart
-veränderten Pfade innerhalb von `touches` über `agent_snapshot_restore` auf den
-Snapshot des Laufstarts zurück; Pfade, die es beim Laufstart noch nicht gab,
-wandern nach `.agent-runs/<run-id>/quarantine/` statt gelöscht zu werden. Der
-Worker läuft dann in seiner Fresh-Variante: er erhält Goal, Task und die
-Dateiliste, aber weder Notizen noch den vorherigen Prüfbericht.
+`managed`. Sie greift ausschließlich beim letzten erlaubten Versuch; der
+Manager kann sie nicht anfordern, denn seine Aktionen sind `done`, `blocked`,
+`ask_human` und `dispatch`, und keine davon trägt ein Fresh-Signal. Der
+Orchestrator setzt dann alle seit dem Laufstart veränderten Pfade innerhalb
+von `touches` über `agent_snapshot_restore` auf den Snapshot des Laufstarts
+zurück; Pfade, die es beim Laufstart noch nicht gab, wandern nach
+`.agent-runs/<run-id>/quarantine/` statt gelöscht zu werden. Der Worker läuft
+dann in seiner Fresh-Variante: er erhält Goal, Task und die Dateiliste, aber
+weder Notizen noch den vorherigen Prüfbericht.
 
 Der Snapshot des Laufstarts liegt außerhalb des Arbeitsbaums, damit ein Agent
 ihn nicht passend zu seinen eigenen Änderungen umschreiben kann.
