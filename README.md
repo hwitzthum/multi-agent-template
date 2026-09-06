@@ -14,6 +14,12 @@ GitHub-Vorlage verwendet und sie klont, hat diesen Ausgangsstand bereits. Ein
 ZIP-Download genügt nicht: Manifeste, Snapshot-Rücksetzung und die
 Fresh-Versuche benötigen die Git-Historie.
 
+`./scripts/doctor.sh` sagt in einem Durchlauf, ob die Umgebung trägt:
+Werkzeuge, Konfiguration, der gewählte Agenten-Runner und der
+Repository-Zustand. Jede Zeile ist `OK`, `BEFUND` (behebbar und blockierend)
+oder `HINWEIS`. Ein kaputt installiertes CLI erscheint dort als Befund mit
+Text, nicht als Absturz.
+
 Danach wird das Projekt einmalig mit
 `docs/templates/initializer-prompt.md` eingerichtet: Projektbeschreibung
 eintragen, Prompt in eine eigene Sitzung kopieren.
@@ -50,12 +56,19 @@ Hinter den Rollen laufen mehrere Skripte, die den Betriebsverkehr regeln:
 
 ### `scripts/agent/runner.sh` — Der Modell-Adapter
 
-Wird von `orchestrate.sh` aufgerufen. Nimmt das Kontextpaket, ruft `claude -p` mit dem
-JSON-Schema der Rolle auf (das Modell muss exakt die Vertragsfelder liefern), schreibt
+Wird von `orchestrate.sh` aufgerufen. Nimmt das Kontextpaket, ruft das gewählte CLI mit
+dem JSON-Schema der Rolle auf (das Modell muss exakt die Vertragsfelder liefern), schreibt
 das Ergebnisobjekt als `result.json` und protokolliert Modell, Tokens und Kosten aus
 der Antwort. Die vollständige Antwort bleibt lokal als `.provider.json` im Laufordner.
-Ein neuer Anbieter-Aufruf würde nur diesen Adapter ändern — die Orchestrierung bleibt
-gleich.
+
+Zwei Runner stehen zur Wahl, `AGENT_RUNNER=claude` oder `AGENT_RUNNER=codex` in
+`.agent/config.env`. Beide liefern denselben Ergebnisvertrag, aber eine andere
+Sicherheitshülle: Claude bekommt rollenabhängige Werkzeuge und eine eigene
+Einstellungsdatei mit Deny-Liste und `bash-guard`-Hook — Manager und Finalizer
+können dort gar keine Befehle ausführen. Codex läuft stattdessen in der Sandbox
+seines CLI (`--sandbox workspace-write`, Netz aus) und kennt keine Werkzeugauswahl
+pro Rolle. Kosten meldet codex nicht. Ein dritter Anbieter würde nur diesen Adapter
+ändern — die Orchestrierung bleibt gleich.
 
 ### `scripts/agent/context.sh` — Der Kontext-Bauer
 
@@ -120,7 +133,10 @@ Lädt und validiert `.agent/config.env` — einfaches Dateiformat, kein Shellskr
 Bekannte Schlüssel, validierte Werte. Wird nie mit `source` oder `eval` ausgeführt.
 
 Die Limits sind hart: Iterations-, Versuche-, No-Progress-, Kontext-, Timeout- und
-Retry-Grenzen. Kein Agent kann das übergehen.
+Retry-Grenzen. Kein Agent kann das übergehen. Dort stehen auch die Grenzen eines
+einzelnen Modellaufrufs (`AGENT_TIMEOUT_SECONDS`, `AGENT_MAX_TURNS`) sowie Runner
+und Modell (`AGENT_RUNNER`, `AGENT_MODEL`) — nicht in der Umgebung, damit ein Lauf
+ohne gesetzte Variablen reproduzierbar bleibt.
 
 ## Sicherheit: Was Claude nicht darf — mit Absicht
 
@@ -138,6 +154,11 @@ Das Template hat eingebaute Sperren. Claude (oder jeder Agent) darf **nicht**:
 - **Prüf-Hooks umgehen** — `git … --no-verify` ist blockiert, und vor jedem
   `git commit` muss `./scripts/verify.sh --quick` grün sein.
 
+Im Headless-Lauf des Orchestrators kommen Sperren dazu, die interaktiv nicht
+gelten: `git commit`, `merge`, `rebase`, `stash`, `worktree`, `git branch -D`,
+`pip install` und `npm publish`. Historie und Zweige führt der Orchestrator und
+am Ende du — nicht der Agent.
+
 Diese Grenzen sind in `scripts/bash-guard.sh` und `scripts/commit-gate.sh`
 definiert und greifen bei jedem Befehl, auch versteckt in einem längeren Befehl
 oder hinter JSON-Steuerzeichen. Sie sind ein Stolperdraht, kein Sandkasten: Dinge
@@ -148,6 +169,7 @@ Kontrolle: Ein `git push` führst du selbst aus.
 ## Weitere Befehle
 
 ```bash
+./scripts/doctor.sh                         # Werkzeuge, Runner und Repository-Zustand prüfen
 ./scripts/orchestrate.sh --next --dry-run   # Route, Limits und geplante Rollen ohne Änderung
 ./scripts/validate-ledger.sh                # Task-Graph und Prüfbelege prüfen
 ./scripts/task.sh reopen 017                # blockierte Aufgabe wieder öffnen (nur menschlich)

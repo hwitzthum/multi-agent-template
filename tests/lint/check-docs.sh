@@ -30,6 +30,14 @@ assert_file_has "README zeigt kontrollierte Bearbeitung" "$project_dir/README.md
 assert_file_has "README zeigt Projektstand" "$project_dir/README.md" './scripts/state-summary.sh'
 assert_file_has "README begrenzt Multi-Agent" "$project_dir/README.md" 'nicht der Standard für'
 assert_file_has "README erklärt Router-Entscheidung" "$project_dir/README.md" 'Router'
+assert_file_has "README nennt die Umgebungsprüfung" "$project_dir/README.md" './scripts/doctor.sh'
+assert_file_has "README nennt beide Runner" "$project_dir/README.md" 'AGENT_RUNNER=codex'
+
+# Die zwei Runner unterscheiden sich in der Sicherheitshülle; das darf die
+# Architektur nicht verschweigen.
+for term in 'codex exec' '--sandbox workspace-write' '--restricted' 'AGENT_RUNNER' 'doctor.sh'; do
+  assert_file_has "ARCHITECTURE benennt $term" "$project_dir/docs/ARCHITECTURE.md" "$term"
+done
 
 assert_file_has "CLAUDE kennt die Ledger-Quelle" "$project_dir/CLAUDE.md" '`docs/tasks/*.md` ist die einzige Aufgabenquelle'
 assert_file_has "CLAUDE bindet done ans Gate" "$project_dir/CLAUDE.md" '`done` oder'
@@ -87,6 +95,7 @@ expect_contains "verify --help" 'Verwendung:' "$project_dir/scripts/verify.sh" -
 expect_contains "verify-task --help" 'Verwendung:' "$project_dir/scripts/verify-task.sh" --help
 expect_contains "validate-ledger --help" 'Verwendung:' "$project_dir/scripts/validate-ledger.sh" --help
 expect_contains "task --help" 'Verwendung:' "$project_dir/scripts/task.sh" --help
+expect_contains "doctor --help" 'Verwendung:' "$project_dir/scripts/doctor.sh" --help
 expect_contains "orchestrate nennt den Laufbeleg" 'Laufbeleg' sed -n '1,12p' "$project_dir/scripts/orchestrate.sh"
 expect_contains "tests/run --help" 'Verwendung:' "$tests_dir/run.sh" --help
 

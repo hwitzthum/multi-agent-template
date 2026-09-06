@@ -41,4 +41,18 @@ hit "${W}git${S}[[:space:]]checkout([[:space:]]+[^|;&[:space:]]+)*[[:space:]]+(-
                                                             && block "git checkout -- / . / -f (verwirft ungespeicherte Arbeit)"
 hit "${W}git${S}[[:space:]]restore([^[:alnum:]_-]|$)"       && block "git restore (verwirft ungespeicherte Arbeit; zum Entstagen: git reset <datei>)"
 hit "${W}git${S}[[:space:]]--no-verify([^[:alnum:]_-]|$)"   && block "git --no-verify (umgeht Prüf-Hooks)"
+
+# Zusätze für den Headless-Lauf (AGENT_HEADLESS=1 setzt der Runner). Ein Agent
+# im Orchestrator arbeitet nur im Arbeitsbaum: Historie und Zweige gehören dem
+# Orchestrator und dem Menschen, Veröffentlichen und Installieren keinem von
+# beiden. Interaktiv bleiben diese Befehle erlaubt — dort steht ein Mensch
+# daneben, und `git commit` hat mit commit-gate.sh sein eigenes Prüftor.
+[ "${AGENT_HEADLESS:-}" = 1 ] || exit 0
+
+hit "${W}git${S}[[:space:]](commit|merge|rebase|stash|worktree)([^[:alnum:]_-]|$)" \
+                                                            && block "git commit/merge/rebase/stash/worktree im Headless-Lauf (Historie und Zweige führt der Orchestrator)"
+hit "${W}git${S}[[:space:]]branch[[:space:]]${S}-D([^[:alnum:]_-]|$)" \
+                                                            && block "git branch -D (löscht einen Zweig samt Arbeit)"
+hit "${W}pip3?${S}[[:space:]]install([^[:alnum:]_-]|$)"     && block "pip install (verändert die Umgebung außerhalb des Arbeitsbaums)"
+hit "${W}npm${S}[[:space:]]publish([^[:alnum:]_-]|$)"       && block "npm publish (veröffentlichen)"
 exit 0

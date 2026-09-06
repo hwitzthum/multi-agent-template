@@ -191,39 +191,77 @@ Ein Exitcode `0` bedeutet nur, dass der Modellaufruf technisch beendet wurde.
 Er beweist nicht, dass die Aufgabe korrekt oder vollständig ist. Fachliche
 Freigabe erfolgt ausschließlich über den späteren Verifier und das Status-Gate.
 
-Der Adapter liegt allein in `scripts/agent/runner.sh` und setzt das CLI
-`claude` mit Unterstützung für `--json-schema` voraus (`runner.sh --check`
-prüft das). Pfad und Version werden nicht fest in die Architektur geschrieben;
-der Adapter erkennt sie zur Laufzeit. Andere Skripte dürfen den Befehl `claude`
-nicht direkt aufrufen.
+Der Adapter liegt allein in `scripts/agent/runner.sh`. Er kennt zwei Runner,
+`claude` und `codex`; welcher läuft, steht als `AGENT_RUNNER` in
+`.agent/config.env`. Pfad und Version werden nicht fest in die Architektur
+geschrieben; der Adapter erkennt sie zur Laufzeit, `scripts/doctor.sh` prüft
+sie vor dem Lauf. Andere Skripte dürfen `claude` oder `codex` nicht direkt
+aufrufen.
 
-Der Aufruf folgt dem dokumentierten Headless-Betrieb von Claude Code: `claude -p`
+Beide Runner liefern denselben Ergebnisvertrag: das Ergebnisobjekt der Rolle
+als `result.json` und dieselben Metadatenfelder. Sie unterscheiden sich in der
+Sicherheitshülle, und dieser Unterschied ist wesentlich.
+
+**Claude** läuft im dokumentierten Headless-Betrieb von Claude Code: `claude -p`
 mit `--output-format json` und dem JSON-Schema der Rolle
-(`scripts/agent/schemas/<rolle>.json`),
-`--no-session-persistence`, `--max-turns`, optional `--max-budget-usd` und
-`--model`, sowie `--permission-prompts none`, sobald das CLI die Option kennt.
-Den nicht-interaktiven Rahmen trägt das Kontextdokument selbst, damit ihn jeder
-Runner unverändert weiterreicht; die persönliche `~/.claude/CLAUDE.md` und persönliche Regeln des Bedieners werden
-über `claudeMdExcludes` ausgeschlossen, Auto-Memory bleibt aus. Das
-Ergebnisobjekt wird in das geprüfte Zeilenformat übertragen; die vollständige
-Antwort bleibt als `<rohdaten>.json` neben dem Rohoutput. Modell, Tokens und
-Kosten in den Metadaten stammen aus dieser Antwort.
+(`scripts/agent/schemas/<rolle>.json`), `--no-session-persistence`,
+`--max-turns`, optional `--max-budget-usd` und `--model`, sowie
+`--permission-prompts none`, sobald das CLI die Option kennt. Die Grenze ist
+hier eine Rechtegrenze im Prozess, keine Sandbox des Betriebssystems: Der
+Worker bekommt `--allowedTools` mit den Lesewerkzeugen plus `Edit`, `Write`
+und `Bash`; Manager und Finalizer laufen mit `--restricted --tools
+Read,Glob,Grep,Edit,Write` und haben damit gar kein Werkzeug, das Befehle
+ausführt. Der Lauf bekommt eine eigene Einstellungsdatei mit Deny-Liste,
+`scripts/bash-guard.sh` als `PreToolUse`-Hook und `claudeMdExcludes`; die
+Einstellungen der interaktiven Sitzung gelten dort ausdrücklich nicht.
+Auto-Memory bleibt aus. Modell, Tokens und Kosten stammen aus der Antwort.
 
-Fünf Umgebungsvariablen steuern den Adapter; keine davon steht in
-`.agent/config.env`:
+**Codex** bringt seine Hülle selbst mit: `codex exec --json --output-schema
+<rollenschema> --output-last-message <datei> -C <workdir>
+--sandbox workspace-write --color never -c project_doc_max_bytes=0`,
+Prompt über stdin.
+Schreibzugriffe begrenzt die Sandbox des CLI auf den Arbeitsbaum, das Netz
+bleibt aus; eine Werkzeugauswahl pro Rolle gibt es dort nicht. Tokens kommen
+aus `turn.completed.usage`, ein `turn.failed` wird zum Abbruchgrund, Kosten
+meldet codex nicht und bleiben `unknown`. Fehlt die Datei aus
+`--output-last-message`, gilt die Antwort als leer.
 
-| Variable                | Wirkung                                                                     | Standard  |
-| ----------------------- | --------------------------------------------------------------------------- | --------- |
-| `AGENT_MODEL`           | Modell für `--model`; `default` überlässt die Wahl der CLI-Einstellung      | `default` |
-| `AGENT_TIMEOUT_SECONDS` | Zeitlimit eines einzelnen Modellaufrufs in Sekunden                         | `900`     |
-| `AGENT_MAX_TURNS`       | Obergrenze agentischer Runden eines Modellaufrufs (`--max-turns`)           | `60`      |
-| `AGENT_MAX_BUDGET_USD`  | Kostenobergrenze eines Modellaufrufs (`--max-budget-usd`); leer = keine     | leer      |
-| `ORCHESTRATOR_RUNNER`   | Pfad zu einem alternativen Runner, z.B. `tests/orchestrator/fake-runner.sh` | Adapter   |
+Den nicht-interaktiven Rahmen trägt in beiden Fällen das Kontextdokument
+selbst, damit ihn jeder Runner unverändert weiterreicht. Die vollständige
+Anbieterantwort bleibt als `<ergebnis>.provider.json` im Laufordner.
 
-Die Skripte brauchen außer Bash nur `git`, `awk`, `sed`, `shasum` und `perl`
-(für Zeitlimits und Laufdauern). Unter macOS, Linux und Git Bash sind sie
-vorhanden. `git` ist Pflicht, nicht Kür: Manifeste und Snapshot beziehen
-Dateiliste und Hashes von Git.
+Der Adapter liest seine Grenzen aus `.agent/config.env`, nicht aus der
+Umgebung — ein Lauf soll ohne gesetzte Variablen reproduzierbar sein:
+
+| Schlüssel               | Wirkung                                             | Standard  |
+| ----------------------- | --------------------------------------------------- | --------- |
+| `AGENT_RUNNER`          | `claude` oder `codex`                               | `claude`  |
+| `AGENT_MODEL`           | Modellname; `default` überlässt die Wahl dem CLI    | `default` |
+| `AGENT_TIMEOUT_SECONDS` | Zeitlimit eines einzelnen Modellaufrufs in Sekunden | `900`     |
+| `AGENT_MAX_TURNS`       | Obergrenze agentischer Runden eines Modellaufrufs   | `60`      |
+
+Zwei Umgebungsvariablen bleiben Sache des Aufrufers, weil sie keine
+Projekteigenschaft sind:
+
+| Variable               | Wirkung                                                                 | Standard |
+| ---------------------- | ----------------------------------------------------------------------- | -------- |
+| `AGENT_MAX_BUDGET_USD` | Kostenobergrenze eines Modellaufrufs (`--max-budget-usd`); leer = keine | leer     |
+| `ORCHESTRATOR_RUNNER`  | Pfad zu einem alternativen Runner, z.B. `tests/fake-runner.sh`          | Adapter  |
+
+`scripts/bash-guard.sh` blockt in jedem Fall Hochladen, rekursives Löschen und
+das Verwerfen ungespeicherter Arbeit. Unter `AGENT_HEADLESS=1` — das setzt der
+Runner — kommen `git commit|merge|rebase|stash|worktree`, `git branch -D`,
+`pip install` und `npm publish` dazu: Historie und Zweige führt der
+Orchestrator, nicht der Agent.
+
+`scripts/doctor.sh` prüft vor dem ersten Lauf Werkzeuge, Konfiguration, den
+gewählten Runner und den Repository-Zustand. Ein kaputt installiertes CLI ist
+dort ein Befund mit Text, kein Absturz.
+
+Die Skripte brauchen außer Bash nur `git`, `awk`, `sed`, `shasum`, `jq` und
+`perl` (für Zeitlimits, Laufdauern und JSON). Unter macOS, Linux und Git Bash
+sind sie vorhanden. `git` ist Pflicht, nicht Kür: Manifeste und Snapshot
+beziehen Dateiliste und Hashes von Git.
 
 ## Orchestrator-Vertrag
 

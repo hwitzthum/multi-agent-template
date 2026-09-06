@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
-# Einzige Anbietergrenze fuer Agentenaufrufe.
-# Ruft `claude -p` mit strukturierter Ausgabe (--json-schema) auf, schreibt das
-# Ergebnisobjekt unveraendert als result.json und protokolliert Modell, Tokens
-# und Kosten. Die vollstaendige Anbieterantwort bleibt als
-# <ergebnis>.provider.json im Laufordner.
+# Einzige Anbietergrenze fuer Agentenaufrufe. Zwei Adapter hinter einem
+# Vertrag: `claude -p` und `codex exec`. Beide schreiben dasselbe result.json
+# und dieselben Metadaten; sie unterscheiden sich nur in der Sicherheitshuelle
+# (Claude: Rechte und Hooks im Prozess, Codex: Sandbox des CLI).
+# Die vollstaendige Anbieterantwort bleibt als <ergebnis>.provider.json im
+# Laufordner. Welcher Adapter laeuft, steht in .agent/config.env (AGENT_RUNNER).
 set -uo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 . "$script_dir/common.sh"
 
 usage() {
-  echo "Verwendung: $0 --contract | --check | schema_path ROLE | validate_result ROLE DATEI" >&2
+  echo "Verwendung: $0 --contract | schema_path ROLE | validate_result ROLE DATEI" >&2
   echo "            $0 run_agent ROLE KONTEXT WORKDIR ERGEBNIS METADATEN" >&2
-  echo "            $0 render_result ROLE ANBIETER_JSON ERGEBNIS WERTE | validate_metadata DATEI" >&2
+  echo "            $0 render_result ROLE ANBIETER_JSON ERGEBNIS WERTE" >&2
+  echo "            $0 render_codex_result JSONL NACHRICHT ERGEBNIS WERTE" >&2
+  echo "            $0 runner_settings DATEI | validate_metadata DATEI" >&2
   exit 2
 }
 
@@ -104,12 +107,32 @@ validate_metadata() {
   ' "$file"
 }
 
-# Die persoenliche CLAUDE.md und persoenliche Regeln des Bedieners gehoeren nicht
-# in einen Headless-Lauf (sie beschreiben interaktive Arbeitsweisen).
-runner_settings_json() {
-  home=${HOME:-}
-  case "$home" in ''|*'"'*|*'\'*) return 0 ;; esac
-  printf '{"claudeMdExcludes":["%s/.claude/CLAUDE.md","%s/.claude/rules/**"]}\n' "$home" "$home"
+# Die Sicherheitshuelle des Claude-Adapters als eigene Einstellungsdatei:
+# Deny-Liste, der bash-guard als PreToolUse-Hook und der Ausschluss der
+# persoenlichen CLAUDE.md und Regeln des Bedieners (sie beschreiben
+# interaktive Arbeitsweisen und gehoeren nicht in einen Headless-Lauf).
+# Die Einstellungen der interaktiven Sitzung gelten hier ausdruecklich nicht.
+# Die Deny-Muster stehen als Bausteine, damit die Datei selbst keinen
+# ausfuehrbar aussehenden Befehlstext traegt.
+runner_settings() {
+  destination=$1
+  guard=$(CDPATH= cd -- "$script_dir/.." && pwd) || return 1
+  guard="$guard/bash-guard.sh"
+  perl -e '
+    use strict; use warnings; use JSON::PP;
+    my ($path, $guard, $home) = @ARGV;
+    my @deny = map { "Bash($_)" } ("git push *", "rm -rf*", "curl *", "wget *");
+    my %settings = (
+      permissions => { deny => \@deny },
+      hooks => { PreToolUse => [ { matcher => "Bash",
+        hooks => [ { type => "command", command => $guard } ] } ] },
+    );
+    $settings{claudeMdExcludes} = ["$home/.claude/CLAUDE.md", "$home/.claude/rules/**"] if length $home;
+    open(my $out, ">", $path) or exit 1;
+    print $out JSON::PP->new->canonical->utf8->encode(\%settings);
+    close $out;
+    exit 0;
+  ' "$destination" "$guard" "${HOME:-}"
 }
 
 # Schreibt das Ergebnisobjekt der Anbieterantwort als result.json und die
@@ -158,6 +181,74 @@ render_result() {
   ' "$json_file" "$result_destination" "$values_destination"
 }
 
+# Dasselbe fuer codex: der Ereignisstrom (JSONL) traegt Tokens und Fehler, das
+# Ergebnisobjekt steht in der Datei aus --output-last-message. Fehlt sie oder
+# ist sie kein JSON-Objekt, gibt es kein Rollenergebnis. Kosten meldet codex
+# nicht; sie bleiben `unknown`.
+render_codex_result() {
+  [ "$#" -eq 4 ] || usage
+  jsonl_file=$1; message_file=$2; result_destination=$3; values_destination=$4
+  perl -e '
+    use strict; use warnings; use JSON::PP;
+    my ($jsonl_path, $message_path, $result_path, $values_path) = @ARGV;
+    open(my $in, "<", $jsonl_path) or exit 1;
+    my $decoder = JSON::PP->new->utf8;
+    my $int = sub { my $v = shift; return (defined $v && $v =~ /^[0-9]+$/) ? $v : undef };
+    my ($tokens_in, $tokens_out, $model, $failure, $seen_event);
+    while (my $line = <$in>) {
+      $line =~ s/\s+\z//;
+      next unless length $line;
+      my $event = eval { $decoder->decode($line) };
+      next unless defined $event && ref $event eq "HASH";
+      $seen_event = 1;
+      my $type = defined $event->{type} ? $event->{type} : "";
+      $model = $event->{model} if defined $event->{model} && !ref $event->{model};
+      if ($type eq "turn.completed" && ref $event->{usage} eq "HASH") {
+        my $usage = $event->{usage};
+        my $sum = 0; my $known = 0;
+        for my $key (qw(input_tokens cached_input_tokens)) {
+          my $v = $int->($usage->{$key}); if (defined $v) { $sum += $v; $known = 1 }
+        }
+        $tokens_in = $sum if $known;
+        $tokens_out = $int->($usage->{output_tokens});
+      }
+      if ($type eq "turn.failed") {
+        my $error = $event->{error};
+        $failure = (ref $error eq "HASH" && defined $error->{message} && !ref $error->{message})
+          ? $error->{message} : "turn_failed";
+      }
+    }
+    close $in;
+    if (!$seen_event) { print STDERR "runner: codex lieferte keinen auswertbaren Ereignisstrom\n"; exit 1 }
+    my $structured = "no";
+    my $decoded;
+    if (length $message_path && -s $message_path) {
+      open(my $message, "<", $message_path) or exit 1;
+      local $/; my $text = <$message>; close $message;
+      $decoded = eval { $decoder->decode($text) };
+      $structured = "yes" if defined $decoded && ref $decoded eq "HASH";
+    }
+    $model = "" unless defined $model;
+    $model =~ s/[^A-Za-z0-9._:-]//g;
+    my $subtype = defined $failure ? $failure : "";
+    $subtype =~ s/[^A-Za-z0-9]/_/g;
+    $subtype = substr($subtype, 0, 60);
+    open(my $values, ">", $values_path) or exit 1;
+    print $values "is_error=" . (defined $failure ? "true" : "false") . "\n";
+    print $values "subtype=$subtype\n";
+    print $values "tokens_in=" . (defined $tokens_in ? $tokens_in : "") . "\n";
+    print $values "tokens_out=" . (defined $tokens_out ? $tokens_out : "") . "\n";
+    print $values "cost_estimate=unknown\n";
+    print $values "model=$model\n";
+    print $values "structured=$structured\n";
+    close $values;
+    open(my $result, ">", $result_path) or exit 1;
+    print $result JSON::PP->new->canonical->pretty->utf8->encode($decoded) if $structured eq "yes";
+    close $result;
+    exit 0;
+  ' "$jsonl_file" "$message_file" "$result_destination" "$values_destination"
+}
+
 value_of() {
   awk -F= -v wanted="$1" '$1 == wanted { print substr($0, length(wanted) + 2); exit }' "$2"
 }
@@ -176,6 +267,57 @@ resolve_run_path() {
   printf '%s/%s\n' "$directory" "$(basename -- "$candidate")"
 }
 
+# Rollenabhaengige Werkzeuge: der Worker schreibt Code und fuehrt Pruefungen
+# aus, Manager und Finalizer pflegen nur Text und bekommen mit `--restricted`
+# gar kein Werkzeug, das Befehle ausfuehrt.
+invoke_claude() {
+  role=$1; context=$2; workdir=$3; provider_output=$4; stderr_file=$5; settings_file=$6
+  command -v claude >/dev/null 2>&1 || { echo "runner: claude wurde nicht gefunden" >&2; return 127; }
+  claude_supports -- '--json-schema' || { echo "runner: das installierte claude unterstützt --json-schema nicht; bitte aktualisieren" >&2; return 127; }
+  schema_file=$(schema_path "$role") || return 1
+  runner_settings "$settings_file" || { echo "runner: Einstellungsdatei konnte nicht geschrieben werden" >&2; return 1; }
+
+  args=(-p --permission-mode acceptEdits --output-format json --json-schema "$(cat "$schema_file")"
+    --no-session-persistence --max-turns "$max_turns" --settings "$settings_file")
+  case "$role" in
+    worker) args+=(--allowedTools Read Glob Grep Edit Write Bash) ;;
+    *) args+=(--restricted --tools Read Glob Grep Edit Write) ;;
+  esac
+  [ "$model" = default ] || args+=(--model "$model")
+  [ -z "$max_budget" ] || args+=(--max-budget-usd "$max_budget")
+  if claude_supports -- '--permission-prompts'; then args+=(--permission-prompts none); fi
+
+  # stderr getrennt halten: Warnungen des CLI duerfen die Antwort nicht
+  # verunreinigen. Auto-Memory des Bedieners bleibt aus dem Lauf draussen.
+  # Der Headless-Rahmen steht im Kontextdokument, damit ihn jeder Adapter
+  # unveraendert weiterreicht.
+  (
+    cd "$workdir" || exit 1
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 AGENT_HEADLESS=1 \
+      agent_run_with_timeout "$timeout_seconds" claude "${args[@]}" < "$context" > "$provider_output" 2> "$stderr_file"
+  )
+}
+
+# Codex bringt seine Sicherheitshuelle selbst mit: `--sandbox workspace-write`
+# begrenzt Schreibzugriffe auf den Arbeitsbaum und laesst das Netz aus.
+# `project_doc_max_bytes=0` haelt eine AGENTS.md des Projekts aus dem Lauf.
+invoke_codex() {
+  role=$1; context=$2; workdir=$3; provider_output=$4; stderr_file=$5; message_file=$6
+  command -v codex >/dev/null 2>&1 || { echo "runner: codex wurde nicht gefunden" >&2; return 127; }
+  schema_file=$(schema_path "$role") || return 1
+
+  args=(exec --json --output-schema "$schema_file" --output-last-message "$message_file"
+    -C "$workdir" --sandbox workspace-write --color never -c project_doc_max_bytes=0)
+  [ "$model" = default ] || args+=(-m "$model")
+  args+=(-)
+
+  (
+    cd "$workdir" || exit 1
+    AGENT_HEADLESS=1 \
+      agent_run_with_timeout "$timeout_seconds" codex "${args[@]}" < "$context" > "$provider_output" 2> "$stderr_file"
+  )
+}
+
 run_agent() {
   [ "$#" -eq 5 ] || usage
   role=$1; context=$2; workdir=$3; result_output=$4; metadata_output=$5
@@ -188,38 +330,27 @@ run_agent() {
   metadata_output=$(resolve_run_path "$metadata_output" "$workdir") || return 1
   [ ! -e "$result_output" ] && [ ! -e "$metadata_output" ] || { echo "runner: Ausgabedatei existiert bereits" >&2; return 1; }
 
-  command -v claude >/dev/null 2>&1 || { echo "runner: kein unterstützter Agenten-CLI gefunden" >&2; return 127; }
-  claude_supports -- '--json-schema' || { echo "runner: das installierte claude unterstützt --json-schema nicht; bitte aktualisieren" >&2; return 127; }
-  timeout_seconds=${AGENT_TIMEOUT_SECONDS:-900}
-  case "$timeout_seconds" in ''|*[!0-9]*|0) echo "runner: AGENT_TIMEOUT_SECONDS ist ungueltig" >&2; return 1 ;; esac
-  max_turns=${AGENT_MAX_TURNS:-60}
-  case "$max_turns" in ''|*[!0-9]*|0) echo "runner: AGENT_MAX_TURNS ist ungueltig" >&2; return 1 ;; esac
+  # Adapterwahl, Modell und Grenzen stehen in der Projektkonfiguration, nicht
+  # in der Umgebung: ein Lauf soll ohne gesetzte Variablen reproduzierbar sein.
+  config_file="$workdir/.agent/config.env"
+  adapter=$("$script_dir/config.sh" --get AGENT_RUNNER "$config_file") || return 1
+  model=$("$script_dir/config.sh" --get AGENT_MODEL "$config_file") || return 1
+  timeout_seconds=$("$script_dir/config.sh" --get AGENT_TIMEOUT_SECONDS "$config_file") || return 1
+  max_turns=$("$script_dir/config.sh" --get AGENT_MAX_TURNS "$config_file") || return 1
+  # Eine Kostenobergrenze ist eine Entscheidung des Aufrufers, kein Projektwert.
   max_budget=${AGENT_MAX_BUDGET_USD:-}
   case "$max_budget" in ''|[0-9]*) ;; *) echo "runner: AGENT_MAX_BUDGET_USD ist ungueltig" >&2; return 1 ;; esac
   case "$max_budget" in *[!0-9.]*) echo "runner: AGENT_MAX_BUDGET_USD ist ungueltig" >&2; return 1 ;; esac
-  model=${AGENT_MODEL:-default}
-  case "$model" in *[!A-Za-z0-9._:-]*) echo "runner: AGENT_MODEL enthält unzulässige Zeichen" >&2; return 1 ;; esac
-  schema_file=$(schema_path "$role") || return 1
-  settings=$(runner_settings_json)
-
-  args=(-p --permission-mode acceptEdits --output-format json --json-schema "$(cat "$schema_file")"
-    --no-session-persistence --max-turns "$max_turns")
-  [ -z "$settings" ] || args+=(--settings "$settings")
-  [ "$model" = default ] || args+=(--model "$model")
-  [ -z "$max_budget" ] || args+=(--max-budget-usd "$max_budget")
-  if claude_supports -- '--permission-prompts'; then args+=(--permission-prompts none); fi
 
   provider_output="$result_output.provider.json"
+  message_file="$result_output.message.json"
+  settings_file="$result_output.settings.json"
   started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  # stderr getrennt halten: Warnungen des CLI duerfen die Antwort nicht
-  # verunreinigen; sie bleiben als .stderr im Laufordner. Auto-Memory des
-  # Bedieners bleibt aus dem Lauf draussen. Der Headless-Rahmen steht im
-  # Kontextdokument, damit ihn jeder Runner unveraendert weiterreicht.
-  (
-    cd "$workdir" || exit 1
-    CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 AGENT_HEADLESS=1 \
-      agent_run_with_timeout "$timeout_seconds" claude "${args[@]}" < "$context" > "$provider_output" 2> "$result_output.stderr"
-  )
+  case "$adapter" in
+    claude) invoke_claude "$role" "$context" "$workdir" "$provider_output" "$result_output.stderr" "$settings_file" ;;
+    codex) invoke_codex "$role" "$context" "$workdir" "$provider_output" "$result_output.stderr" "$message_file" ;;
+    *) echo "runner: unbekannter Adapter '$adapter'" >&2; return 1 ;;
+  esac
   status=$?
   finished=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   output_status=ok
@@ -228,26 +359,33 @@ run_agent() {
   recorded_model=$model
   : > "$result_output"
   values_file=$(mktemp "${TMPDIR:-/tmp}/agent-result-values.XXXXXX") || return 1
+  rendered=true
   if [ "$status" -eq 124 ]; then
     output_status=error; abort_reason=timeout
   elif [ ! -s "$provider_output" ]; then
     output_status=error; abort_reason="exit_${status}_no_output"
-  elif ! render_result "$role" "$provider_output" "$result_output" "$values_file"; then
-    output_status=error; abort_reason=invalid_json
   else
-    tokens_in=$(value_of tokens_in "$values_file")
-    tokens_out=$(value_of tokens_out "$values_file")
-    cost_estimate=$(value_of cost_estimate "$values_file")
-    reported_model=$(value_of model "$values_file")
-    [ -z "$reported_model" ] || recorded_model=$reported_model
-    if [ -n "$tokens_in" ] && [ -n "$tokens_out" ]; then tokens_total=$((tokens_in + tokens_out)); fi
-    subtype=$(value_of subtype "$values_file")
-    if [ "$status" -ne 0 ]; then
-      output_status=error; abort_reason="exit_$status"
-    elif [ "$(value_of is_error "$values_file")" = true ]; then
-      output_status=error; abort_reason=${subtype:-result_error}
-    elif [ "$(value_of structured "$values_file")" != yes ]; then
-      output_status=empty; abort_reason=${subtype:-no_structured_output}
+    case "$adapter" in
+      claude) render_result "$role" "$provider_output" "$result_output" "$values_file" || rendered=false ;;
+      codex) render_codex_result "$provider_output" "$message_file" "$result_output" "$values_file" || rendered=false ;;
+    esac
+    if [ "$rendered" = false ]; then
+      output_status=error; abort_reason=invalid_json
+    else
+      tokens_in=$(value_of tokens_in "$values_file")
+      tokens_out=$(value_of tokens_out "$values_file")
+      cost_estimate=$(value_of cost_estimate "$values_file")
+      reported_model=$(value_of model "$values_file")
+      [ -z "$reported_model" ] || recorded_model=$reported_model
+      if [ -n "$tokens_in" ] && [ -n "$tokens_out" ]; then tokens_total=$((tokens_in + tokens_out)); fi
+      subtype=$(value_of subtype "$values_file")
+      if [ "$status" -ne 0 ]; then
+        output_status=error; abort_reason="exit_$status"
+      elif [ "$(value_of is_error "$values_file")" = true ]; then
+        output_status=error; abort_reason=${subtype:-result_error}
+      elif [ "$(value_of structured "$values_file")" != yes ]; then
+        output_status=empty; abort_reason=${subtype:-no_structured_output}
+      fi
     fi
   fi
   rm -f "$values_file"
@@ -262,13 +400,9 @@ case "${1:-}" in
   --contract)
     echo "run_agent <role> <context-file> <workdir> <result-output> <metadata-output>"
     echo "role = manager | worker | finalizer"
+    echo "adapter = claude | codex (AGENT_RUNNER in .agent/config.env)"
     echo "exit 0 = Modellaufruf technisch beendet; keine fachliche Freigabe"
     echo "result-output = result.json der Rolle; result-output.provider.json = vollständige Antwort" ;;
-  --check)
-    command -v jq >/dev/null 2>&1 || { echo "runner: jq fehlt; Rollenergebnisse sind nicht prüfbar" >&2; exit 1; }
-    command -v claude >/dev/null 2>&1 || { echo "runner: kein unterstützter Agenten-CLI gefunden" >&2; exit 1; }
-    claude_supports -- '--json-schema' || { echo "runner: claude ohne --json-schema (zu alt); bitte aktualisieren" >&2; exit 1; }
-    echo "runner: Claude Code verfügbar ($(claude --version 2>/dev/null | head -n 1))" ;;
   schema_path)
     [ "$#" -eq 2 ] || usage
     schema_path "$2" ;;
@@ -284,5 +418,11 @@ case "${1:-}" in
   render_result)
     shift
     render_result "$@" ;;
+  render_codex_result)
+    shift
+    render_codex_result "$@" ;;
+  runner_settings)
+    [ "$#" -eq 2 ] || usage
+    runner_settings "$2" ;;
   *) usage ;;
 esac

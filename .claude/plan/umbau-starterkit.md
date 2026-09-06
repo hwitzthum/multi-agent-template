@@ -7,18 +7,18 @@ Stand dieser Datei: 2026-09-06 · Planfassung 1 · Fortschritt wird hier gepfleg
 Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) →
 `geprüft` (Abnahmekriterien belegt) → `gemergt` (Freigabe des Besitzers, in `main`).
 
-| Nr  | Feature                                  | Branch                            | Status | Tests | Gemergt am |
-| --- | ---------------------------------------- | --------------------------------- | ------ | ----- | ---------- |
-| F0  | Verhaltensbenannte Testsuite mit Runner  | `test/behaviour-suite`            | gemergt | 417   | 2026-09-06 |
-| F1  | Ballast entfernen                        | `chore/remove-ballast`            | gemergt | 400   | 2026-09-06 |
-| F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | gemergt | 424   | 2026-09-06 |
-| F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | gemergt | 402   | 2026-09-06 |
-| F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | gemergt | 395   | 2026-09-06 |
-| F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | gemergt | 449   | 2026-09-06 |
-| F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | gemergt | 547   | 2026-09-06 |
-| F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | offen  | –     | –          |
-| F8  | Prüftor verschlanken                     | `refactor/verify-gate`            | offen  | –     | –          |
-| F9  | Dokumentation                            | `docs/architecture`               | offen  | –     | –          |
+| Nr  | Feature                                  | Branch                            | Status    | Tests | Gemergt am |
+| --- | ---------------------------------------- | --------------------------------- | --------- | ----- | ---------- |
+| F0  | Verhaltensbenannte Testsuite mit Runner  | `test/behaviour-suite`            | gemergt   | 417   | 2026-09-06 |
+| F1  | Ballast entfernen                        | `chore/remove-ballast`            | gemergt   | 400   | 2026-09-06 |
+| F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | gemergt   | 424   | 2026-09-06 |
+| F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | gemergt   | 402   | 2026-09-06 |
+| F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | gemergt   | 395   | 2026-09-06 |
+| F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | gemergt   | 449   | 2026-09-06 |
+| F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | gemergt   | 547   | 2026-09-06 |
+| F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | umgesetzt | 666   | –          |
+| F8  | Prüftor verschlanken                     | `refactor/verify-gate`            | offen     | –     | –          |
+| F9  | Dokumentation                            | `docs/architecture`               | offen     | –     | –          |
 
 Reihenfolge ist verbindlich (jedes Feature setzt auf dem vorigen auf). Vor jedem
 Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Besitzers.
@@ -27,6 +27,18 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F7 · Zwei Runner hinter einem Vertrag: Claude-Adapter mit
+  rollenabhängigen Werkzeugen und eigener Einstellungsdatei (Deny-Liste,
+  `bash-guard`-Hook, `claudeMdExcludes`), Codex-Adapter über `codex exec --json`
+  mit Sandbox, Runnerwahl und Aufrufgrenzen aus `.agent/config.env` statt aus
+  der Umgebung, `scripts/doctor.sh` als Umgebungsprüfung, Headless-Zusätze im
+  `bash-guard`, Stack-Allowlist aus `.claude/settings.json` entfernt ·
+  `./scripts/verify.sh` → `tests: GREEN (666 Zusicherungen in 28 Dateien)`;
+  echter Claude-Lauf (Manager und Worker, haiku): `output_status=ok`,
+  schemagültiges `result.json`, `git stash` vom Headless-Guard blockiert;
+  echter `doctor.sh` gegen die defekte lokale Codex-Installation:
+  `BEFUND   codex ist installiert, antwortet aber nicht auf --version … ENOENT`,
+  Exit 1
 - 2026-09-06 · F6 · Nach `main` gemergt (`58bddd8`), Suite auf `main` grün ·
   `./scripts/verify.sh` → `tests: GREEN (547 Zusicherungen in 26 Dateien)`
 - 2026-09-06 · F6 · Rollenergebnis ist JSON gegen ein Schema, sechs Prompt-Rollen
@@ -378,13 +390,13 @@ Review:
 
 Gelöscht (16 Dateien, 1324 Zeilen entfernt, 71 hinzugefügt):
 
-| Was                       | Dateien                                                    |
-| ------------------------- | ---------------------------------------------------------- |
-| Kursmaterial              | `docs/KURSANLEITUNG.md`                                    |
-| Landingpage-Profil        | `docs/profil/**` (7), `docs/briefs/`                       |
-| Feature-Liste             | `docs/state/features.md`                                   |
+| Was                       | Dateien                                                                     |
+| ------------------------- | --------------------------------------------------------------------------- |
+| Kursmaterial              | `docs/KURSANLEITUNG.md`                                                     |
+| Landingpage-Profil        | `docs/profil/**` (7), `docs/briefs/`                                        |
+| Feature-Liste             | `docs/state/features.md`                                                    |
 | Wartungs- und Hilfsskript | `migrate-tasks.sh`, `autoformat.sh`, `archive-notes.sh`, `agent-metrics.sh` |
-| Tests dazu                | `tests/integration/{notes-archive,task-migration}.sh`      |
+| Tests dazu                | `tests/integration/{notes-archive,task-migration}.sh`                       |
 
 Verschoben: `.agent/README.md` → `docs/ARCHITECTURE.md` (F9 macht sie normativ).
 `.agent/` enthält jetzt nur noch `config.env`.
@@ -460,8 +472,8 @@ Aufgaben:
 Abnahme:
 
 - [~] Scratch-Kopie (60 Tasks, 2000 Dateien in `node_modules`): Manifest < 0,5 s
-      **erfüllt (0,11 s)**, `validate-ledger` < 1 s **nicht erfüllt (10,6 s)**,
-      `next-tasks` < 1 s **nicht erfüllt (11,9 s)** — siehe Review
+  **erfüllt (0,11 s)**, `validate-ledger` < 1 s **nicht erfüllt (10,6 s)**,
+  `next-tasks` < 1 s **nicht erfüllt (11,9 s)** — siehe Review
 - [x] Tests: gitignored unsichtbar; neue untracked sichtbar; gelöschte sichtbar; neue
       ignorierte Namen sichtbar (`.env`); Restore stellt geänderte Datei her und
       quarantänisiert neue; Besitzer-Dirt in derselben Datei überlebt
@@ -470,23 +482,23 @@ Review:
 
 Manifestformat: eine sortierte Zeile `<feld>  <pfad>` je Eintrag.
 
-| Feld             | Bedeutung                                                          |
-| ---------------- | ------------------------------------------------------------------ |
+| Feld             | Bedeutung                                                             |
+| ---------------- | --------------------------------------------------------------------- |
 | `<hash>`         | Blob-Hash des Inhalts; damit ist jedes Manifest zugleich ein Snapshot |
-| `exec:<hash>`    | dasselbe mit gesetztem Ausführungsbit                              |
-| `symlink:<hash>` | Hash des Linkziels, nie des Inhalts dahinter                       |
-| `missing`        | im Index, aber nicht im Arbeitsbaum                                 |
-| `ignored`        | von `.gitignore` erfasst: nur der Name                             |
+| `exec:<hash>`    | dasselbe mit gesetztem Ausführungsbit                                 |
+| `symlink:<hash>` | Hash des Linkziels, nie des Inhalts dahinter                          |
+| `missing`        | im Index, aber nicht im Arbeitsbaum                                   |
+| `ignored`        | von `.gitignore` erfasst: nur der Name                                |
 
 Messungen auf der Scratch-Kopie (60 Tasks, 2000 Dateien in `node_modules`):
 
-| Messung                     | vorher | nachher | Ziel    |
-| --------------------------- | ------ | ------- | ------- |
-| Repo-Manifest               | 23 s   | 0,11 s  | < 0,5 s |
-| Produkt-Manifest            | 23 s   | 0,04 s  | < 0,5 s |
-| `validate-ledger.sh`        | 11 s   | 10,6 s  | < 1 s   |
-| `next-tasks.sh`             | 48 s   | 11,9 s  | < 1 s   |
-| `orchestrate.sh --dry-run`  | 92 s   | 33,5 s  | –       |
+| Messung                    | vorher | nachher | Ziel    |
+| -------------------------- | ------ | ------- | ------- |
+| Repo-Manifest              | 23 s   | 0,11 s  | < 0,5 s |
+| Produkt-Manifest           | 23 s   | 0,04 s  | < 0,5 s |
+| `validate-ledger.sh`       | 11 s   | 10,6 s  | < 1 s   |
+| `next-tasks.sh`            | 48 s   | 11,9 s  | < 1 s   |
+| `orchestrate.sh --dry-run` | 92 s   | 33,5 s  | –       |
 
 Belege:
 
@@ -687,8 +699,8 @@ Abnahme:
 Review:
 
 - Das Frontmatter trägt genau zwölf Felder: `id title status class orchestration
-  attempts human_review blocked_reason` als Einzelwerte und `depends_on touches
-  risk_flags acceptance` als Listen. Alle zwölf sind Pflicht — `touches` und
+attempts human_review blocked_reason` als Einzelwerte und `depends_on touches
+risk_flags acceptance` als Listen. Alle zwölf sind Pflicht — `touches` und
   `risk_flags` waren vorher optional. Ein dreizehntes Feld ist ein Fehler; damit
   fällt ein altes `features:` oder `max_attempts:` beim ersten Validatorlauf auf,
   statt still liegen zu bleiben.
@@ -699,8 +711,7 @@ Review:
   leere Liste genau eine Zeile mit leerem Wert — daran unterscheidet der
   Validator «fehlt» von «ist leer». Welche Felder gelten, entscheidet allein
   `validate-ledger.sh`.
-- Der Validator liest damit pro Task eine Datei mit einem Prozess statt mit rund
-  75. 60 Tasks: 9,2 s → 0,28 s warm, 0,65 s kalt. Zwei weitere Stellen trugen
+- Der Validator liest damit pro Task eine Datei mit einem Prozess statt mit rund 75. 60 Tasks: 9,2 s → 0,28 s warm, 0,65 s kalt. Zwei weitere Stellen trugen
   bei: `basename` ist durch `${file##*/}` ersetzt, und die Zyklensuche ist eine
   Kahn-Sortierung in einem awk statt einer Schleife aus je einem `awk` und `mv`
   pro Task.
@@ -778,7 +789,7 @@ Abnahme:
       Infra-Retry für jede Rolle (Timeout, leer, ungültig); Laufbeleg bei
       grün/blocked/ask_human; Manager kann Steuerfelder nicht ändern
       (`tests/e2e/orchestrate-{single,verified,escalation,managed,fresh,ask-human,
-      failures}.sh`, `tests/unit/result-contract.sh`)
+    failures}.sh`, `tests/unit/result-contract.sh`)
 - [x] `wc -l scripts/orchestrate.sh` ≤ 400 (gemessen 399)
 
 Review:
@@ -863,37 +874,74 @@ Review:
 
 ### F7 · Zwei Runner: Claude und Codex
 
-Branch `feat/codex-runner` · Status: **offen**
+Branch `feat/codex-runner` · Status: **umgesetzt**
 
 Ziel: `AGENT_RUNNER=claude|codex` mit identischem Ergebnisvertrag und jeweils
 passender Sicherheitshülle.
 
 Aufgaben:
 
-- [ ] `lib/runner.sh`: Dispatch; Claude-Adapter (Flags wie im Zielentwurf,
+- [x] `lib/runner.sh`: Dispatch; Claude-Adapter (Flags wie im Zielentwurf,
       rollenabhängige Tools, `--restricted` für Manager/Finalizer)
-- [ ] Runner-eigenes `--settings`-JSON: Deny-Liste, `bash-guard`-Hook,
+- [x] Runner-eigenes `--settings`-JSON: Deny-Liste, `bash-guard`-Hook,
       `claudeMdExcludes`
-- [ ] Codex-Adapter: `codex exec --json --output-schema … --output-last-message …
-    --sandbox workspace-write …`, JSONL-Parsing (`turn.completed.usage`,
+- [x] Codex-Adapter: `codex exec --json --output-schema … --output-last-message …
+  --sandbox workspace-write …`, JSONL-Parsing (`turn.completed.usage`,
       `turn.failed`), Prompt via stdin
-- [ ] `config.sh`: String-Schlüssel (`AGENT_RUNNER`, `AGENT_MODEL`, `FINALIZER`),
+- [x] `config.sh`: String-Schlüssel (`AGENT_RUNNER`, `AGENT_MODEL`, `FINALIZER`),
       Runner-Grenzen aus Env in die Config
-- [ ] `scripts/doctor.sh`: bash, git, jq, perl, gewählter Runner (`claude --version`
+- [x] `scripts/doctor.sh`: bash, git, jq, perl, gewählter Runner (`claude --version`
       mit `--json-schema`; `codex --version`), Repo-Zustand
-- [ ] `bash-guard.sh`: Headless-Zusätze unter `AGENT_HEADLESS=1`
-- [ ] `.claude/settings.json`: nur interaktive Hooks und Deny-Liste, keine Stack-Allowlist
+- [x] `bash-guard.sh`: Headless-Zusätze unter `AGENT_HEADLESS=1`
+- [x] `.claude/settings.json`: nur interaktive Hooks und Deny-Liste, keine Stack-Allowlist
 
 Abnahme:
 
-- [ ] Tests mit Fixtures: Claude-`result.json` (ok, Fehler, kein JSON) und
+- [x] Tests mit Fixtures: Claude-`result.json` (ok, Fehler, kein JSON) und
       Codex-JSONL (ok, `turn.failed` ohne Datei) liefern korrekte `metadata.env`
-- [ ] `doctor.sh` meldet die defekte Codex-Installation als Befund, nicht als Absturz
-- [ ] `doctor.sh` ersetzt die mit F0 gestrichene Umgebungsprüfung `runner.sh --check`
+- [x] `doctor.sh` meldet die defekte Codex-Installation als Befund, nicht als Absturz
+- [x] `doctor.sh` ersetzt die mit F0 gestrichene Umgebungsprüfung `runner.sh --check`
       und ist wieder in der Suite (Stufe `lint` oder `integration`)
-- [ ] Vermerk im Commit: Codex-Adapter nicht gegen echtes CLI geprüft
+- [x] Vermerk im Commit: Codex-Adapter nicht gegen echtes CLI geprüft
 
-Review: –
+Review:
+
+- Der Claude-Adapter ist gegen das echte CLI gelaufen, nicht nur gegen Stubs.
+  Ein Manager-Aufruf (`--restricted --tools Read,Glob,Grep,Edit,Write`) liefert
+  ein schemagültiges `result.json`; ein Worker-Aufruf (`--allowedTools` mit
+  `Edit,Write,Bash`) schreibt die Datei, führt `verify.sh` aus und bekommt
+  `git stash` vom Headless-Guard blockiert — die Einstellungsdatei des Laufs
+  wird also wirklich geladen und der Hook feuert. Damit ist die Sicherheitshülle
+  belegt und nicht nur behauptet.
+- Der Codex-Adapter ist **nicht** gegen das echte CLI gelaufen. Die lokale
+  Installation ist defekt (`codex --version` bricht mit `ENOENT` ab). Geprüft
+  sind der dokumentierte Aufruf und die Auswertung des Ereignisstroms gegen
+  Fixtures; der erste echte Lauf steht aus. Genau diese kaputte Installation
+  hat aber `doctor.sh` verifiziert: sie erscheint als Befund mit dem Text des
+  CLI, die Prüfung läuft danach weiter und endet mit Exit 1.
+- Die Aufrufgrenzen sind aus der Umgebung in `.agent/config.env` gewandert
+  (`AGENT_RUNNER`, `AGENT_MODEL`, `AGENT_TIMEOUT_SECONDS`, `AGENT_MAX_TURNS`).
+  `config.sh` kennt dafür jetzt drei Werttypen statt zwei: Zahl, Aufzählung,
+  Zeichenkette. In der Umgebung bleiben nur die zwei Werte, die keine
+  Projekteigenschaft sind: `AGENT_MAX_BUDGET_USD` (Entscheidung des Aufrufers)
+  und `ORCHESTRATOR_RUNNER` (Testnaht).
+- `runner.sh --check` ist ersatzlos entfallen; `scripts/doctor.sh` prüft
+  stattdessen Werkzeuge, Konfiguration, den gewählten Runner und den
+  Repository-Zustand. Die Prüfung liegt in `tests/integration/doctor.sh`, weil
+  sie mehrere Skripte gegen ein Fixture fährt und keine Doku prüft.
+- `.claude/settings.json` hat seine gesamte `allow`-Liste verloren, nicht nur
+  die npm-Einträge. Ein Starterkit soll keine Rechte für den Bediener
+  vorwegnehmen; übrig bleiben Hooks und Deny-Liste. Für Headless-Läufe ist das
+  ohnehin folgenlos — dort gilt allein die Einstellungsdatei des Runners.
+- Eine bewusste Abweichung von der Zielstruktur: `runner.sh` ist mit 428 Zeilen
+  deutlich über den dort genannten 300. Zwei Adapter mit je eigenem Parser
+  passen nicht in dieses Budget, und die Alternative wäre eine weitere Datei
+  gewesen, die die Zielstruktur ebenso wenig kennt. Die Grenze sollte mit F9
+  auf einen realistischen Wert gesetzt oder der Codex-Parser ausgelagert
+  werden.
+- Der Codex-Adapter meldet keine Kosten (`unknown`). Wer Budgets braucht, muss
+  bis auf Weiteres `AGENT_RUNNER=claude` fahren; `--max-budget-usd` hat auf der
+  Codex-Seite keine Entsprechung.
 
 ### F8 · Prüftor verschlanken
 
