@@ -332,6 +332,17 @@ Beide Runner liefern denselben Ergebnisvertrag: das Ergebnisobjekt der Rolle
 als `result.json` und dieselben Metadatenfelder. Sie unterscheiden sich in der
 Sicherheitshülle, und dieser Unterschied ist wesentlich.
 
+`<aufruf>.env` trägt genau diese Felder, geprüft von
+`runner.sh validate_metadata`: `model`, `started_at`, `finished_at`,
+`exit_status`, `tokens_total`, `abort_reason` und `output_status` sind Pflicht,
+`tokens_in`, `tokens_out` und `cost_estimate` optional (leer oder `unknown`,
+wenn der Anbieter sie nicht meldet). `output_status` ist `ok`, `empty`,
+`truncated` oder `error`; der Rollenaufruf lässt allein `ok` gelten. Die beiden
+ausgelieferten Adapter erzeugen `ok`, `empty` und `error` — `truncated` steht
+für einen Anbieter, der eine abgeschnittene Antwort selbst meldet, und wird
+zurzeit nur von `tests/fake-runner.sh` erzeugt. Wer einen dritten Adapter
+schreibt, schreibt genau diese Felder.
+
 **Claude** läuft im dokumentierten Headless-Betrieb von Claude Code: `claude -p`
 mit `--output-format json` und dem JSON-Schema der Rolle
 (`scripts/agent/schemas/<rolle>.json`), `--no-session-persistence`,
