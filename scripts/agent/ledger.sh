@@ -198,25 +198,34 @@ ledger_verifier_fingerprint() {
   project_dir=$1
   [ -d "$project_dir" ] || return 1
   project_dir=$(CDPATH= cd -- "$project_dir" && pwd -P) || return 1
-  library_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P) || return 1
-  if [ -f "$project_dir/scripts/verify-task.sh" ]; then implementation_root=$project_dir; else implementation_root=$library_root; fi
+  # Geprueft hat die gestartete Implementierung, nicht eine Kopie im Zielprojekt:
+  # `--project-dir` benennt nur die Daten. Der Fingerprint deckt deshalb genau
+  # den Pruefweg ab, der gelaufen ist — samt `config.sh`, ueber die
+  # verify-task.sh sein Zeitlimit liest.
+  implementation_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P) || return 1
+  # Beschriftet wird relativ zur jeweiligen Wurzel, nicht mit ihr: zwei
+  # Fassungen derselben Prueflogik ergeben denselben Fingerprint, sobald ihr
+  # Inhalt gleich ist — und nur dann. Deshalb zwei Sortierungen: die erste
+  # entdoppelt die Pfadliste, die zweite ordnet nach der Beschriftung. Absolute
+  # Pfade liegen je nach Wurzel anders zueinander und bestimmten sonst mit,
+  # welcher Fingerprint herauskommt.
   {
-    for relative in scripts/verify-task.sh scripts/validate-ledger.sh scripts/agent/ledger.sh scripts/agent/status.sh scripts/agent/common.sh; do
+    for relative in scripts/verify-task.sh scripts/validate-ledger.sh scripts/agent/config.sh \
+      scripts/agent/ledger.sh scripts/agent/status.sh scripts/agent/common.sh; do
       [ -f "$implementation_root/$relative" ] && printf '%s\n' "$implementation_root/$relative"
     done
     [ -f "$project_dir/scripts/verify.sh" ] && printf '%s\n' "$project_dir/scripts/verify.sh"
     [ -f "$project_dir/.agent/config.env" ] && printf '%s\n' "$project_dir/.agent/config.env"
     [ -f "$project_dir/.agent/verification-allowlist" ] && printf '%s\n' "$project_dir/.agent/verification-allowlist"
-    [ -f "$project_dir/.agent/verification-runners" ] && printf '%s\n' "$project_dir/.agent/verification-runners"
     true
   } | LC_ALL=C sort -u | while IFS= read -r file; do
     case "$file" in
-      "$implementation_root"/*) label="implementation/${file#"$implementation_root"/}" ;;
-      "$project_dir"/*) label="project/${file#"$project_dir"/}" ;;
+      "$implementation_root"/*) label=${file#"$implementation_root"/} ;;
+      "$project_dir"/*) label=${file#"$project_dir"/} ;;
       *) label=$(basename -- "$file") ;;
     esac
     printf '%s  %s\n' "$(shasum -a 256 "$file" | awk '{print $1}')" "$label"
-  done | shasum -a 256 | awk '{print $1}'
+  done | LC_ALL=C sort -u | shasum -a 256 | awk '{print $1}'
 }
 
 # Der Pruefbeleg eines Tasks ist genau eine Datei: docs/verification/<id>.md.

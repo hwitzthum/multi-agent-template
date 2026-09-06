@@ -54,6 +54,36 @@ expect_success "Verifierstand wird zunächst grün" "$fixture/scripts/verify-tas
 printf '%s\n' '# verifier changed' >> "$fixture/scripts/verify.sh"
 expect_failure "nachträgliche Teständerung verweigert done" "$fixture/scripts/agent/status.sh" --project-dir "$fixture" set-status 017 done in_progress
 
+# Die Prüflogik umfasst auch den Konfigurationsleser, über den verify-task.sh
+# sein Zeitlimit bezieht. Gemessen wird direkt am Verifierstand: über den
+# Statuswechsel antwortete sonst schon der Kandidat, der Skripte mitzählt.
+new_project_fixture --with-scripts
+verifier_state=$(bash -c '. "$1/scripts/agent/ledger.sh"; ledger_verifier_fingerprint "$1"' _ "$fixture")
+printf '%s\n' '# reader changed' >> "$fixture/scripts/agent/config.sh"
+[ "$verifier_state" != "$(bash -c '. "$1/scripts/agent/ledger.sh"; ledger_verifier_fingerprint "$1"' _ "$fixture")" ] \
+  && ok || bad "geänderter Konfigurationsleser ändert den Verifierstand"
+
+# `--project-dir` benennt nur die Daten: geprüft hat die gestartete
+# Implementierung, nicht eine abweichende Kopie im Zielprojekt.
+new_project_fixture --with-scripts
+make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
+  --class patterned --orchestration verified --touches src/app.txt \
+  --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
+  --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
+printf '%s\n' good > "$fixture/src/app.txt"
+printf '%s\n' '#!/usr/bin/env bash' 'echo 0' > "$fixture/scripts/agent/config.sh"
+expect_success "abweichender Konfigurationsleser im Projekt zählt nicht" "$project_dir/scripts/verify-task.sh" --project-dir "$fixture" --run-id "$run_id" 017
+
+# Derselbe Satz am Verifierstand: gleiche Prüflogik ergibt denselben Stand, egal
+# aus welchem Ordner sie läuft, und eine abweichende Kopie im Projekt gar keinen.
+new_project_fixture --with-scripts
+verifier_state=$(ledger_verifier_fingerprint "$fixture")
+assert_eq "gleiche Prüflogik ergibt denselben Verifierstand" "$verifier_state" \
+  "$(bash -c '. "$1/scripts/agent/ledger.sh"; ledger_verifier_fingerprint "$1"' _ "$fixture")"
+printf '%s\n' '# fremde Kopie' >> "$fixture/scripts/verify-task.sh"
+assert_eq "abweichende Skriptkopie im Projekt ändert den Verifierstand nicht" "$verifier_state" \
+  "$(ledger_verifier_fingerprint "$fixture")"
+
 new_project_fixture --with-scripts
 make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --class patterned --orchestration verified --touches src/app.txt --human-review true \

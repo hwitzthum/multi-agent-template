@@ -60,11 +60,13 @@ new_project_fixture() {
   fixture=$(mktemp -d "$tmp_root/case.XXXXXX") || fixture_abort "kann Fixture nicht anlegen"
   stub_bin=''
   mkdir -p "$fixture/.agent" "$fixture/docs/tasks" "$fixture/docs/verification" \
-    "$fixture/docs/prompts" "$fixture/docs/templates" "$fixture/scripts" \
+    "$fixture/docs/templates" "$fixture/scripts" \
     "$fixture/src" "$fixture/.agent-runs/fake/responses" "$fixture/.agent-runs/fake/actions" \
     || fixture_abort "kann Fixture-Struktur nicht anlegen"
 
   fixture_copy .agent/config.env
+  # `docs/prompts` wird als Ordner kopiert und deshalb oben nicht vorangelegt:
+  # ein vorhandenes Ziel machte daraus `docs/prompts/prompts`.
   fixture_copy docs/prompts
   for file in goal.md plan.md decisions.md handoff.md; do
     fixture_copy "docs/state/$file"

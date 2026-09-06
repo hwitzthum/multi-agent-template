@@ -5,7 +5,9 @@ set -uo pipefail
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 project_dir=$(CDPATH= cd -- "$script_dir/../.." && pwd) || exit 1
 . "$script_dir/ledger.sh"
-validator="$project_dir/scripts/validate-ledger.sh"
+# `--project-dir` benennt nur die Daten; geprueft wird mit dem Validator neben
+# diesem Skript, auch wenn im Zielprojekt eine Kopie liegt.
+validator="$script_dir/../validate-ledger.sh"
 human_approved=false
 
 usage() {
@@ -18,8 +20,6 @@ while [ "${1:-}" != set-status ] && [ "$#" -gt 0 ]; do
     --project-dir)
       [ "$#" -ge 2 ] || usage
       project_dir=$2
-      validator="$project_dir/scripts/validate-ledger.sh"
-      if [ ! -x "$validator" ]; then validator="$script_dir/../validate-ledger.sh"; fi
       shift 2 ;;
     --human-approved) human_approved=true; shift ;;
     *) break ;;

@@ -103,14 +103,21 @@ EOF
   agent_manifest_changes "$before" "$run_dir/manifests/$label.after" > "$changes"
   mv -f "$before" "$run_dir/manifests/$label.before" || return 1
   mv -f "$controls_before" "$run_dir/manifests/$label.controls-before" || return 1
-  # Ein Verstoss gegen Schreibbereich, Task-Umfang oder Steuerfelder faellt
-  # gleich zurueck: der Arbeitsbaum steht danach wieder auf dem Stand vor dem
-  # Aufruf, damit der naechste Lauf nicht auf einer Manipulation aufsetzt.
+  # Ein Verstoss gegen Schreibbereich, Task-Umfang, Steuerfelder oder
+  # Ledger-Gueltigkeit faellt gleich zurueck: der Arbeitsbaum steht danach
+  # wieder auf dem Stand vor dem Aufruf, damit der naechste Lauf nicht auf
+  # einer Manipulation aufsetzt.
   violation=false
   check_role_changes "$role" "$changes" || violation=true
   if [ "$role" = manager ] && [ "$violation" = false ]; then
     ledger_control_snapshot "$tasks_dir" "$run_dir/manifests/$label.controls-after" || return 1
     check_task_controls "$run_dir/manifests/$label.controls-before" "$run_dir/manifests/$label.controls-after" || violation=true
+  fi
+  # Ein Ledger, das nach dem Aufruf nicht mehr gilt, ist derselbe Fall: bliebe
+  # es stehen, scheiterte schon der naechste Lauf an seiner Eingangspruefung.
+  if [ "$violation" = false ] && ! "$validator" --project-dir "$project_dir" >/dev/null; then
+    echo "orchestrate: Rolle $role hinterliess ein ungültiges Ledger" >&2
+    violation=true
   fi
   if [ "$violation" = true ]; then
     restore_list=()
@@ -119,7 +126,6 @@ EOF
       || echo "orchestrate: Ruecksetzen nach Regelverstoss scheiterte" >&2
     return 1
   fi
-  "$validator" --project-dir "$project_dir" >/dev/null || exit 1
 }
 
 # Ein Fresh-Versuch beginnt beim Laufstart: alles, was der Task anfassen darf

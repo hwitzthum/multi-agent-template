@@ -47,9 +47,10 @@ policy="$default_project/scripts/agent/policy.sh"
 config_reader="$default_project/scripts/agent/config.sh"
 "$validator" --project-dir "$project_dir" >/dev/null || exit 1
 
+# Der Rollenvertrag gehoert zu den Daten des Projekts, nicht zur Implementierung:
+# ein fehlender Vertrag ist ein Befund, kein stiller Griff zur Kit-Fassung.
 prompt="$project_dir/docs/prompts/$role.md"
-[ -f "$prompt" ] || prompt="$default_project/docs/prompts/$role.md"
-[ -f "$prompt" ] || { echo "context: Rollenvertrag fuer $role fehlt" >&2; exit 1; }
+[ -f "$prompt" ] || { echo "context: Rollenvertrag fuer $role fehlt: $prompt" >&2; exit 1; }
 prompt_hash=$(agent_sha256_file "$prompt") || exit 1
 context_max=$($config_reader --get CONTEXT_MAX_CHARS "$project_dir/.agent/config.env") || exit 1
 notes_max=$($config_reader --get NOTES_MAX_CHARS "$project_dir/.agent/config.env") || exit 1

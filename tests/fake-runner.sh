@@ -58,6 +58,11 @@ case "$action" in
       echo '# Nicht Teil dieser Aufgabe'; echo '- Steuerungsdateien ändern.'
       echo '# Akzeptanzkriterien'; echo '- Die Datei enthält `good`.'
     } > "$workdir/docs/tasks/018.md" ;;
+  # Ein Manager, der den Task-Inhalt ungueltig macht, muss auffallen: die
+  # Steuerfelder bleiben stehen, nur die Klasse wird unbekannt.
+  break-class)
+    sed 's/^class: .*/class: unbekannt/' "$workdir/docs/tasks/017.md" > "$workdir/docs/tasks/.017.tmp" \
+      && mv "$workdir/docs/tasks/.017.tmp" "$workdir/docs/tasks/017.md" ;;
   # Ein Manager, der die Versuchszaehlung selbst hochsetzt, muss auffallen.
   tamper-attempts)
     sed 's/^attempts: 0$/attempts: 2/' "$workdir/docs/tasks/017.md" > "$workdir/docs/tasks/.017.tmp" \

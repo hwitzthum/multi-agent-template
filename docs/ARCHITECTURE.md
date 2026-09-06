@@ -12,7 +12,10 @@ Fake Runner; echte Aufrufe bleiben hinter dem Runner-Adapter gekapselt.
 
 Jedes ausführbare Skript, sein Zweck und seine Optionen. `--project-dir PFAD`
 richtet ein Skript auf eine andere Projektwurzel als die eigene aus; die Tests
-nutzen das gegen ein Fixture.
+nutzen das gegen ein Fixture. Es benennt dabei nur die **Daten** — Ledger,
+Rollenverträge, `.agent/` und `scripts/verify.sh` kommen aus dem Zielprojekt.
+Die **Implementierung** ist immer die gestartete: liegt im Zielprojekt eine
+Kopie der Kit-Skripte, läuft sie nicht mit und entscheidet nichts.
 
 | Skript                        | Zweck                                            | Optionen                                                                        |
 | ----------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------- |
@@ -422,9 +425,9 @@ schmutziger Git-Stand benötigt `--allow-dirty`; der Schmutz-Check übergeht
 Pfade selbst schreibt.
 
 Rollenänderungen werden aus tatsächlichen Dateihashes ermittelt. Verbotene
-Steuerungspfade, Änderungen an geschützten Task-Feldern oder Produktpfade
-außerhalb von `touches` werden auf das Vorher-Manifest zurückgesetzt und
-stoppen den Lauf. Rohoutput und Runner-Metadaten bleiben
+Steuerungspfade, Änderungen an geschützten Task-Feldern, Produktpfade
+außerhalb von `touches` und ein Ledger, das nach dem Aufruf nicht mehr gilt,
+werden auf das Vorher-Manifest zurückgesetzt und stoppen den Lauf. Rohoutput und Runner-Metadaten bleiben
 unter `.agent-runs/<run-id>/`; kein Agentenergebnis wird ungeprüft ausgewertet.
 
 ## Sperren
@@ -540,11 +543,19 @@ Ledger-Schema:
 | `started_at`            | Beginn in UTC                                                |
 | `finished_at`           | Ende in UTC                                                  |
 | `candidate_fingerprint` | Hash über Produkt, Tests und Task-Akzeptanz                  |
-| `verifier_version`      | Hash über die Prüflogik selbst                               |
+| `verifier_version`      | Hash über die Prüflogik selbst (siehe unten)                 |
 | `log_path`              | Pfad des vollständigen Logs unter `.agent-runs/`             |
 
 Der Auslieferungsstand von `latest.md` ist ein Platzhalter mit `result: never`
 und ohne Fingerprints; er sagt nur, dass noch nie geprüft wurde.
+
+`verifier_version` deckt den Prüfweg ab, der tatsächlich gelaufen ist:
+`verify-task.sh`, `validate-ledger.sh` und `agent/{config,ledger,status,common}.sh`
+aus der gestarteten Implementierung, dazu `scripts/verify.sh`,
+`.agent/config.env` und `.agent/verification-allowlist` aus dem Zielprojekt.
+Gehasht wird der Inhalt unter dem Namen relativ zu seiner Wurzel, nicht die
+Wurzel selbst: zwei Fassungen derselben Prüflogik ergeben denselben Stand,
+sobald ihr Inhalt gleich ist — und nur dann.
 
 `failure_kind: verifier` heißt: der Prüfweg selbst ist defekt (Timeout,
 fehlendes Programm, interner Fehler). Das ist keine Aussage über den Kandidaten
