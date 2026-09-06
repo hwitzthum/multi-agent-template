@@ -18,9 +18,16 @@ fixture_workspace
 new_project_fixture
 make_task --id 001 --status done --acceptance-style block
 make_task --id 002 --status todo --depends 001 --acceptance-style block
+make_task --id 003 --status todo --depends 002 --acceptance-style block
 make_report --id 001 --result green
 expect_success "gueltiger Task-Graph" "$validator" --project-dir "$fixture"
-expect_contains "nur abhaengigkeitsfreier todo-Task ist bereit" 'READY: 002 | Task 002 | patterned' "$next_tasks" --project-dir "$fixture"
+# Der Vergleich ist absichtlich vollstaendig und nicht enthaltend: dass 002
+# erscheint, ist die halbe Aussage. Die andere Haelfte ist, dass 003 fehlt —
+# seine Abhaengigkeit 002 steht auf todo. Ein `expect_contains` liesse einen
+# ausgehebelten Abhaengigkeitsfilter unbemerkt durch.
+assert_eq "nur der abhaengigkeitsfreie todo-Task ist bereit" \
+  'READY: 002 | Task 002 | patterned' \
+  "$("$next_tasks" --project-dir "$fixture")"
 
 new_project_fixture
 make_task --id 002 --status todo --depends 999

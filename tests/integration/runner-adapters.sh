@@ -81,8 +81,12 @@ expect_output "Einstellungsdatei trägt den bash-guard als PreToolUse-Hook" Bash
   jq -r '.hooks.PreToolUse[0].matcher' "$settings"
 expect_success "Einstellungsdatei nennt den bash-guard" \
   sh -c "jq -r '.hooks.PreToolUse[0].hooks[0].command' '$settings' | grep -q 'bash-guard.sh$'"
-expect_success "Einstellungsdatei trägt eine Deny-Liste" \
-  sh -c "jq -e '.permissions.deny | length > 0' '$settings' >/dev/null"
+# Nicht die Laenge, sondern der Inhalt: eine Deny-Liste mit einem beliebigen
+# Eintrag erfuellt `length > 0` und sperrt trotzdem nichts.
+for rule in 'git push *' 'rm -rf*' 'curl *' 'wget *'; do
+  expect_success "Deny-Liste sperrt $rule" \
+    sh -c "jq -r '.permissions.deny[]' '$settings' | grep -Fxq 'Bash($rule)'"
+done
 # Die Ausschlussliste ist eine Sicherheitszusage: `--restricted` haelt die
 # CLAUDE.md des Projekts zwar heraus, aber der Worker laeuft ohne dieses Flag.
 # Deshalb wird hier nicht nur geprueft, DASS die Liste gefuellt ist, sondern
@@ -139,7 +143,10 @@ assert_file_has "Codex läuft in der Sandbox" "$fixture/.agent-runs/run/codex-ok
 assert_file_has "Codex bekommt das Rollenschema" "$fixture/.agent-runs/run/codex-ok.args" '--output-schema'
 assert_file_has "Codex schreibt das Ergebnisobjekt in eine Datei" "$fixture/.agent-runs/run/codex-ok.args" '--output-last-message'
 assert_file_has "Codex hält die Projektdoku aus dem Lauf" "$fixture/.agent-runs/run/codex-ok.args" 'project_doc_max_bytes=0'
-assert_file_has "Codex nimmt den Prompt über stdin" "$fixture/.agent-runs/run/codex-ok.args" '-'
+# Der Stub schreibt ein Argument je Zeile. Gemeint ist das letzte Argument `-`,
+# also ein Zeilenvergleich: `grep -F -- '-'` traefe schon auf `--json`.
+expect_success "Codex nimmt den Prompt über stdin" \
+  sh -c "grep -Fxq -- '-' '$fixture/.agent-runs/run/codex-ok.args'"
 
 # turn.failed ohne Nachrichtendatei: der Lauf endet ohne Rollenergebnis.
 cat > "$fixture/codex-failed.jsonl" <<'EOF'

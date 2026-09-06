@@ -127,7 +127,7 @@ fixture_agent_cli_stubs() {
 #!/usr/bin/env bash
 case "${1:-}" in
   --help)
-    printf '%s\n' '  --allowedTools, --allowed-tools <tools...>' '  --json-schema <schema>' \
+    printf '%s\n' '  --json-schema <schema>' \
       '  --max-budget-usd <amount>' '  --permission-prompts <target>' '  --restricted' \
       '  --settings <file-or-json>' '  --tools <tools...>'
     exit 0 ;;
