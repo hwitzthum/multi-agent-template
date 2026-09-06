@@ -196,7 +196,7 @@ agent_manifest_include_product() {
     docs/state|docs/state/*|docs/tasks|docs/tasks/*) return 1 ;;
     docs/verification|docs/verification/*|docs/templates|docs/templates/*) return 1 ;;
     scripts/agent|scripts/agent/*) return 1 ;;
-    scripts/orchestrate.sh|scripts/route-task.sh|scripts/validate-ledger.sh) return 1 ;;
+    scripts/orchestrate.sh|scripts/validate-ledger.sh) return 1 ;;
     scripts/next-tasks.sh|scripts/state-summary.sh|scripts/bash-guard.sh|scripts/commit-gate.sh) return 1 ;;
   esac
   return 0

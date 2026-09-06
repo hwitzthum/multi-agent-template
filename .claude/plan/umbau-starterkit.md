@@ -12,7 +12,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | F0  | Verhaltensbenannte Testsuite mit Runner  | `test/behaviour-suite`            | gemergt | 417   | 2026-09-06 |
 | F1  | Ballast entfernen                        | `chore/remove-ballast`            | gemergt | 400   | 2026-09-06 |
 | F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | gemergt | 424   | 2026-09-06 |
-| F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | offen  | –     | –          |
+| F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | umgesetzt | 402   | –          |
 | F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | offen  | –     | –          |
 | F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | offen  | –     | –          |
 | F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | offen  | –     | –          |
@@ -27,6 +27,10 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F3 · Turnier, Reviewer und `managed-fresh` entfernt, Router als
+  Funktion `agent_route_mode`, Fresh als Versuchsvariante mit
+  Snapshot-Rücksetzung, Out-of-Scope-Änderungen werden zurückgesetzt ·
+  `./scripts/verify.sh` → `tests: GREEN (402 Zusicherungen in 25 Dateien)`
 - 2026-09-06 · F2 · Nach `main` gemergt (`ee358cb`), Suite auf `main` grün ·
   `./scripts/verify.sh` → `tests: GREEN (424 Zusicherungen in 26 Dateien)`
 - 2026-09-06 · F2 · Manifeste und Snapshot auf Git umgestellt, Vorher-Manifeste
@@ -518,33 +522,57 @@ Abweichungen vom Plan:
 
 ### F3 · Turnier streichen, Fresh-Versuch, Router
 
-Branch `refactor/drop-tournament` · Status: **offen**
+Branch `refactor/drop-tournament` · Status: **umgesetzt**
 
 Ziel: Ein Eskalationspfad `single → verified → managed → blocked`, Fresh als
 Kontextvariante mit Snapshot-Rücksetzung, Router ohne Magie.
 
 Aufgaben:
 
-- [ ] Entfernen: `scripts/agent/candidates.sh`, Rolle `reviewer`, `managed_fresh_loop`,
+- [x] Entfernen: `scripts/agent/candidates.sh`, Rolle `reviewer`, `managed_fresh_loop`,
       `run_candidate_worker`, `verify_isolated_candidate`, `.git`-Tausch,
       Kandidatenbelege in `context.sh`
-- [ ] `lib/route.sh` (Funktion, ≤40 Z.): Klasse → Basismodus, Override, Versuche →
-      Rang, `risk_flags` → Minimum `managed`; kein `--record`, keine Signale, keine
-      Keyword-Heuristik, kein `--escalate-from`
-- [ ] Feld `fresh_perspective` entfernen; `risk_flags` auf
+- [x] `scripts/agent/route.sh` (Funktion `agent_route_mode`, 22 Z.): Klasse →
+      Basismodus, Override, Versuche → Rang, `risk_flags` → Minimum `managed`;
+      kein `--record`, keine Signale, keine Keyword-Heuristik, kein
+      `--escalate-from`
+- [x] Feld `fresh_perspective` entfernen; `risk_flags` auf
       `high-risk|cross-component|repeated-failure`
-- [ ] Fresh-Versuch: `touches` per `agent_snapshot_restore` auf Laufstart, Kontext ohne
+- [x] Fresh-Versuch: `touches` per `agent_snapshot_restore` auf Laufstart, Kontext ohne
       Notizen/Vorbericht
-- [ ] `path_in_task_scope`, `check_role_changes` übernehmen; bei Verstoss Restore +
+- [x] `path_in_task_scope`, `check_role_changes` übernehmen; bei Verstoss Restore +
       Abbruch
 
 Abnahme:
 
-- [ ] Router-Tabelle als Test: alle Klassen × Overrides × Versuche × Flags
-- [ ] Test: Fresh-Versuch startet vom Snapshot und Kontext enthält keine Notizen
-- [ ] Test: Out-of-Scope-Änderung wird zurückgesetzt, Lauf stoppt, Ledger gültig
+- [x] Router-Tabelle als Test: alle Klassen × Overrides × Versuche × Flags
+      (`tests/unit/router-decisions.sh`, 30 Zusicherungen)
+- [x] Test: Fresh-Versuch startet vom Snapshot und Kontext enthält keine Notizen
+      (`tests/e2e/orchestrate-fresh.sh`)
+- [x] Test: Out-of-Scope-Änderung wird zurückgesetzt, Lauf stoppt, Ledger gültig
+      (`tests/e2e/orchestrate-fresh.sh`)
 
-Review: –
+Review:
+
+- Der Modus `managed-fresh` ist weg. Fresh ist eine Versuchsvariante innerhalb
+  von `managed`: der Manager kann sie verlangen, und der letzte erlaubte Versuch
+  läuft immer so. Der Orchestrator setzt dabei alle seit dem Laufstart
+  veränderten Pfade innerhalb von `touches` auf den Snapshot zurück; Pfade, die
+  es beim Laufstart nicht gab, wandern nach `.agent-runs/<run>/quarantine/`.
+- `route-task.sh` als CLI ist entfallen; der Router ist eine eingebundene
+  Funktion ohne Seiteneffekt. Die Eskalation entsteht dadurch von selbst: nach
+  jedem roten Versuch zählt der Orchestrator `attempts` hoch und fragt dieselbe
+  Tabelle erneut. `--record`, `REASON_CODE` und die Routing-Signale sind weg.
+- Vorgezogen aus F6: der Infrastruktur-Retry sitzt jetzt in `run_role` statt im
+  gelöschten `run_candidate_worker`. Ohne diesen Schritt hätte F3 eine
+  getestete Fähigkeit verloren und `MAX_INFRA_RETRIES` verwaist. Leere oder
+  abgeschnittene Antworten gelten weiterhin nicht als Providerfehler.
+- Bewusst nicht angefasst: die Felder `route_rule_version`,
+  `route_reason_code` und `route_signals` in `current-run.md` stehen jetzt fest
+  auf ihren Vorgabewerten. `route_human_gate` schreibt der Orchestrator beim
+  Laufstart selbst. F5 entfernt die `route_*`-Felder.
+- Der Modus steht ab F3 direkt beim Anlegen von `current-run.md`; das
+  nachträgliche Protokollieren durch den Router entfällt ersatzlos.
 
 ### F4 · Laufzustand unversioniert
 

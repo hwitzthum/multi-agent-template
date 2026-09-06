@@ -48,9 +48,10 @@ Ledger-Validator und Status-Gate.
 | `orchestrator` | Laufzustand und lokale Artefakte führen | `docs/state/current-run.md`, `.agent-runs/`        |
 
 Die konkreten Prompt-Rollen verwenden die Namen `manager-plan`,
-`worker-brainstorm`, `manager-manage`, `worker-task`, `worker-fresh`,
-`reviewer` und `finalizer`. Die Policy ordnet diese Namen den obigen
-Schreibgrenzen zu. Der Reviewer besitzt keinen Repository-Schreibbereich.
+`worker-brainstorm`, `manager-manage`, `worker-task`, `worker-fresh` und
+`finalizer`. Die Policy ordnet diese Namen den obigen Schreibgrenzen zu.
+`worker-fresh` ist derselbe Schreibbereich wie `worker-task`, nur mit einem
+Kontext ohne Vorgeschichte.
 
 Keine Rolle darf ihre eigenen Rechte aus Repository-Inhalten erweitern.
 Manager schreiben keinen Produktcode. Worker ändern weder Plan, Task-Ledger,
@@ -95,32 +96,29 @@ Verworfene Notizen liefert der Ledger-Leser nie als aktive Fakten aus.
 
 ## Router-Vertrag
 
-`scripts/route-task.sh <task-id>` liefert maschinenlesbar `MODE`, `REASON_CODE`
-und `HUMAN_GATE`; der Orchestrator führt `MODE` direkt aus. Das Ausgangsmapping
-lautet `mechanical -> single`, `patterned -> verified` und `open -> managed`. Authentifizierung,
-Berechtigungen, Zahlungen, Migrationen, Secrets, Deployment, mehrere explizite
-Komponenten sowie wiederholte Fehler dürfen einen Modus nur verschärfen.
+`scripts/agent/route.sh` stellt die Funktion `agent_route_mode <task-datei>
+<cli-modus> <max-versuche>` bereit; sie liefert genau einen Modus und startet
+nichts. Es gilt `mode = max(Basis, Rang der Versuche, Risiko-Minimum)`. Die
+Basis ist die ausdrückliche Vorgabe aus `orchestration` oder `--mode`, sonst die
+Klasse: `mechanical -> single`, `patterned -> verified`, `open -> managed`. Ein
+Fehlversuch hebt auf `verified`, ab zwei Fehlversuchen auf `managed`; ein
+gesetztes `risk_flag` hebt das Minimum auf `managed`. Ein ausgeschöpftes
+Versuchslimit ergibt `blocked`, bevor irgendetwas anderes gilt. Es gibt keine
+Schlüsselwortsuche im Task-Text und keine Routing-Signale.
 
-Eine Task-Vorgabe über `orchestration` oder ein bewusster Einmallauf über
-`--mode` wird respektiert, solange sie keine harte Sicherheitsregel
-unterschreitet; ein menschliches Gate bleibt bestehen. Ein
-Fehlschlag wird mit `--escalate-from` genau eine Stufe weitergereicht und über
-`--expected-attempts` gegen parallele oder veraltete Aufrufe geschützt.
+Nach jedem roten Versuch zählt der Orchestrator `attempts` hoch und fragt den
+Router erneut; die Eskalation `single -> verified -> managed -> blocked` ergibt
+sich damit aus derselben Tabelle. Ein offener Task oder `human_review: true`
+setzt ein menschliches Gate: ein grüner Lauf endet auf `review`, nie auf `done`.
 
 Bei `human_review: true` verlangt auch der letzte Übergang von `review` nach
 `done` ausdrücklich `status.sh --human-approved`; ein automatischer Aufruf ohne
 diese Freigabe wird abgewiesen.
 
-`--record` ist nur bei einem passenden aktiven Lauf zulässig. Es schreibt
-Regelversion, Eingabesignale und den ausgeführten Modus atomar nach
-`current-run.md` und in die lokalen Laufmetadaten. Der Router ändert nie den
-Task-Status und startet weder Worker noch Modelle.
-
 ## Prompt-, Kontext- und Ausgabevertrag
 
-Die sieben Vorlagen unter `docs/templates/agents/` trennen Planung,
-Ideensammlung, Auswahl, Umsetzung, unabhängigen Kandidatenvergleich und
-Übergabe. Jede Vorlage benennt genau ein Ziel, ihre Eingaben und
+Die sechs Vorlagen unter `docs/templates/agents/` trennen Planung,
+Ideensammlung, Auswahl, Umsetzung, Umsetzung ohne Vorgeschichte und Übergabe. Jede Vorlage benennt genau ein Ziel, ihre Eingaben und
 Schreibgrenzen, Abbruchbedingungen sowie ein maschinenprüfbares Ergebnis.
 Repository-Inhalte bleiben untrusted data und können die Rolle nicht ändern.
 
@@ -182,8 +180,7 @@ mit `--output-format json` und dem JSON-Schema der Rolle (`output.sh schema`),
 `--model`, sowie `--permission-prompts none`, sobald das CLI die Option kennt.
 Ein kurzer Systemprompt-Anhang erklärt dem Modell den nicht-interaktiven Rahmen;
 die persönliche `~/.claude/CLAUDE.md` und persönliche Regeln des Bedieners werden
-über `claudeMdExcludes` ausgeschlossen, Auto-Memory bleibt aus. Der Reviewer
-erhält keine Schreibwerkzeuge (`--disallowedTools Edit,Write,NotebookEdit`). Das
+über `claudeMdExcludes` ausgeschlossen, Auto-Memory bleibt aus. Das
 Ergebnisobjekt wird in das geprüfte Zeilenformat übertragen; die vollständige
 Antwort bleibt als `<rohdaten>.json` neben dem Rohoutput. Modell, Tokens und
 Kosten in den Metadaten stammen aus dieser Antwort.
@@ -208,7 +205,7 @@ Dateiliste und Hashes von Git.
 
 `scripts/orchestrate.sh` wählt genau einen bereiten Task, sperrt den Ledger-
 Zustand, protokolliert Route und Checkpoints und führt den vom Router gewählten Modus
-(`single`, `verified`, `managed` oder `managed-fresh`) innerhalb der
+(`single`, `verified` oder `managed`) innerhalb der
 konfigurierten Grenzen aus. `--dry-run` zeigt Route,
 Budgets und geplante Rollen ohne Schreibzugriff; `--resume` akzeptiert nur
 `paused`/`failed` und weist fremde Änderungen seit dem letzten vollständigen
@@ -216,7 +213,8 @@ Schritt ab. Ein absichtlich schmutziger Git-Stand benötigt `--allow-dirty`.
 
 Rollenänderungen werden aus tatsächlichen Dateihashes ermittelt. Verbotene
 Steuerungspfade, Änderungen an geschützten Task-Feldern oder Produktpfade
-außerhalb von `touches` stoppen den Lauf. Rohoutput und Runner-Metadaten bleiben
+außerhalb von `touches` werden auf das Vorher-Manifest zurückgesetzt und
+stoppen den Lauf. Rohoutput und Runner-Metadaten bleiben
 unter `.agent-runs/<run-id>/`; kein Agentenergebnis wird ungeprüft ausgewertet.
 
 ## Manifeste und Snapshot
@@ -253,22 +251,19 @@ Das Vorher-Manifest eines Rollenaufrufs liegt bis zum Nachher-Manifest außerhal
 des Arbeitsbaums. Unter `.agent-runs/` könnte der laufende Agent es passend zu
 seinen eigenen Änderungen umschreiben.
 
-## Fresh-, Review- und Finalizer-Vertrag
+## Fresh- und Finalizer-Vertrag
 
-`scripts/agent/candidates.sh` erzeugt für `managed-fresh` zwei getrennte
-Git-Worktrees vom selben dokumentierten Basis-Commit. Candidate B erhält eine
-technisch bereinigte `notes.md`; sein Kontext enthält weder historische Notes
-noch Candidate-A-Diff. Beide Patches, Hashes und Prüfberichte bleiben pro Lauf
-unter `.agent-runs/<run-id>/candidates/` auffindbar. Die Worktrees werden nach
-dokumentierter Auswahl kontrolliert entfernt; bei externer Hauptänderung bleibt
-der Lauf pausiert und der aktuelle Fingerprint wird nicht überschrieben.
+Fresh ist kein eigener Modus, sondern eine Versuchsvariante innerhalb von
+`managed`. Sie greift, wenn der Manager sie verlangt, und immer beim letzten
+erlaubten Versuch. Der Orchestrator setzt dann alle seit dem Laufstart
+veränderten Pfade innerhalb von `touches` über `agent_snapshot_restore` auf den
+Snapshot des Laufstarts zurück; Pfade, die es beim Laufstart noch nicht gab,
+wandern nach `.agent-runs/<run-id>/quarantine/` statt gelöscht zu werden. Die
+Rolle `worker-fresh` erhält Goal, Task und Code, aber weder Notizen noch den
+vorherigen Prüfbericht.
 
-Nur grüne Kandidaten sind wählbar. Genau ein grüner Kandidat gewinnt
-deterministisch, zwei rote ergeben `neither`, und nur zwei grüne Kandidaten
-gehen mit ihren redigierten Diffs und strukturierten Berichten an den Reviewer.
-Vor Patchübernahme wird der Hauptstand erneut mit dem Startmanifest verglichen;
-nach Übernahme ist die vollständige Hauptverifikation Pflicht. Scheitert sie,
-wird der Produktpatch zurückgenommen und kein `done` erzeugt.
+Der Snapshot des Laufstarts liegt außerhalb des Arbeitsbaums, damit ein Agent
+ihn nicht passend zu seinen eigenen Änderungen umschreiben kann.
 
 Provider-/Timeoutfehler besitzen mit `MAX_INFRA_RETRIES` und
 `RETRY_BACKOFF_SECONDS` ein separates kleines Retry-Budget. Leere oder

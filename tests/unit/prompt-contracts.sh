@@ -8,7 +8,7 @@ project_dir=$(CDPATH= cd -- "$tests_dir/.." && pwd) || exit 1
 
 begin_suite prompt-contracts
 
-for role in manager-plan worker-brainstorm manager-manage worker-task worker-fresh reviewer finalizer; do
+for role in manager-plan worker-brainstorm manager-manage worker-task worker-fresh finalizer; do
   template="$project_dir/docs/templates/agents/$role.md"
   valid=true
   for heading in '# Rolle und einziges Ziel' '# Erlaubte Eingaben und Schreibbereiche' '# Auftrag und Abbruchbedingungen' '# Strukturiertes Ergebnis'; do

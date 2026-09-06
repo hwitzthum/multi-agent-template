@@ -105,8 +105,8 @@ new_project_fixture() {
 }
 
 # Versioniert den aktuellen Fixture-Stand als Basiscommit. Erst aufrufen, wenn
-# Tasks und Notizen stehen — ein Modus wie managed-fresh verlangt einen
-# sauberen Arbeitsbaum.
+# Tasks und Notizen stehen; ein Lauf ohne --allow-dirty verlangt einen sauberen
+# Arbeitsbaum.
 fixture_git_init() {
   git -C "$fixture" add . || fixture_abort "git add fehlgeschlagen"
   git -C "$fixture" -c user.name=Test -c user.email=test@example.invalid commit -qm base \
@@ -124,15 +124,14 @@ new_app_fixture() {
     --not-scope 'Steuerungsdateien ändern.' --criteria 'Die Datei enthält exakt `good`.' "$@"
 }
 
-# Ein versioniertes Projekt für den Kandidatenvergleich: Task 017 verlangt einen
-# Fresh-Kandidaten, und in den Notizen steht eine Hypothese, die einen Fresh
-# Worker nie erreichen darf.
-new_candidate_fixture() {
-  new_project_fixture --with-scripts
-  make_task --id 017 --title 'Zwei Kandidaten vergleichen' --features F-017 \
-    --class open --orchestration managed-fresh --fresh required \
-    --touches src/app.txt --risk-flags high-risk-domain \
-    --context 'Ein isolierter Kandidatenvergleich.' --scope '`src/app.txt` bearbeiten.' \
+# Ein versioniertes Projekt für den Fresh-Versuch: Task 017 laeuft managed, und
+# in den Notizen steht eine Hypothese, die ein Fresh-Versuch nie erreichen darf.
+new_fresh_fixture() {
+  new_project_fixture --with-scripts --filled-plan
+  make_task --id 017 --title 'Festgefahrenen Task loesen' --features F-017 \
+    --class open --orchestration managed \
+    --touches src/app.txt --risk-flags repeated-failure \
+    --context 'Ein festgefahrener Task.' --scope '`src/app.txt` bearbeiten.' \
     --not-scope 'Steuerungsdateien ändern.' --criteria 'Erlaubt sind `good`, `alpha` oder `beta`.'
   cat > "$fixture/docs/state/notes.md" <<'EOF'
 # Notizen
@@ -239,7 +238,7 @@ fixture_config() {
 }
 
 make_task() {
-  local id=001 title='' status=todo class=patterned orchestration=auto fresh=auto \
+  local id=001 title='' status=todo class=patterned orchestration=auto \
     depends='' features='F-001' touches='' flags='' attempts=0 max_attempts=3 \
     verification=never human=false acceptance='"./scripts/verify.sh"' \
     acceptance_style=inline context='Testkontext.' scope='Testen.' \
@@ -251,7 +250,6 @@ make_task() {
       --status) status=$2; shift 2 ;;
       --class) class=$2; shift 2 ;;
       --orchestration) orchestration=$2; shift 2 ;;
-      --fresh) fresh=$2; shift 2 ;;
       --depends) depends=$2; shift 2 ;;
       --features) features=$2; shift 2 ;;
       --touches) touches=$2; shift 2 ;;
@@ -280,7 +278,6 @@ make_task() {
     echo "status: $status"
     echo "class: $class"
     echo "orchestration: $orchestration"
-    echo "fresh_perspective: $fresh"
     echo "touches: [$touches]"
     echo "risk_flags: [$flags]"
     echo "attempts: $attempts"

@@ -11,8 +11,8 @@ jede Aufgabe.
 
 Das Projekt braucht ein eigenes Git-Repository mit einem ersten Commit. Wer die
 GitHub-Vorlage verwendet und sie klont, hat diesen Ausgangsstand bereits. Ein
-ZIP-Download genügt nicht: sichere Vergleiche, Wiederaufnahme und isolierte
-Fresh-Worker-Läufe benötigen die Git-Historie.
+ZIP-Download genügt nicht: Manifeste, Snapshot-Rücksetzung und die
+Fresh-Versuche benötigen die Git-Historie.
 
 Danach wird das Projekt einmalig mit
 `docs/templates/initializer-prompt.md` eingerichtet: Projektbeschreibung
@@ -60,21 +60,24 @@ Anbieter-Aufruf würde nur diesen Adapter ändern — die Orchestrierung bleibt 
 
 Baut für jede Rolle nur die erforderlichen Abschnitte: Goal, Task, Plan, Notes,
 Verifikation, Code. Jeder Abschnitt hat ein Zeichenbudget. Code erhält nur den
-verbleibenden Platz. Ein Fresh Worker bekommt bewusst keine Notes oder früheren Fehler.
+verbleibenden Platz. Ein Fresh-Versuch bekommt bewusst keine Notes oder früheren Fehler.
 
 Kontexte sind schreibgeschützt und inhaltsadressiert — derselbe Inhalt erzeugt dieselbe
 Datei. Das ist die Basis für zuverlässiges Caching und Reproduzierbarkeit.
 
-### `scripts/route-task.sh` — Der Router
+### `scripts/agent/route.sh` — Der Router
 
-Entscheidet pro Task: `single` (Worker allein), `verified` (Worker + Korrektur),
-`managed` (Manager-Worker-Loop), oder `managed-fresh` (zwei isolierte Worker + Reviewer).
-Daneben erzwingt `scripts/agent/policy.sh` nur die Pfad- und Schreibgrenzen der Rollen.
+Entscheidet pro Task: `single` (Worker allein), `verified` (Worker + Korrektur)
+oder `managed` (Manager-Worker-Loop). Ein ausgeschöpftes Versuchslimit ergibt
+`blocked`. Daneben erzwingt `scripts/agent/policy.sh` nur die Pfad- und
+Schreibgrenzen der Rollen.
 
-Eingaben: Task-Klasse (`mechanical`, `patterned`, `open`), Risiko-Signale (`high-risk-domain`,
-`repeated-failure`, `cross-component`), bisherige Versuche.
+Eingaben: Task-Klasse (`mechanical`, `patterned`, `open`), die ausdrückliche
+Vorgabe aus `orchestration` oder `--mode`, die bisherigen Versuche und die
+Risiko-Signale (`high-risk`, `cross-component`, `repeated-failure`).
 
-Ausgaben: Modus, Begründung, menschliches Gate bei offenen/riskanten Aufgaben.
+Ausgabe: der Modus. Es gilt `max(Basis, Rang der Versuche, Risiko-Minimum)`;
+ein gesetztes Risiko-Signal hebt das Minimum auf `managed`.
 
 Der Router wird durch `orchestrate.sh --next` aufgerufen und die Entscheidung **sofort
 ausgeführt** — Sie sehen sie mit `--dry-run` vorher, ohne etwas zu verändern.

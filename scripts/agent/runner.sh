@@ -15,7 +15,7 @@ usage() {
 }
 
 known_role() {
-  case "$1" in manager-plan|worker-brainstorm|manager-manage|worker-task|worker-fresh|reviewer|finalizer) return 0 ;; *) return 1 ;; esac
+  case "$1" in manager-plan|worker-brainstorm|manager-manage|worker-task|worker-fresh|finalizer) return 0 ;; *) return 1 ;; esac
 }
 
 claude_supports() {
@@ -207,9 +207,6 @@ run_agent() {
   [ "$model" = default ] || args+=(--model "$model")
   [ -z "$max_budget" ] || args+=(--max-budget-usd "$max_budget")
   if claude_supports -- '--permission-prompts'; then args+=(--permission-prompts none); fi
-  case "$role" in
-    reviewer) args+=(--disallowedTools 'Edit,Write,NotebookEdit') ;;
-  esac
 
   json_output="$raw_output.json"
   started=$(date -u +%Y-%m-%dT%H:%M:%SZ)

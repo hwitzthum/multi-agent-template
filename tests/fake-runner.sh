@@ -29,12 +29,14 @@ case "$action" in
   write-bad) printf '%s\n' bad > "$workdir/src/app.txt" ;;
   write-alpha) printf '%s\n' alpha > "$workdir/src/app.txt" ;;
   write-beta) printf '%s\n' beta > "$workdir/src/app.txt" ;;
-  require-no-git-write-good)
-    [ ! -e "$workdir/.git" ] || { echo "fake-runner: Fresh-Workspace enthaelt einen Git-Verweis" >&2; exit 1; }
+  write-worse) printf '%s\n' worse > "$workdir/src/app.txt" ;;
+  require-initial-write-good)
+    [ "$(sed -n '1p' "$workdir/src/app.txt")" = initial ] \
+      || { echo "fake-runner: Fresh-Versuch startet nicht vom Laufstart" >&2; exit 1; }
     printf '%s\n' good > "$workdir/src/app.txt" ;;
-  write-good-external)
+  write-outside)
     printf '%s\n' good > "$workdir/src/app.txt"
-    [ -n "${ORCHESTRATOR_PROJECT_DIR:-}" ] && printf '%s\n' external > "$ORCHESTRATOR_PROJECT_DIR/src/app.txt" ;;
+    printf '%s\n' 'ausserhalb des Umfangs' > "$workdir/src/other.txt" ;;
   append-bad) printf '%s\n' bad >> "$workdir/src/app.txt" ;;
   forbidden) printf '%s\n' '# unerlaubte Worker-Aenderung' >> "$workdir/docs/state/plan.md" ;;
   empty) : > "$raw" ;;

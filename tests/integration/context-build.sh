@@ -20,7 +20,6 @@ brainstorm=$("$builder" build --project-dir "$fixture" --role worker-brainstorm 
 manager_manage=$("$builder" build --project-dir "$fixture" --role manager-manage --run-id "$run_id")
 worker=$("$builder" build --project-dir "$fixture" --role worker-task --run-id "$run_id" --task-id 017 --include src/app.txt)
 fresh=$("$builder" build --project-dir "$fixture" --role worker-fresh --run-id "$run_id" --task-id 017 --include src/app.txt --include .env --include .agent-runs/prior/raw.log --include docs/state/notes.md --include docs/state/plan.md)
-reviewer=$("$builder" build --project-dir "$fixture" --role reviewer --run-id "$run_id" --task-id 017 --include src/app.txt)
 finalizer=$("$builder" build --project-dir "$fixture" --role finalizer --run-id "$run_id")
 
 assert_file_has "Manager-Plan erhaelt Plan" "$manager_plan" '## Relevanter Plan-Auszug'
@@ -34,8 +33,6 @@ assert_file_has "Task Worker erhaelt freigegebenen Code" "$worker" 'VISIBLE_CODE
 assert_file_has "Task Worker erhaelt relevanten Fehler" "$worker" 'PRIOR_ERROR'
 assert_file_lacks "Task Worker erhaelt keine fremde Note" "$worker" 'FREMDE_NOTIZ'
 assert_file_lacks "Task Worker erhaelt keine verworfene Note" "$worker" 'VERWORFENE_NOTIZ'
-assert_file_lacks "Reviewer erhaelt keinen Plan" "$reviewer" '## Relevanter Plan-Auszug'
-assert_file_has "Reviewer erhaelt Prüfbericht" "$reviewer" 'PRIOR_ERROR'
 assert_file_has "Finalizer erhaelt Notes" "$finalizer" '## Kuratierte aktive Notes'
 assert_file_lacks "Finalizer erhaelt keinen Produktcode" "$finalizer" '## Freigegebene Codeausschnitte'
 
