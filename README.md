@@ -30,6 +30,186 @@ Das macht es sicher: Der Agent kann nicht einfach Dateien löschen, ins Internet
 
 ---
 
+## Schnelteinstieg: So nutzt du das System
+
+### Schritt 1: Vor dem ersten Lauf — Setup prüfen
+
+```bash
+./scripts/doctor.sh
+```
+
+Das Skript prüft:
+
+- ✓ Ist `git` installiert und ist das Projekt ein Repository?
+- ✓ Ist der Runner (`claude` oder `codex`) installiert?
+- ✓ Sind alle notwendigen Tools vorhanden (`jq`, `awk`, `sed`, etc.)?
+- ✓ Ist die `.agent/config.env` Konfiguration korrekt?
+
+**Ergebnis:** Zeigt `OK` oder `BEFUND`. Bei Fehlern werden diese angezeigt und können behoben werden.
+
+### Schritt 2: Projekt einmalig initialisieren
+
+Das machst du nur einmal am Anfang:
+
+```bash
+# Öffne diese Datei in deinem Editor
+nano docs/prompts/init.md
+
+# Schreibe deine Projektbeschreibung unten in die Datei ein
+# (ersetze den Platzhalter)
+
+# Kopiere dann den kompletten Inhalt dieser Datei
+# und öffne eine neue Claude Code Sitzung
+# Paste den Prompt dort ein und führe ihn aus
+```
+
+Der Initializer wird:
+
+- Ein Ziel in `docs/state/goal.md` anlegen
+- Einen Plan in `docs/state/plan.md` erstellen
+- Die ersten Tasks in `docs/tasks/` erzeugen
+- `scripts/verify.sh` durch deine Projekt-Prüfung ersetzen
+
+### Schritt 3: Den ersten Task anschauen
+
+```bash
+# Zeige die nächsten bereitstehenden Tasks
+./scripts/next-tasks.sh
+```
+
+**Ausgabe zum Beispiel:**
+
+```
+Task 001: "Frontend-Komponente für Dashboard" (todo)
+Task 003: "API-Endpoint für Benutzerdaten" (todo)
+(Task 002 wartet auf Task 001)
+```
+
+### Schritt 4: Task bearbeiten lassen
+
+```bash
+# Starte den nächsten bereitstehenden Task
+./scripts/orchestrate.sh --next
+```
+
+Das System wird:
+
+1. Den Task analysieren (ist er einfach oder komplex?)
+2. Entscheiden, ob Manager/Worker/Verifier nötig sind
+3. Agenten arbeiten lassen
+4. Das Ergebnis prüfen
+5. Task-Status automatisch aktualisieren
+
+**Das passiert im Hintergrund — du wirst informiert, wenn es fertig ist.**
+
+### Schritt 5: Aktuellen Stand checken
+
+```bash
+# Zeige in zwei Zeilen den aktuellen Stand
+./scripts/state-summary.sh
+```
+
+**Ausgabe zum Beispiel:**
+
+```
+Status: 5 todo | 2 in_progress | 3 done | 1 blocked
+Fehler: keine
+```
+
+### Schritt 6: Wenn ein Task blockiert ist
+
+Ein Task steht auf `blocked`, wenn:
+
+- Der Agent eine Frage hat (z.B. "Welche Farbe soll der Button haben?")
+- Etwas Unerwartetes passiert ist
+
+**Das machst du:**
+
+```bash
+# Öffne die Task-Datei und lese die Frage
+nano docs/tasks/001.md
+# Suche nach "# Offene Frage"
+
+# Beantworte die Frage direkt in der Datei
+
+# Öffne den Task wieder
+./scripts/task.sh reopen 001
+
+# Lasse den Agent erneut versuchen
+./scripts/orchestrate.sh --task 001
+```
+
+### Schritt 7: Wenn ein Task auf "review" wartet
+
+Nach einem erfolgreichen Lauf kann ein Task auf `review` warten. Das bedeutet:
+
+- Das Ergebnis ist technisch korrekt ✓
+- Der Mensch (du) muss es aber freigeben (z.B. für Design-Check, Text-Review, Rechtliches)
+
+**Das machst du:**
+
+```bash
+# Öffne den Task und überprüfe das Ergebnis
+nano docs/tasks/001.md
+
+# Wenn alles gut aussieht:
+./scripts/task.sh approve 001
+```
+
+Der Task wird jetzt auf `done` gesetzt.
+
+### Schritt 8: Fehlerbehebung — Wenn etwas nicht stimmt
+
+```bash
+# Tiefe Prüfung des ganzen Projekts
+./scripts/verify.sh --deep
+```
+
+Das zeigt:
+
+- Task-Struktur-Fehler
+- Ungültige Status-Übergänge
+- Abhängigkeitsprobleme
+- Prüf-Bericht-Fehler
+
+**Häufige Probleme:**
+
+| Problem                                            | Lösung                                                   |
+| -------------------------------------------------- | -------------------------------------------------------- |
+| Task hat keinen Status                             | Öffne die Task-Datei und ergänze das `status`-Feld       |
+| Task ist in `blocked`, aber ich habe nicht gefragt | Lese die Frage unter `# Offene Frage` und beantworte sie |
+| Prüfung schlägt fehl                               | Führe `./scripts/verify-task.sh 001` aus für Details     |
+| Agent konnte nicht weiterkommen                    | Versuche `./scripts/orchestrate.sh --task 001` erneut    |
+
+### Schritt 9: Täglicher Workflow (nach dem Setup)
+
+```bash
+# Morgens: Überblick
+./scripts/state-summary.sh
+
+# Nächste Task: Bereit?
+./scripts/next-tasks.sh
+
+# Task bearbeiten lassen
+./scripts/orchestrate.sh --next
+
+# Mittags: Status checken
+./scripts/state-summary.sh
+
+# Blockierte Tasks? Fragen beantworten
+# Approval-Tasks? Freigeben
+./scripts/task.sh approve 001
+
+# Abends: Alles validieren
+./scripts/verify.sh --quick
+
+# Commit und Push
+git add -A
+git commit -m "daily progress"
+```
+
+---
+
 ## Wie funktioniert die Architektur?
 
 ### Die Kernkomponenten
