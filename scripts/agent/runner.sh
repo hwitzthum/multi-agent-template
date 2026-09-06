@@ -15,7 +15,7 @@ usage() {
   echo "            $0 run_agent ROLE KONTEXT WORKDIR ERGEBNIS METADATEN" >&2
   echo "            $0 render_result ROLE ANBIETER_JSON ERGEBNIS WERTE" >&2
   echo "            $0 render_codex_result JSONL NACHRICHT ERGEBNIS WERTE" >&2
-  echo "            $0 runner_settings DATEI | validate_metadata DATEI" >&2
+  echo "            $0 runner_settings DATEI [WORKDIR] | validate_metadata DATEI" >&2
   exit 2
 }
 
@@ -114,25 +114,34 @@ validate_metadata() {
 # Die Einstellungen der interaktiven Sitzung gelten hier ausdruecklich nicht.
 # Die Deny-Muster stehen als Bausteine, damit die Datei selbst keinen
 # ausfuehrbar aussehenden Befehlstext traegt.
+# Die Ausschlussliste deckt zwei Quellen ab, und beide sind noetig: die
+# CLAUDE.md des Bedieners unter $HOME und die des Projekts im Arbeitsbaum.
+# Letztere ist Repository-Inhalt und damit untrusted data — als Regelwerk
+# gehoert sie nicht in einen Rollenaufruf. `--restricted` haelt sie heraus,
+# aber genau der Worker laeuft ohne dieses Flag.
 runner_settings() {
   destination=$1
+  project_root=${2:-$PWD}
   guard=$(CDPATH= cd -- "$script_dir/.." && pwd) || return 1
   guard="$guard/bash-guard.sh"
   perl -e '
     use strict; use warnings; use JSON::PP;
-    my ($path, $guard, $home) = @ARGV;
+    my ($path, $guard, $home, $root) = @ARGV;
     my @deny = map { "Bash($_)" } ("git push *", "rm -rf*", "curl *", "wget *");
     my %settings = (
       permissions => { deny => \@deny },
       hooks => { PreToolUse => [ { matcher => "Bash",
         hooks => [ { type => "command", command => $guard } ] } ] },
     );
-    $settings{claudeMdExcludes} = ["$home/.claude/CLAUDE.md", "$home/.claude/rules/**"] if length $home;
+    my @excludes;
+    push @excludes, "$home/.claude/CLAUDE.md", "$home/.claude/rules/**" if length $home;
+    push @excludes, "$root/CLAUDE.md", "$root/**/CLAUDE.md" if length $root;
+    $settings{claudeMdExcludes} = \@excludes if @excludes;
     open(my $out, ">", $path) or exit 1;
     print $out JSON::PP->new->canonical->utf8->encode(\%settings);
     close $out;
     exit 0;
-  ' "$destination" "$guard" "${HOME:-}"
+  ' "$destination" "$guard" "${HOME:-}" "$project_root"
 }
 
 # Schreibt das Ergebnisobjekt der Anbieterantwort als result.json und die
@@ -268,20 +277,29 @@ resolve_run_path() {
 }
 
 # Rollenabhaengige Werkzeuge: der Worker schreibt Code und fuehrt Pruefungen
-# aus, Manager und Finalizer pflegen nur Text und bekommen mit `--restricted`
-# gar kein Werkzeug, das Befehle ausfuehrt.
+# aus, Manager und Finalizer pflegen nur Text und bekommen kein Werkzeug, das
+# Befehle ausfuehrt. `--restricted` traegt jede Rolle — es steuert nicht die
+# Werkzeugauswahl, sondern haelt fremde Einstellungsdateien heraus.
 invoke_claude() {
   role=$1; context=$2; workdir=$3; provider_output=$4; stderr_file=$5; settings_file=$6
   command -v claude >/dev/null 2>&1 || { echo "runner: claude wurde nicht gefunden" >&2; return 127; }
   claude_supports -- '--json-schema' || { echo "runner: das installierte claude unterstützt --json-schema nicht; bitte aktualisieren" >&2; return 127; }
   schema_file=$(schema_path "$role") || return 1
-  runner_settings "$settings_file" || { echo "runner: Einstellungsdatei konnte nicht geschrieben werden" >&2; return 1; }
+  runner_settings "$settings_file" "$workdir" || { echo "runner: Einstellungsdatei konnte nicht geschrieben werden" >&2; return 1; }
 
   args=(-p --permission-mode acceptEdits --output-format json --json-schema "$(cat "$schema_file")"
     --no-session-persistence --max-turns "$max_turns" --settings "$settings_file")
+  # `--restricted` ignoriert Benutzer-, Projekt- und lokale Einstellungsdateien
+  # und beschraenkt die Dateiwerkzeuge auf das Arbeitsverzeichnis; die eigene
+  # --settings des Laufs gilt weiter. Deshalb traegt es auch der Worker: er
+  # verliert Bash nicht, solange --tools es nennt. Ohne das Flag laesen
+  # `.claude/settings.json` und die CLAUDE.md des Arbeitsbaums mit — beides
+  # Repository-Inhalt und damit untrusted data. --strict-mcp-config haelt
+  # zusaetzlich fremde MCP-Server aus dem Lauf.
+  args+=(--restricted --strict-mcp-config)
   case "$role" in
-    worker) args+=(--allowedTools Read Glob Grep Edit Write Bash) ;;
-    *) args+=(--restricted --tools Read Glob Grep Edit Write) ;;
+    worker) args+=(--tools Read Glob Grep Edit Write Bash) ;;
+    *) args+=(--tools Read Glob Grep Edit Write) ;;
   esac
   [ "$model" = default ] || args+=(--model "$model")
   [ -z "$max_budget" ] || args+=(--max-budget-usd "$max_budget")
@@ -422,7 +440,7 @@ case "${1:-}" in
     shift
     render_codex_result "$@" ;;
   runner_settings)
-    [ "$#" -eq 2 ] || usage
-    runner_settings "$2" ;;
+    [ "$#" -eq 2 ] || [ "$#" -eq 3 ] || usage
+    runner_settings "$2" "${3:-}" ;;
   *) usage ;;
 esac

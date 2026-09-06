@@ -58,8 +58,8 @@ expect_success "Claude-Ergebnis besteht das Rollenschema" "$runner" validate_res
 # Rollenabhängige Werkzeuge: der Worker schreibt Code und prüft, Manager und
 # Finalizer bekommen kein Werkzeug, das Befehle ausführt.
 assert_file_has "Worker bekommt Bash" "$fixture/.agent-runs/run/claude-ok.args" 'Bash'
-assert_file_has "Worker läuft über --allowedTools" "$fixture/.agent-runs/run/claude-ok.args" '--allowedTools'
-assert_file_lacks "Worker läuft nicht restriktiv" "$fixture/.agent-runs/run/claude-ok.args" '--restricted'
+assert_file_has "Worker läuft restriktiv" "$fixture/.agent-runs/run/claude-ok.args" '--restricted'
+assert_file_has "Worker lässt fremde MCP-Server aus" "$fixture/.agent-runs/run/claude-ok.args" '--strict-mcp-config'
 assert_file_has "Adapter setzt das Rollenschema" "$fixture/.agent-runs/run/claude-ok.args" '--json-schema'
 assert_file_has "Adapter unterdrückt Rückfragen" "$fixture/.agent-runs/run/claude-ok.args" '--permission-prompts'
 assert_file_has "Adapter reicht eine eigene Einstellungsdatei" "$fixture/.agent-runs/run/claude-ok.args" '--settings'
@@ -83,8 +83,17 @@ expect_success "Einstellungsdatei nennt den bash-guard" \
   sh -c "jq -r '.hooks.PreToolUse[0].hooks[0].command' '$settings' | grep -q 'bash-guard.sh$'"
 expect_success "Einstellungsdatei trägt eine Deny-Liste" \
   sh -c "jq -e '.permissions.deny | length > 0' '$settings' >/dev/null"
+# Die Ausschlussliste ist eine Sicherheitszusage: `--restricted` haelt die
+# CLAUDE.md des Projekts zwar heraus, aber der Worker laeuft ohne dieses Flag.
+# Deshalb wird hier nicht nur geprueft, DASS die Liste gefuellt ist, sondern
+# WAS darin steht.
+fixture_real=$(CDPATH= cd -- "$fixture" && pwd -P) || fixture_real=$fixture
 expect_success "Einstellungsdatei schließt die persönliche CLAUDE.md aus" \
-  sh -c "jq -e '.claudeMdExcludes | length > 0' '$settings' >/dev/null"
+  sh -c "jq -r '.claudeMdExcludes[]' '$settings' | grep -Fxq '$HOME/.claude/CLAUDE.md'"
+expect_success "Einstellungsdatei schließt die CLAUDE.md des Projekts aus" \
+  sh -c "jq -r '.claudeMdExcludes[]' '$settings' | grep -Fxq '$fixture_real/CLAUDE.md'"
+expect_success "Einstellungsdatei schließt CLAUDE.md aus Unterordnern aus" \
+  sh -c "jq -r '.claudeMdExcludes[]' '$settings' | grep -Fxq '$fixture_real/**/CLAUDE.md'"
 
 # Fehlerantwort ohne Ergebnisobjekt: technischer Abbruch, kein Rollenergebnis.
 cat > "$fixture/claude-error.json" <<'EOF'

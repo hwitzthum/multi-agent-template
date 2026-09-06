@@ -724,8 +724,10 @@ führt ein grüner Maschinencheck zunächst zu `review`, nie direkt zu `done`.
 Zwei Runner stehen zur Wahl, `AGENT_RUNNER=claude` oder `AGENT_RUNNER=codex` in
 `.agent/config.env`. Beide liefern denselben Ergebnisvertrag, aber eine andere
 Sicherheitshülle: Claude bekommt rollenabhängige Werkzeuge und eine eigene
-Einstellungsdatei mit Deny-Liste und `bash-guard`-Hook; Codex läuft in der
-Sandbox seines CLI (`--sandbox workspace-write`, Netz aus). Kosten meldet codex
+Einstellungsdatei mit Deny-Liste und `bash-guard`-Hook, und jede Rolle läuft
+mit `--restricted`, sodass weder die Einstellungen noch die `CLAUDE.md` des
+Arbeitsbaums in den Lauf gelangen; Codex läuft in der Sandbox seines CLI
+(`--sandbox workspace-write`, Netz aus). Kosten meldet codex
 nicht. Die Grenzen des Laufs — Iterationen, Versuche, Zeitlimits, Modell —
 stehen ebenfalls in `.agent/config.env`; alle dreizehn Schlüssel sind in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) erklärt.

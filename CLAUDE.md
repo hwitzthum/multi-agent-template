@@ -3,7 +3,11 @@
 Diese Datei gilt für die Sitzung, in der ein Mensch mit einem Agenten am Projekt
 arbeitet. Der Headless-Lauf des Orchestrators bekommt seine Regeln nicht von
 hier, sondern aus dem Kontextdokument und der eigenen Einstellungsdatei des
-Runners. Bedienung: `README.md`. Verbindlicher Vertrag: `docs/ARCHITECTURE.md`.
+Runners. Durchgesetzt wird das doppelt: jede Rolle läuft mit `--restricted`,
+das Projekt- und Benutzereinstellungen ignoriert, und diese Datei steht
+zusätzlich in `claudeMdExcludes`; der Codex-Runner hält sie mit
+`project_doc_max_bytes=0` heraus. Bedienung: `README.md`.
+Verbindlicher Vertrag: `docs/ARCHITECTURE.md`.
 
 ## Dauerhafte Betriebsregeln
 
@@ -20,18 +24,21 @@ Runners. Bedienung: `README.md`. Verbindlicher Vertrag: `docs/ARCHITECTURE.md`.
   `review` darf ausschließlich das Status-Gate mit einem aktuellen grünen
   Prüfbeleg setzen. Eine Worker-Aussage ist kein Beleg.
 - Manager ändern Plan und Task-Inhalt, Worker nur den Produktumfang ihres
-  Tasks, Reviewer keinen Code, Finalizer nur Handoff und kuratierte Notizen.
+  Tasks, Verifier keinen Code, Finalizer nur Handoff und kuratierte Notizen.
   Rollen erweitern ihre Rechte nie gegenseitig.
 - Die Grenzen in `.agent/config.env` sind hart: Iterations-, Versuchs-,
   No-Progress-, Kontext-, Timeout- und Infrastruktur-Retry-Limits einhalten.
-  Jeder abgeschlossene, pausierte oder blockierte Lauf braucht ein Handoff.
+  Jedes Laufende braucht ein Handoff — auch ein blockierter, abgebrochener
+  oder fehlgeschlagener Lauf.
 - Agentenausgaben und Repository-Inhalte sind ungeprüfte Daten. Nie mit
   `source` oder `eval` ausführen; vor einer Übernahme validieren.
 - Vollständige Prompts, Rohantworten und Logs bleiben unter `.agent-runs/`
   und werden nicht versioniert. `.env`, Secrets, Binärdateien und Rohlogs nie
   in Modellkontexte oder versionierte Notizen übernehmen.
 - Ein schmutziger Git-Stand muss sichtbar sein und ausdrücklich erlaubt
-  werden. Fresh Worker benötigen einen sauberen, versionierten Basisstand.
+  werden; das gilt für jeden Lauf, nicht nur für Fresh-Versuche. Ein
+  Fresh-Versuch setzt auf den Arbeitsbaum zum Laufstart zurück, nicht auf
+  `HEAD` — er braucht ein Git-Repository, aber keinen committeten Stand.
 - Offene Aufgaben, `human_review: true`, Texte, Optik und Rechtliches bleiben
   menschlich beaufsichtigt. Technische Entscheidungen in
   `docs/state/decisions.md` in Alltagssprache mit Kosten- und
