@@ -17,7 +17,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | gemergt   | 449   | 2026-09-06 |
 | F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | gemergt   | 547   | 2026-09-06 |
 | F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | gemergt   | 666   | 2026-09-06 |
-| F8  | Prüftor verschlanken                     | `refactor/verify-gate`            | geprüft   | 677   | –          |
+| F8  | Prüftor verschlanken                     | `refactor/verify-gate`            | gemergt   | 677   | 2026-09-06 |
 | F9  | Dokumentation                            | `docs/architecture`               | offen     | –     | –          |
 
 Reihenfolge ist verbindlich (jedes Feature setzt auf dem vorigen auf). Vor jedem
@@ -27,6 +27,8 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F8 · Nach `main` gemergt (`3513184`), Suite auf `main` grün ·
+  `./scripts/verify.sh` → `tests: GREEN (677 Zusicherungen in 28 Dateien)`
 - 2026-09-06 · F8 · Prüftor auf einen Ablauf verschlankt: Stufen-Taxonomie,
   benannte Runner, Syntax-Stufe und `touches`-Prüfung entfernt, Allowlist
   generisch und als kommentiertes Beispiel ausgeliefert ·
@@ -952,7 +954,7 @@ Review:
 
 ### F8 · Prüftor verschlanken
 
-Branch `refactor/verify-gate` · Status: **geprüft**
+Branch `refactor/verify-gate` · Status: **gemergt**
 
 Ziel: `verify-task.sh` ≤200 Zeilen, ein Ablauf: Befehle prüfen, ausführen,
 Bericht schreiben.
