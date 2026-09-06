@@ -22,8 +22,8 @@
 
 ## Fehler und Wiederaufnahme
 - Erster offener Fehler: <konkrete Fehlerstufe und Meldung oder `keiner`>
-- Nächster Schritt: <genau eine Handlung; bei Unterbrechung `--resume` oder
-  bewusster Neustart>
+- Nächster Schritt: <genau eine Handlung; bei Unterbrechung ein bewusster
+  Neustart des Laufs>
 
 ## Vorgeschlagene nächste Aufgabe
 - <id, und was danach frei wird>

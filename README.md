@@ -104,13 +104,6 @@ und grün? `human_review` benötigt explizite Freigabe?
 Verhindert, dass ein Agent nur durch seine eigene Behauptung einen Task auf `done`
 setzt. Status wechseln nur mit einem grünen Beleg.
 
-### `scripts/agent/metrics.sh` — Die Laufmetriken
-
-Erfasst pro finalisiertem Lauf: Klasse, Modus, Versuche, Tokens, Kosten, wie lange
-es gedauert hat, ob die Prüfung grün war. Landet als Zeile in `docs/state/metrics.csv`.
-
-Gibt einen schnellen Überblick: Welche Modi sind teuer? Welche Klassen fehlen oft?
-
 ### `scripts/agent/config.sh` — Die Limits
 
 Lädt und validiert `.agent/config.env` — einfaches Dateiformat, kein Shellskript.
@@ -146,8 +139,7 @@ Kontrolle: Ein `git push` führst du selbst aus.
 
 ```bash
 ./scripts/orchestrate.sh --next --dry-run   # Route, Limits und geplante Rollen ohne Änderung
-./scripts/orchestrate.sh --resume           # pausierten oder fehlgeschlagenen Lauf fortsetzen
-./scripts/validate-ledger.sh                # Task-Graph, Laufstand und Prüfbelege prüfen
+./scripts/validate-ledger.sh                # Task-Graph und Prüfbelege prüfen
 ```
 
 ## Wo der Stand liegt
@@ -156,7 +148,9 @@ Kontrolle: Ein `git push` führst du selbst aus.
 - `docs/state/` enthält Ziel, Plan, Entscheidungen, Notizen und aktuelle
   Übergabe.
 - `docs/verification/` enthält den letzten maschinellen Prüfbeleg.
-- `.agent-runs/` enthält lokale Rohdaten und wird nicht versioniert.
+- `.agent-runs/` enthält Laufzustand, Rohdaten und `metrics.csv` (eine Zeile
+  pro Lauf) und wird nicht versioniert. Ein Lauf ist zwischen zwei Aufrufen
+  zustandslos; es gibt kein Fortsetzen.
 - `docs/ARCHITECTURE.md` beschreibt den technischen Betriebs- und
   Sicherheitsvertrag für Maintainer.
 

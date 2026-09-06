@@ -11,26 +11,24 @@ project_dir=$(agent_project_root "$script_dir") || exit 1
 selection=''
 requested_task=''
 manual_mode=''
-resume=false
 dry_run=false
 allow_dirty=false
 lock_held=false
 scratch_dir=''
 run_active=false
 call_sequence=0
-metrics_started=false
+run_state=''
 run_outcome=''
 
 usage() {
-  echo "Verwendung: $0 (--task ID | --next | --resume | --dry-run) [--mode MODUS] [--allow-dirty] [--project-dir PFAD]" >&2
+  echo "Verwendung: $0 (--task ID | --next | --dry-run) [--mode MODUS] [--allow-dirty] [--project-dir PFAD]" >&2
   exit 2
 }
 
 case "${1:-}" in
   -h|--help)
-    echo "Verwendung: $0 (--task ID | --next | --resume | --dry-run) [--mode MODUS] [--allow-dirty] [--project-dir PFAD]"
-    echo "  --dry-run zeigt Route, Limits und geplante Rollen ohne Produktänderung."
-    echo "  --resume setzt nur einen passenden pausierten oder fehlgeschlagenen Lauf fort."
+    echo "Verwendung: $0 (--task ID | --next | --dry-run) [--mode MODUS] [--allow-dirty] [--project-dir PFAD]"
+    echo "  --dry-run zeigt nur Route, Limits und geplante Rollen; er schreibt nichts."
     exit 0 ;;
 esac
 
@@ -38,7 +36,6 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --task) [ "$#" -ge 2 ] || usage; [ -z "$selection" ] || usage; selection=task; requested_task=$2; shift 2 ;;
     --next) [ -z "$selection" ] || usage; selection=next; shift ;;
-    --resume) [ -z "$selection" ] || usage; selection=resume; resume=true; shift ;;
     --dry-run) dry_run=true; shift ;;
     --mode) [ "$#" -ge 2 ] || usage; manual_mode=$2; shift 2 ;;
     --allow-dirty) allow_dirty=true; shift ;;
@@ -47,7 +44,6 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 [ -n "$selection" ] || { [ "$dry_run" = true ] && selection=next || usage; }
-[ "$selection" != resume ] || { [ "$dry_run" = false ] && [ -z "$manual_mode" ] || usage; }
 case "$manual_mode" in ''|single|verified|managed) ;; *) echo "orchestrate: unbekannter Modus '$manual_mode'" >&2; exit 1 ;; esac
 
 project_dir=$(CDPATH= cd -- "$project_dir" 2>/dev/null && pwd -P) || { echo "orchestrate: Projektpfad fehlt" >&2; exit 1; }
@@ -58,9 +54,7 @@ verification_gateway="$script_dir/verify-task.sh"
 context_builder="$script_dir/agent/context.sh"
 output_tool="$script_dir/agent/output.sh"
 runner_adapter="$script_dir/agent/runner.sh"
-metrics_tool="$script_dir/agent/metrics.sh"
 runner=${ORCHESTRATOR_RUNNER:-$runner_adapter}
-current_run="$project_dir/docs/state/current-run.md"
 tasks_dir="$project_dir/docs/tasks"
 verification_dir="$project_dir/docs/verification"
 notes_file="$project_dir/docs/state/notes.md"
@@ -68,7 +62,6 @@ lock_dir="$project_dir/.agent-runs/.orchestrator-lock"
 
 [ -x "$runner" ] || { echo "orchestrate: Runner ist nicht ausführbar: $runner" >&2; exit 1; }
 "$config_reader" --check "$project_dir/.agent/config.env" || exit 1
-"$metrics_tool" ensure-schema "$project_dir" || exit 1
 "$validator" --project-dir "$project_dir" >/dev/null || exit 1
 max_iterations=$("$config_reader" --get MAX_GLOBAL_ITERATIONS "$project_dir/.agent/config.env") || exit 1
 max_task_attempts=$("$config_reader" --get MAX_TASK_ATTEMPTS "$project_dir/.agent/config.env") || exit 1
@@ -76,14 +69,6 @@ max_no_progress=$("$config_reader" --get MAX_NO_PROGRESS "$project_dir/.agent/co
 verify_timeout=$("$config_reader" --get VERIFY_TIMEOUT_SECONDS "$project_dir/.agent/config.env") || exit 1
 max_infra_retries=$("$config_reader" --get MAX_INFRA_RETRIES "$project_dir/.agent/config.env") || exit 1
 retry_backoff=$("$config_reader" --get RETRY_BACKOFF_SECONDS "$project_dir/.agent/config.env") || exit 1
-
-product_fingerprint() {
-  destination=$1
-  manifest=$(mktemp "${TMPDIR:-/tmp}/agent-base-manifest.XXXXXX") || return 1
-  agent_product_manifest "$project_dir" "$manifest" || { rm -f "$manifest"; return 1; }
-  shasum -a 256 "$manifest" | awk '{print $1}' > "$destination"
-  rm -f "$manifest"
-}
 
 task_is_ready() {
   candidate=$1
@@ -113,69 +98,52 @@ task_max_attempts() {
   printf '%s\n' "$value"
 }
 
-validate_run_candidate() {
-  "$validator" --project-dir "$project_dir" --current-run-file "$1" >/dev/null
+# Der Laufzustand ist unversioniert: eine flache KEY=VALUE-Datei im Laufordner.
+# Sie wird nie gelesen, um einen Lauf fortzusetzen, sondern nur, um innerhalb
+# eines Aufrufs Phase, Runde und Fortschritt zu fuehren und am Ende einen
+# Beleg zu hinterlassen.
+run_state_get() {
+  [ -f "$run_state" ] || return 1
+  awk -F= -v wanted="$1" '$1 == wanted { print substr($0, length(wanted) + 2); found=1; exit } END { if (!found) exit 1 }' "$run_state"
 }
 
-update_run_field() {
-  ledger_atomic_replace_scalar "$current_run" "$1" "$2" validate_run_candidate
+run_state_set() {
+  key=$1
+  value=$2
+  case "$value" in *$'\n'*) return 1 ;; esac
+  temporary="$run_dir/.run.env.tmp"
+  awk -F= -v wanted="$key" -v replacement="$value" '
+    $1 == wanted { print wanted "=" replacement; seen=1; next }
+    { print }
+    END { if (!seen) print wanted "=" replacement }
+  ' "$run_state" > "$temporary" || { rm -f "$temporary"; return 1; }
+  mv -f "$temporary" "$run_state"
 }
 
-create_active_run() {
-  temporary=$(mktemp "${TMPDIR:-/tmp}/current-run.XXXXXX") || return 1
-  trap 'rm -f "$temporary"' RETURN
-  cat > "$temporary" <<EOF
----
-run_id: $run_id
-task_id: $task_id
-mode: $mode
-phase: plan
-iteration: 1
-attempt: ${run_attempt:-1}
-last_progress_fingerprint: none
-started_at: $started_at
-route_rule_version: "1"
-route_reason_code: none
-route_human_gate: $human_gate
-route_signals: []
----
-EOF
-  validate_run_candidate "$temporary" || return 1
-  agent_atomic_write "$current_run" "$temporary" || return 1
-  rm -f "$temporary"
-  trap - RETURN
+create_run_state() {
+  {
+    echo "run_id=$run_id"
+    echo "task_id=$task_id"
+    echo "mode=$mode"
+    echo "phase=plan"
+    echo "iteration=1"
+    echo "attempt=${run_attempt:-1}"
+    echo "last_progress_fingerprint=none"
+    echo "started_at=$started_at"
+    echo "human_gate=$human_gate"
+    echo "outcome="
+  } > "$run_state"
 }
 
-checkpoint_product() {
-  checkpoint_manifest="$run_dir/checkpoint.manifest"
-  checkpoint_temp="$run_dir/.checkpoint.manifest.tmp"
-  agent_repo_manifest "$project_dir" "$checkpoint_temp" || return 1
-  mv -f "$checkpoint_temp" "$checkpoint_manifest"
-  shasum -a 256 "$checkpoint_manifest" | awk '{print $1}' > "$run_dir/checkpoint.sha256"
-  if git -C "$project_dir" rev-parse --git-dir >/dev/null 2>&1; then
-    git -C "$project_dir" rev-parse --verify -q HEAD > "$run_dir/checkpoint.git-head" 2>/dev/null || echo unborn > "$run_dir/checkpoint.git-head"
-  else
-    echo none > "$run_dir/checkpoint.git-head"
-  fi
-}
-
-checkpoint_matches() {
-  [ -f "$run_dir/checkpoint.manifest" ] || { echo "orchestrate: Resume-Checkpoint fehlt" >&2; return 1; }
-  now="$run_dir/.resume-current.manifest"
-  agent_repo_manifest "$project_dir" "$now" || return 1
-  if ! cmp -s "$run_dir/checkpoint.manifest" "$now"; then
-    rm -f "$now"
-    echo "orchestrate: Dateien wurden seit dem letzten vollständigen Schritt verändert; Resume wird abgewiesen" >&2
-    return 1
-  fi
-  rm -f "$now"
-  expected_git=$(sed -n '1p' "$run_dir/checkpoint.git-head" 2>/dev/null || true)
-  if git -C "$project_dir" rev-parse --git-dir >/dev/null 2>&1; then
-    actual_git=$(git -C "$project_dir" rev-parse --verify -q HEAD 2>/dev/null || echo unborn)
-  else
-    actual_git=none
-  fi
-  [ -n "$expected_git" ] && [ "$expected_git" = "$actual_git" ] || { echo "orchestrate: Git-Stand passt nicht zum Resume-Checkpoint" >&2; return 1; }
+# Eine Zeile pro Lauf, append-only, unversioniert. Keine Migration, kein
+# Schema-Gate: der Beleg dient dem Nachlesen, nicht der Steuerung.
+append_run_metric() {
+  outcome=$1
+  metrics_file="$project_dir/.agent-runs/metrics.csv"
+  [ -f "$metrics_file" ] || printf '%s\n' 'run_id,task_id,mode,attempt,outcome,started_at,finished_at' > "$metrics_file"
+  printf '%s,%s,%s,%s,%s,%s,%s\n' \
+    "$run_id" "$task_id" "$mode" "$(run_state_get attempt 2>/dev/null || echo 0)" \
+    "$outcome" "$started_at" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$metrics_file"
 }
 
 task_control_snapshot() {
@@ -248,7 +216,7 @@ run_role() {
   role=$1
   role_task=${2:-}
   phase=$3
-  update_run_field phase "$phase" || return 1
+  run_state_set phase "$phase" || return 1
   call_sequence=$((call_sequence + 1))
   label=$(printf '%02d-%s' "$call_sequence" "$role")
   raw="$run_dir/outputs/$label.raw"
@@ -321,7 +289,6 @@ EOF
   "$validator" --project-dir "$project_dir" >/dev/null || return 1
   last_raw=$raw
   last_changes=$changes
-  checkpoint_product || return 1
 }
 
 output_value() {
@@ -337,7 +304,7 @@ manager_value() {
 }
 
 verify_candidate() {
-  update_run_field phase verify || return 1
+  run_state_set phase verify || return 1
   call_sequence=$((call_sequence + 1))
   mkdir -p "$run_dir/outputs" || return 1
   verify_log="$run_dir/outputs/$(printf '%02d' "$call_sequence")-verify.log"
@@ -348,7 +315,6 @@ verify_candidate() {
   else
     verification_result=red
   fi
-  checkpoint_product || return 1
   [ "$verification_result" = green ]
 }
 
@@ -383,19 +349,17 @@ record_failure() {
   new_attempts=$((attempts + 1))
   validate_task_candidate() { "$validator" --project-dir "$project_dir" --task-file "$1" >/dev/null; }
   ledger_atomic_replace_scalar "$task_file" attempts "$new_attempts" validate_task_candidate || return 1
-  update_run_field attempt "$((new_attempts + 1))" || return 1
+  run_state_set attempt "$((new_attempts + 1))" || return 1
   append_failure_note || return 1
 }
 
 finish_success() {
   human_review=$(ledger_scalar "$task_file" human_review) || return 1
-  route_human_gate=$(ledger_scalar "$current_run" route_human_gate 2>/dev/null || echo false)
-  if [ "$human_review" = true ] || [ "$route_human_gate" = true ]; then target=review; else target=done; fi
+  if [ "$human_review" = true ] || [ "$(run_state_get human_gate 2>/dev/null || echo false)" = true ]; then target=review; else target=done; fi
   "$status_gate" --project-dir "$project_dir" set-status "$task_id" "$target" in_progress || return 1
   if [ "$target" = review ]; then run_outcome=review; else run_outcome=success; fi
-  update_run_field phase finished || return 1
+  run_state_set phase finished || return 1
   run_active=false
-  checkpoint_product || return 1
   echo "orchestrate: Task $task_id ist $target"
 }
 
@@ -403,9 +367,8 @@ finish_single_red() {
   record_failure || true
   "$status_gate" --project-dir "$project_dir" set-status "$task_id" todo in_progress || return 1
   if [ "$(ledger_scalar "$verification_dir/latest.md" failure_kind 2>/dev/null || true)" = verifier ]; then run_outcome=verification_error; else run_outcome=blocked; fi
-  update_run_field phase finished || return 1
+  run_state_set phase finished || return 1
   run_active=false
-  checkpoint_product || return 1
   echo "orchestrate: Task $task_id blieb nach roter Prüfung offen" >&2
   return 1
 }
@@ -422,9 +385,8 @@ block_current_task() {
     *VERIFY_ERROR*) run_outcome=verification_error ;;
     *) run_outcome=blocked ;;
   esac
-  update_run_field phase finished || return 1
+  run_state_set phase finished || return 1
   run_active=false
-  checkpoint_product || return 1
   echo "orchestrate: Task $task_id blockiert ($safe_reason)" >&2
 }
 
@@ -451,7 +413,7 @@ EOF
 }
 
 run_finalizer_role() {
-  update_run_field phase finalize || return 1
+  run_state_set phase finalize || return 1
   finalizer_context=$("$context_builder" build --project-dir "$project_dir" --role finalizer --run-id "$run_id" --task-id "$task_id") || return 1
   finalizer_workspace=$(mktemp -d "${TMPDIR:-/tmp}/agent-finalizer.XXXXXX") || return 1
   mkdir -p "$finalizer_workspace/.agent" "$finalizer_workspace/.agent-runs/$run_id/outputs" "$finalizer_workspace/.agent-runs/$run_id/metadata" || { rm -rf "$finalizer_workspace"; return 1; }
@@ -538,7 +500,7 @@ switch_to_task() {
   "$status_gate" --project-dir "$project_dir" set-status "$selected" in_progress todo || return 1
   task_id=$selected
   task_file=$(ledger_task_path_by_id "$tasks_dir" "$task_id") || return 1
-  update_run_field task_id "$task_id"
+  run_state_set task_id "$task_id"
 }
 
 plan_is_placeholder() {
@@ -556,13 +518,12 @@ managed_loop() {
   if [ ! -f "$run_dir/brainstorm.done" ]; then
     run_role worker-brainstorm "$task_id" brainstorm || return 1
     : > "$run_dir/brainstorm.done"
-    checkpoint_product || return 1
   fi
 
   no_progress=0
-  iteration=$(ledger_scalar "$current_run" iteration)
+  iteration=$(run_state_get iteration)
   while [ "$iteration" -le "$max_iterations" ]; do
-    update_run_field iteration "$iteration" || return 1
+    run_state_set iteration "$iteration" || return 1
     run_role manager-manage '' plan || return 1
     decision=$last_raw
     action=$(manager_value action "$decision")
@@ -570,8 +531,8 @@ managed_loop() {
     reason=$(manager_value reason_code "$decision")
     case "$action" in
       request_human)
-        update_run_field phase paused || return 1
-        checkpoint_product || return 1
+        run_state_set phase paused || return 1
+        run_outcome=paused
         echo "orchestrate: menschliche Entscheidung erforderlich ($reason)"
         return 0 ;;
       blocked)
@@ -580,7 +541,7 @@ managed_loop() {
       done)
         [ "$(ledger_scalar "$task_file" last_verification)" = green ] && ledger_verification_is_green "$verification_dir" "$task_id" "$project_dir" "$task_file" || {
           echo "orchestrate: Manager meldete done ohne grünen Prüfbeleg" >&2
-          update_run_field phase failed || true
+          run_state_set phase failed || true
           return 1
         }
         finish_success
@@ -589,9 +550,9 @@ managed_loop() {
       *) echo "orchestrate: ungültige Manageraktion" >&2; return 1 ;;
     esac
 
-    switch_to_task "$selected" || { update_run_field phase failed || true; return 1; }
+    switch_to_task "$selected" || { run_state_set phase failed || true; return 1; }
     worker_kind=$(manager_value worker_kind "$decision")
-    case "$worker_kind" in normal|fresh) ;; *) echo "orchestrate: unbekannte Worker-Art" >&2; update_run_field phase paused; return 1 ;; esac
+    case "$worker_kind" in normal|fresh) ;; *) echo "orchestrate: unbekannte Worker-Art" >&2; run_state_set phase paused; return 1 ;; esac
     # Der letzte erlaubte Versuch laeuft immer fresh: eine Runde ohne die
     # Vorgeschichte, die bis hierher nicht getragen hat.
     attempts=$(ledger_scalar "$task_file" attempts) || return 1
@@ -607,9 +568,9 @@ managed_loop() {
     record_failure || { run_finalizer ATTEMPT_LIMIT; return 1; }
 
     fingerprint=$(progress_fingerprint "$decision") || return 1
-    previous=$(ledger_scalar "$current_run" last_progress_fingerprint)
+    previous=$(run_state_get last_progress_fingerprint)
     if [ "$fingerprint" = "$previous" ]; then no_progress=$((no_progress + 1)); else no_progress=0; fi
-    update_run_field last_progress_fingerprint "$fingerprint" || return 1
+    run_state_set last_progress_fingerprint "$fingerprint" || return 1
     if [ "$no_progress" -ge "$max_no_progress" ]; then run_finalizer NO_PROGRESS; return 1; fi
     iteration=$((iteration + 1))
   done
@@ -617,31 +578,38 @@ managed_loop() {
   return 1
 }
 
+# Ein Lauf endet nie mit einem Task in `in_progress`: was der Orchestrator
+# angefangen hat, faellt beim Abbruch auf `todo` zurueck. Nur so ist der
+# naechste Aufruf ein sauberer Neustart statt einer Wiederaufnahme.
+release_active_task() {
+  [ -n "${task_file:-}" ] || return 0
+  [ "$(ledger_scalar "$task_file" status 2>/dev/null || true)" = in_progress ] || return 0
+  "$status_gate" --project-dir "$project_dir" set-status "$task_id" todo in_progress >/dev/null 2>&1 \
+    || echo "orchestrate: Task $task_id konnte nicht auf todo zurueckgesetzt werden" >&2
+}
+
 cleanup() {
   exit_status=$?
   trap - EXIT HUP INT TERM
-  if [ "$run_active" = true ] && [ -f "$current_run" ]; then
-    phase=$(ledger_scalar "$current_run" phase 2>/dev/null || true)
-    case "$phase" in finished|paused|failed) ;; *) update_run_field phase failed >/dev/null 2>&1 || true ;; esac
-  fi
-  if [ "$metrics_started" = true ] && [ -f "$run_dir/metadata/run.env" ]; then
-    phase=$(ledger_scalar "$current_run" phase 2>/dev/null || true)
-    if [ "$phase" != paused ]; then
-      if [ -z "$run_outcome" ]; then
-        if [ "$exit_status" -eq 130 ]; then
-          run_outcome=cancelled
-        elif find "$run_dir/metadata" -maxdepth 1 -type f -name '*.env' ! -name run.env -exec awk -F= '$1 == "exit_status" && $2 != "0" { bad=1 } END { exit bad ? 0 : 1 }' {} \; -print -quit 2>/dev/null | grep -q .; then
-          run_outcome=infrastructure_error
-        elif [ "$(ledger_scalar "$verification_dir/latest.md" failure_kind 2>/dev/null || true)" = verifier ] && [ "$(ledger_scalar "$verification_dir/latest.md" run_id 2>/dev/null || true)" = "$run_id" ]; then
-          run_outcome=verification_error
-        else
-          task_status=$(ledger_scalar "$task_file" status 2>/dev/null || true)
-          case "$task_status" in done) run_outcome=success ;; review) run_outcome=review ;; *) run_outcome=blocked ;; esac
-        fi
+  if [ -n "$run_state" ] && [ -f "$run_state" ]; then
+    phase=$(run_state_get phase 2>/dev/null || true)
+    case "$phase" in finished|paused) ;; *) run_state_set phase failed >/dev/null 2>&1 || true ;; esac
+    if [ -z "$run_outcome" ]; then
+      if [ "$exit_status" -eq 130 ]; then
+        run_outcome=cancelled
+      else
+        case "$(ledger_scalar "$task_file" status 2>/dev/null || true)" in
+          done) run_outcome=success ;;
+          review) run_outcome=review ;;
+          blocked) run_outcome=blocked ;;
+          *) run_outcome=failed ;;
+        esac
       fi
-      "$metrics_tool" finalize "$project_dir" "$run_dir" "$run_outcome" >/dev/null || exit_status=1
     fi
+    run_state_set outcome "$run_outcome" >/dev/null 2>&1 || true
+    append_run_metric "$run_outcome" || true
   fi
+  [ "$run_active" = false ] || release_active_task
   [ -z "$scratch_dir" ] || rm -rf "$scratch_dir"
   [ "$lock_held" = false ] || agent_release_lock "$lock_dir"
   exit "$exit_status"
@@ -649,94 +617,83 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' HUP INT TERM
 
-if [ "$resume" = true ]; then
-  phase=$(ledger_scalar "$current_run" phase) || exit 1
-  case "$phase" in paused|failed) ;; *) echo "orchestrate: kein fortsetzbarer Lauf vorhanden" >&2; exit 1 ;; esac
-  task_id=$(ledger_scalar "$current_run" task_id) || exit 1
+# Ein --dry-run zeigt nur, was ein echter Lauf taete: keine Sperre, kein
+# Laufordner, keine Datei aendert sich.
+case "$selection" in
+  task) task_id=$requested_task ;;
+  next) task_id=$(select_next_task); [ -n "$task_id" ] || { echo "orchestrate: kein bereiter Task" >&2; exit 1; } ;;
+esac
+case "$task_id" in ''|*[!0-9]*) echo "orchestrate: ungültige Task-ID" >&2; exit 1 ;; esac
+
+if [ "$dry_run" = true ]; then
   task_file=$(ledger_task_path_by_id "$tasks_dir" "$task_id") || exit 1
-  [ "$(ledger_scalar "$task_file" status)" = in_progress ] || { echo "orchestrate: Resume-Task ist nicht in_progress" >&2; exit 1; }
-  run_id=$(ledger_scalar "$current_run" run_id) || exit 1
-  mode=$(ledger_scalar "$current_run" mode) || exit 1
-  run_dir="$project_dir/.agent-runs/$run_id"
-  scratch_dir=$(mktemp -d "${TMPDIR:-/tmp}/agent-scratch.XXXXXX") || exit 1
-  checkpoint_matches || exit 1
-  run_start_manifest="$scratch_dir/run-start.manifest"
-  agent_repo_manifest "$project_dir" "$run_start_manifest" || exit 1
-  "$metrics_tool" reopen "$project_dir" "$run_dir" || exit 1
-  metrics_started=true
-  call_sequence=$(find "$run_dir/outputs" -maxdepth 1 -type f -name '[0-9][0-9]-*' -print 2>/dev/null | sed 's#.*/##; s/-.*//' | LC_ALL=C sort -n | tail -n 1)
-  call_sequence=${call_sequence:-0}
-else
-  case "$selection" in
-    task) task_id=$requested_task ;;
-    next) task_id=$(select_next_task); [ -n "$task_id" ] || { echo "orchestrate: kein bereiter Task" >&2; exit 1; } ;;
-  esac
-  case "$task_id" in ''|*[!0-9]*) echo "orchestrate: ungültige Task-ID" >&2; exit 1 ;; esac
-  task_is_ready "$task_id" || { echo "orchestrate: Task $task_id ist nicht bereit" >&2; exit 1; }
-  task_file=$(ledger_task_path_by_id "$tasks_dir" "$task_id") || exit 1
-  attempts_at_start=$(ledger_scalar "$task_file" attempts) || exit 1
-  [ "$attempts_at_start" -lt "$max_task_attempts" ] || { echo "orchestrate: hartes Versuchslimit für Task $task_id ist erreicht" >&2; exit 1; }
-  run_attempt=$((attempts_at_start + 1))
   mode=$(agent_route_mode "$task_file" "$manual_mode" "$max_task_attempts") || exit 1
-  # Ein offener Task und ein ausdruecklich verlangtes Review enden nie
-  # unbesehen auf done.
   human_gate=$(ledger_scalar "$task_file" human_review) || exit 1
   [ "$(ledger_scalar "$task_file" class)" != open ] || human_gate=true
-  if [ "$dry_run" = true ]; then
-    base_file=$(mktemp "${TMPDIR:-/tmp}/agent-dry-base.XXXXXX") || exit 1
-    product_fingerprint "$base_file" || { rm -f "$base_file"; exit 1; }
-    base_fingerprint=$(sed -n '1p' "$base_file")
-    rm -f "$base_file"
-    dry_metadata=$("$metrics_tool" dry-run "$project_dir" "$task_id" "$mode" "$base_fingerprint") || exit 1
-    printf 'DRY_RUN=true\nTASK_ID=%s\nMODE=%s\nHUMAN_GATE=%s\nMETADATA=%s\nMAX_GLOBAL_ITERATIONS=%s\nMAX_TASK_ATTEMPTS=%s\nMAX_NO_PROGRESS=%s\n' \
-      "$task_id" "$mode" "$human_gate" "${dry_metadata#"$project_dir/"}" "$max_iterations" "$max_task_attempts" "$max_no_progress"
-    case "$mode" in
-      single) echo 'PLANNED_CALLS=worker-task,verify' ;;
-      verified) echo 'PLANNED_CALLS=worker-task,verify,worker-task-if-red,verify-if-fixed,manager-if-still-red' ;;
-      managed) echo 'PLANNED_CALLS=manager-plan-if-needed,worker-brainstorm-once,manager-manage,worker-task-or-fresh,verify,repeat-bounded' ;;
-    esac
-    exit 0
-  fi
-
-  [ "$mode" != blocked ] || { echo "orchestrate: Router blockiert Task $task_id vor dem Start" >&2; exit 1; }
-
-  # Ohne Commit gibt es keinen Stand, gegen den «schmutzig» etwas bedeuten
-  # koennte. Das Ledger zaehlt nicht mit: der Orchestrator schreibt es selbst.
-  if git -C "$project_dir" rev-parse --verify -q HEAD >/dev/null 2>&1 &&
-     [ -n "$(git -C "$project_dir" status --porcelain -- \
-       ':(exclude)docs/tasks' ':(exclude)docs/state' ':(exclude)docs/verification' 2>/dev/null)" ]; then
-    if [ "$allow_dirty" = false ]; then
-      echo "orchestrate: Arbeitsverzeichnis ist nicht sauber; wiederhole bewusst mit --allow-dirty" >&2
-      exit 1
-    fi
-  fi
-  mkdir -p "$project_dir/.agent-runs" || exit 1
-  agent_acquire_lock "$lock_dir" || exit 1
-  lock_held=true
-  run_id="$(date -u +%Y%m%dT%H%M%SZ)-T$(printf '%03d' "$((10#$task_id))")"
-  run_dir="$project_dir/.agent-runs/$run_id"
-  mkdir "$run_dir" || exit 1
-  scratch_dir=$(mktemp -d "${TMPDIR:-/tmp}/agent-scratch.XXXXXX") || exit 1
-  started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  base_file="$run_dir/base-fingerprint"
-  product_fingerprint "$base_file" || exit 1
-  base_fingerprint=$(sed -n '1p' "$base_file")
-  "$metrics_tool" start "$project_dir" "$run_dir" "$run_id" "$task_id" "$mode" "$started_at" "$run_attempt" "$base_fingerprint" || exit 1
-  metrics_started=true
-  "$status_gate" --project-dir "$project_dir" set-status "$task_id" in_progress todo >/dev/null || exit 1
-  run_active=true
-  create_active_run || exit 1
-  # Der Snapshot des Laufstarts liegt ausserhalb des Arbeitsbaums: ein Agent
-  # duerfte ihn sonst passend zu seinen Aenderungen umschreiben.
-  run_start_manifest="$scratch_dir/run-start.manifest"
-  agent_repo_manifest "$project_dir" "$run_start_manifest" || exit 1
-  checkpoint_product || exit 1
+  printf 'DRY_RUN=true\nTASK_ID=%s\nMODE=%s\nHUMAN_GATE=%s\nMAX_GLOBAL_ITERATIONS=%s\nMAX_TASK_ATTEMPTS=%s\nMAX_NO_PROGRESS=%s\n' \
+    "$task_id" "$mode" "$human_gate" "$max_iterations" "$max_task_attempts" "$max_no_progress"
+  case "$mode" in
+    single) echo 'PLANNED_CALLS=worker-task,verify' ;;
+    verified) echo 'PLANNED_CALLS=worker-task,verify,worker-task-if-red,verify-if-fixed,manager-if-still-red' ;;
+    managed) echo 'PLANNED_CALLS=manager-plan-if-needed,worker-brainstorm-once,manager-manage,worker-task-or-fresh,verify,repeat-bounded' ;;
+    *) echo 'PLANNED_CALLS=none' ;;
+  esac
+  exit 0
 fi
 
-[ "$dry_run" = false ] || exit 0
 mkdir -p "$project_dir/.agent-runs" || exit 1
-if [ "$lock_held" = false ]; then agent_acquire_lock "$lock_dir" || exit 1; lock_held=true; fi
+agent_acquire_lock "$lock_dir" || exit 1
+lock_held=true
+
+# Wer die Sperre haelt, ist der einzige Lauf. Ein Task, der trotzdem noch
+# `in_progress` traegt, stammt aus einem abgebrochenen Lauf und faellt hier
+# sichtbar auf `todo` zurueck.
+while IFS= read -r stale_file; do
+  [ -n "$stale_file" ] || continue
+  [ "$(ledger_scalar "$stale_file" status 2>/dev/null || true)" = in_progress ] || continue
+  stale_id=$(ledger_scalar "$stale_file" id) || continue
+  echo "orchestrate: abgebrochener Lauf gefunden; Task $stale_id wird auf todo zurueckgesetzt" >&2
+  "$status_gate" --project-dir "$project_dir" set-status "$stale_id" todo in_progress >/dev/null || exit 1
+done <<EOF
+$(ledger_task_files "$tasks_dir")
+EOF
+
+task_is_ready "$task_id" || { echo "orchestrate: Task $task_id ist nicht bereit" >&2; exit 1; }
+task_file=$(ledger_task_path_by_id "$tasks_dir" "$task_id") || exit 1
+attempts_at_start=$(ledger_scalar "$task_file" attempts) || exit 1
+[ "$attempts_at_start" -lt "$max_task_attempts" ] || { echo "orchestrate: hartes Versuchslimit für Task $task_id ist erreicht" >&2; exit 1; }
+run_attempt=$((attempts_at_start + 1))
+mode=$(agent_route_mode "$task_file" "$manual_mode" "$max_task_attempts") || exit 1
+# Ein offener Task und ein ausdruecklich verlangtes Review enden nie
+# unbesehen auf done.
+human_gate=$(ledger_scalar "$task_file" human_review) || exit 1
+[ "$(ledger_scalar "$task_file" class)" != open ] || human_gate=true
+[ "$mode" != blocked ] || { echo "orchestrate: Router blockiert Task $task_id vor dem Start" >&2; exit 1; }
+
+# Ohne Commit gibt es keinen Stand, gegen den «schmutzig» etwas bedeuten
+# koennte. Das Ledger zaehlt nicht mit: der Orchestrator schreibt es selbst.
+if git -C "$project_dir" rev-parse --verify -q HEAD >/dev/null 2>&1 &&
+   [ -n "$(git -C "$project_dir" status --porcelain -- \
+     ':(exclude)docs/tasks' ':(exclude)docs/state' ':(exclude)docs/verification' 2>/dev/null)" ]; then
+  if [ "$allow_dirty" = false ]; then
+    echo "orchestrate: Arbeitsverzeichnis ist nicht sauber; wiederhole bewusst mit --allow-dirty" >&2
+    exit 1
+  fi
+fi
+
+run_id="$(date -u +%Y%m%dT%H%M%SZ)-T$(printf '%03d' "$((10#$task_id))")"
+run_dir="$project_dir/.agent-runs/$run_id"
+mkdir "$run_dir" || exit 1
+scratch_dir=$(mktemp -d "${TMPDIR:-/tmp}/agent-scratch.XXXXXX") || exit 1
+started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+"$status_gate" --project-dir "$project_dir" set-status "$task_id" in_progress todo >/dev/null || exit 1
 run_active=true
+run_state="$run_dir/run.env"
+create_run_state || exit 1
+# Der Snapshot des Laufstarts liegt ausserhalb des Arbeitsbaums: ein Agent
+# duerfte ihn sonst passend zu seinen Aenderungen umschreiben.
+run_start_manifest="$scratch_dir/run-start.manifest"
+agent_repo_manifest "$project_dir" "$run_start_manifest" || exit 1
 
 case "$mode" in
   single)
@@ -754,8 +711,8 @@ case "$mode" in
     record_failure || { run_finalizer ATTEMPT_LIMIT; exit 1; }
     # Zwei rote Versuche heben den Rang: der Router liest die neuen attempts.
     mode=$(agent_route_mode "$task_file" "$manual_mode" "$max_task_attempts") || exit 1
-    update_run_field mode "$mode" || exit 1
+    run_state_set mode "$mode" || exit 1
     if [ "$mode" = managed ]; then managed_loop; else run_finalizer ATTEMPT_LIMIT; exit 1; fi ;;
   managed) managed_loop ;;
-  *) echo "orchestrate: Modus $mode wird nicht ausgeführt" >&2; update_run_field phase paused || true; exit 1 ;;
+  *) echo "orchestrate: Modus $mode wird nicht ausgeführt" >&2; run_state_set phase paused || true; exit 1 ;;
 esac

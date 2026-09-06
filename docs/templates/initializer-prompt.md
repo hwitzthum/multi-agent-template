@@ -28,7 +28,6 @@ Erzeuge genau:
    - `docs/state/goal.md` mit Ziel, Nicht-Zielen und messbaren Erfolgskriterien;
    - `docs/state/plan.md` mit der knappen Gesamtstrategie;
    - `docs/state/notes.md` nur mit bereits belegten Startfakten;
-   - `docs/state/current-run.md` im vorhandenen Leerlauf-Schema;
    - `docs/verification/latest.md` mit `result: never` sowie die Ordner
      `docs/tasks/`, `docs/verification/history/` und
      `docs/state/notes-archive/`.
@@ -67,9 +66,8 @@ Erzeuge genau:
    scripts/verify-task.sh und alles unter scripts/agent/ sind fertige,
    getestete Orchestrierung (tests/orchestrator/). Sie lesen das Ledger über
    scripts/agent/ledger.sh und brauchen keine Anpassung an den Stack.
-   docs/state/metrics.csv existiert bereits mit dem verbindlichen Schema;
-   ausschließlich die idempotente Lauf-Finalisierung hängt pro Run genau eine
-   Zeile an. Fehlende Token- oder Kostenwerte bleiben leer.
+Der Laufzustand ist unversioniert: er liegt unter .agent-runs/ und
+   gehört nicht ins Ledger.
 
 4. Skelett: Verzeichnisstruktur, Toolchain, Toolchain-Manifest (z.B.
    package.json) mit den Standard-Befehlen der Projektbeschreibung — trage

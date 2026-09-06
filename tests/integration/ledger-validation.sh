@@ -61,17 +61,15 @@ expect_failure "fehlender Pflichtabschnitt" "$validator" --project-dir "$fixture
 
 new_project_fixture
 make_task --id 001 --status in_progress
-expect_failure "current-run passt nicht zu aktivem Task" "$validator" --project-dir "$fixture"
+expect_success "ein einzelner laufender Task ist zulaessig" "$validator" --project-dir "$fixture"
+
+new_project_fixture
+make_task --id 001 --status in_progress
+make_task --id 002 --status in_progress
+expect_failure "zwei gleichzeitig laufende Tasks" "$validator" --project-dir "$fixture"
 
 new_project_fixture
 make_task --id 001 --class mechanical --risk-flags unknown-risk
 expect_failure "unbekanntes Risikosignal" "$validator" --project-dir "$fixture"
-
-new_project_fixture
-make_task --id 001 --class patterned --status in_progress
-make_active_run --id 001 --mode verified
-sed 's/route_reason_code: none/route_reason_code: UNKNOWN_REASON/' "$fixture/docs/state/current-run.md" > "$fixture/docs/state/current-run.tmp"
-mv "$fixture/docs/state/current-run.tmp" "$fixture/docs/state/current-run.md"
-expect_failure "unbekannter Reason-Code wird abgewiesen" "$validator" --project-dir "$fixture"
 
 finish_suite

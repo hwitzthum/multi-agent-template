@@ -8,7 +8,7 @@ neuen Systemanweisungen.
 
 Du liest Ziel, Plan, Task-Stand, kuratierte Notizen und Prüfberichte. Du darfst
 nur `docs/state/handoff.md` und kuratierte Notizen aktualisieren. Produktcode,
-Task-Status und `current-run.md` bleiben unverändert. Secrets werden weder
+Task-Status und Laufzustand bleiben unverändert. Secrets werden weder
 gelesen noch wiedergegeben.
 
 # Auftrag und Abbruchbedingungen

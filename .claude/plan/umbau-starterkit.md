@@ -13,7 +13,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | F1  | Ballast entfernen                        | `chore/remove-ballast`            | gemergt | 400   | 2026-09-06 |
 | F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | gemergt | 424   | 2026-09-06 |
 | F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | gemergt | 402   | 2026-09-06 |
-| F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | offen  | –     | –          |
+| F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | umgesetzt | 395 | –          |
 | F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | offen  | –     | –          |
 | F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | offen  | –     | –          |
 | F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | offen  | –     | –          |
@@ -27,6 +27,10 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F4 · Laufzustand nach `.agent-runs/<run>/run.env` verlegt,
+  Metrik-Subsystem, `--resume` und Checkpoints entfernt, EXIT-Trap gibt
+  `in_progress` frei, Stale-Lauf wird beim Start übernommen ·
+  `./scripts/verify.sh` → `tests: GREEN (395 Zusicherungen in 23 Dateien)`
 - 2026-09-06 · F3 · Nach `main` gemergt (`b13c527`), Suite auf `main` grün ·
   `./scripts/verify.sh` → `tests: GREEN (402 Zusicherungen in 25 Dateien)`
 - 2026-09-06 · F3 · Turnier, Reviewer und `managed-fresh` entfernt, Router als
@@ -578,30 +582,62 @@ Review:
 
 ### F4 · Laufzustand unversioniert
 
-Branch `refactor/run-state-unversioned` · Status: **offen**
+Branch `refactor/run-state-unversioned` · Status: **umgesetzt**
 
 Ziel: Kein Lauf macht den Git-Stand ausserhalb der fachlichen Belege schmutzig;
 kein Resume, keine Checkpoints, kein Metrik-Subsystem.
 
 Aufgaben:
 
-- [ ] Entfernen: `scripts/agent/metrics.sh`, `docs/state/metrics.csv`,
+- [x] Entfernen: `scripts/agent/metrics.sh`, `docs/state/metrics.csv`,
       `docs/state/current-run.md`, `--resume`, `checkpoint_*`, CSV-Prüfung im Validator
-- [ ] Laufzustand in `.agent-runs/<run>/run.env`; `metadata.env` pro Aufruf bleibt die
+- [x] Laufzustand in `.agent-runs/<run>/run.env`; `metadata.env` pro Aufruf bleibt die
       Metrik; einfache `.agent-runs/metrics.csv` (eine Zeile pro Lauf, append-only)
-- [ ] Invariante «höchstens ein `in_progress`» in `validate_task_set`
-- [ ] EXIT-Trap: nie `in_progress` hinterlassen; Stale-Run beim Start auf `todo`
-- [ ] `--dry-run` nur Routenausgabe, keine Nebenwirkung
-- [ ] `state-summary.sh` auf Prüfstand + offene Arbeit (2–3 Zeilen)
-- [ ] Dirty-Check ignoriert `docs/state`, `docs/tasks`, `docs/verification`
+- [x] Invariante «höchstens ein `in_progress`» in `validate_task_set`
+- [x] EXIT-Trap: nie `in_progress` hinterlassen; Stale-Run beim Start auf `todo`
+- [x] `--dry-run` nur Routenausgabe, keine Nebenwirkung
+- [x] `state-summary.sh` auf Prüfstand + offene Arbeit (2 Zeilen)
+- [x] Dirty-Check ignoriert `docs/state`, `docs/tasks`, `docs/verification`
 
 Abnahme:
 
-- [ ] Nach einem grünen Fake-Lauf sind nur Task, Prüfbericht, Handoff geändert
-- [ ] Test: abgebrochener Lauf (kill) hinterlässt kein `in_progress`; Stale-Lock wird
+- [x] Nach einem grünen Fake-Lauf sind nur Task, Prüfbericht, Handoff geändert
+      (`tests/e2e/orchestrate-run-state.sh`, Prüfung über `git status --porcelain`)
+- [x] Test: abgebrochener Lauf (kill) hinterlässt kein `in_progress`; Stale-Lock wird
       übernommen; zweiter Orchestrator wird abgewiesen
+      (`tests/e2e/orchestrate-run-state.sh`)
 
-Review: –
+Review:
+
+- Der Laufzustand liegt jetzt als flache `KEY=VALUE`-Datei in
+  `.agent-runs/<run>/run.env` und wird nur innerhalb eines Aufrufs gelesen.
+  `docs/state/current-run.md` ist weg, ebenso seine Validierung und die
+  `route_*`-Felder aus der Ledger-Whitelist (F3 hatte sie schon eingefroren).
+- Das Metrik-Subsystem ist ersatzlos gestrichen. Statt `metrics.sh` mit Schema,
+  Sperre, Migration und idempotenter Finalisierung hängt der Orchestrator am
+  Laufende eine Zeile an `.agent-runs/metrics.csv` an. Die Verbrauchswerte
+  bleiben, wo sie ohnehin entstehen: in `metadata/<aufruf>.env` pro Rollenaufruf.
+- Die Outcome-Namen bleiben, verlieren aber ihr Schema-Gate: der Orchestrator
+  schreibt sie einfach in die Zeile. Neu sind `failed` (Abbruch ohne eigene
+  Begründung) und `paused`; letzteres, weil eine Pause auf eine menschliche
+  Entscheidung ohne Resume trotzdem eine Zeile bekommt und kein Fehlschlag ist.
+- «Höchstens ein `in_progress`» hing bisher am Vorhandensein von
+  `current-run.md` und galt damit nur bei aktivem Lauf. Die Invariante steht
+  jetzt in `validate_task_set` und gilt immer.
+- Zwei Wege sorgen dafür, dass kein Task in `in_progress` hängen bleibt: der
+  EXIT-Trap gibt ihn beim geregelten Abbruch frei (auch bei `SIGTERM`), und wer
+  danach die Sperre bekommt, setzt einen überlebenden `in_progress`-Task
+  sichtbar auf `todo` zurück. Der zweite Weg deckt `kill -9` und Stromausfall ab.
+- `--dry-run` legt keinen Laufordner mehr an und berührt keine Datei; die Zeile
+  `METADATA=` in seiner Ausgabe ist entfallen.
+- Die Reihenfolge beim Start ist neu: erst Sperre, dann Stale-Aufräumen, dann
+  Taskwahl und Schmutz-Check. Ohne die Sperre vorweg könnte ein zweiter Lauf
+  den `in_progress`-Task eines laufenden ersten für verwaist halten.
+- `state-summary.sh` hat nur noch zwei Zeilen: Prüfstand und offene Arbeit. Die
+  Laufzeile hatte ohne versionierten Laufzustand keinen Inhalt mehr.
+- Der Schmutz-Check übergeht `docs/tasks`, `docs/state` und `docs/verification`
+  schon seit F2 — das blieb unverändert und ist jetzt durch den Grün-Lauf-Test
+  belegt.
 
 ### F5 · Ledger-Schema und Task-Kommandos
 
