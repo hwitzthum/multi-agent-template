@@ -25,10 +25,10 @@
 ## Fehler und Wiederaufnahme
 
 - Erster offener Fehler: keiner
-- Nächster Schritt: Initialisierung nach `docs/templates/initializer-prompt.md`
-  auf einem neuen Branch ab `main`.
+- Nächster Schritt: Initialisierung nach `docs/prompts/init.md` auf einem
+  neuen Branch ab `main`.
 
 ## Vorgeschlagene nächste Aufgabe
 
-- Projekt nach `docs/templates/initializer-prompt.md` initialisieren; danach
-  werden die ersten Tasks unter `docs/tasks/` frei.
+- Projekt nach `docs/prompts/init.md` initialisieren; danach werden die
+  ersten Tasks unter `docs/tasks/` frei.

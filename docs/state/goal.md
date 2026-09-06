@@ -1,7 +1,7 @@
 # Ziel
 
-<!-- Wird von der Initialisierung (docs/templates/initializer-prompt.md) aus der
-     Projektbeschreibung gefüllt. Die fünf Abschnitte sind Pflicht und werden
+<!-- Wird von der Initialisierung (docs/prompts/init.md) aus der Projekt-
+     beschreibung gefüllt. Die fünf Abschnitte sind Pflicht und werden
      von ./scripts/validate-ledger.sh geprüft. -->
 
 ## Ergebnis

@@ -1,9 +1,44 @@
 # Architektur- und Sicherheitsvertrag der Agenten-Orchestrierung
 
-Rohfassung: mit F9 wird diese Datei die normative Beschreibung.
+Diese Datei ist die normative Beschreibung der Orchestrierung. Wo Code und
+Text auseinanderlaufen, ist der Text zu korrigieren, nicht der Code
+stillschweigend zu dulden; `tests/lint/check-docs.sh` hält beides zusammen.
+Das README ist die kurze Bedienanleitung und verweist hierher.
 
 Kontrollflusstests unter `tests/` verwenden ausschließlich einen
 Fake Runner; echte Aufrufe bleiben hinter dem Runner-Adapter gekapselt.
+
+## Skriptinventar
+
+Jedes ausführbare Skript, sein Zweck und seine Optionen. `--project-dir PFAD`
+richtet ein Skript auf eine andere Projektwurzel als die eigene aus; die Tests
+nutzen das gegen ein Fixture.
+
+| Skript                        | Zweck                                            | Optionen                                                                        |
+| ----------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `scripts/orchestrate.sh`      | einziger Einstieg für einen kontrollierten Lauf  | `--task ID`, `--next`, `--dry-run`, `--mode MODUS`, `--allow-dirty`, `--project-dir` |
+| `scripts/next-tasks.sh`       | `todo`-Tasks mit erfüllten Abhängigkeiten        | `--project-dir`                                                                 |
+| `scripts/state-summary.sh`    | Prüfstand und offene Arbeit in zwei Zeilen       | keine                                                                           |
+| `scripts/doctor.sh`           | Werkzeuge, Runner und Repository-Zustand prüfen  | `--project-dir`                                                                 |
+| `scripts/task.sh`             | die zwei menschlichen Statuswechsel              | `reopen ID`, `approve ID`, `--project-dir`                                      |
+| `scripts/verify.sh`           | einzige globale Projektprüfung                   | `--quick`, `--deep`                                                             |
+| `scripts/verify-task.sh`      | Prüf-Gateway eines Tasks, schreibt den Bericht   | `--run-id`, `--attempt`, `--timeout`, `--project-dir`, `TASK-ID`                |
+| `scripts/validate-ledger.sh`  | Task-Graph, Ledger-Schema, Status-/Prüfbezüge    | `--task-file DATEI`, `--project-dir`                                            |
+| `scripts/bash-guard.sh`       | `PreToolUse`-Hook: harte Befehlssperren          | keine (liest Hook-JSON von stdin)                                               |
+| `scripts/commit-gate.sh`      | `PreToolUse`-Hook: `verify.sh --quick` vor Commit | keine (liest Hook-JSON von stdin)                                              |
+| `scripts/agent/config.sh`     | `.agent/config.env` lesen und validieren         | `--check [datei]`, `--get KEY [datei]`                                          |
+| `scripts/agent/context.sh`    | Kontextpaket einer Rolle bauen                   | `build --role`, `--run-id`, `--task-id`, `--fresh`, `--include`, `--project-dir` |
+| `scripts/agent/policy.sh`     | Pfad- und Schreibgrenzen prüfen                  | `context-path PFAD`, `role-write ROLLE PFAD`                                    |
+| `scripts/agent/runner.sh`     | Anbieter-Adapter und Ergebnisprüfung             | `run_agent`, `validate_result`, `validate_metadata`                             |
+| `scripts/agent/status.sh`     | Status-Gate, einziger maschineller Schreibweg    | `set-status ID NEU ERWARTET`, `--human-approved`, `--project-dir`               |
+| `scripts/agent/ledger.sh`     | Ledger-Leser und atomare Schreibhilfen           | wird eingebunden; `scalar`, `list`, `active-notes`                              |
+| `scripts/agent/route.sh`      | Modus-Router                                     | wird eingebunden (`agent_route_mode`)                                           |
+| `scripts/agent/rolecall.sh`   | bewachter Rollenaufruf                           | wird eingebunden (`run_role`)                                                   |
+| `scripts/agent/common.sh`     | Sperren, Zeitlimits, Manifeste, Snapshot         | wird eingebunden                                                                |
+| `tests/run.sh`                | Testsuite                                        | `--fast`, `--jobs N`, `unit|integration|e2e|lint`                               |
+
+`scripts/verify.sh` ist der einzige Platzhalter darin: ein Projekt aus diesem Kit
+ersetzt ihn durch seine eigene Prüfung. Alles andere bleibt unverändert.
 
 ## Verbindliche Zuständigkeiten
 
@@ -79,6 +114,28 @@ Werte. Unbekannte Schlüssel, Duplikate, negative/Null-Limits, Leerzeichen und
 Shellsyntax führen zu einem Fehler. Die Datei wird nie mit `source` oder `eval`
 geladen.
 
+Alle dreizehn Schlüssel sind Pflicht; ein fehlender Schlüssel bricht den Lauf ab,
+bevor irgendetwas startet. Die Zahlenwerte sind positive ganze Zahlen.
+
+| Schlüssel                | Wirkung                                                             | Auslieferung |
+| ------------------------ | ------------------------------------------------------------------- | ------------ |
+| `MAX_GLOBAL_ITERATIONS`  | Runden der Versuchsschleife eines Laufs                             | `10`         |
+| `MAX_TASK_ATTEMPTS`      | rote Versuche je Task; erschöpft ergibt `blocked`                   | `3`          |
+| `MAX_NO_PROGRESS`        | Runden ohne Fortschritt, ab denen `NO_PROGRESS` blockiert           | `1`          |
+| `CONTEXT_MAX_CHARS`      | Obergrenze eines Kontextpakets in Zeichen                           | `48000`      |
+| `NOTES_MAX_CHARS`        | Budget des Notes-Abschnitts im Kontext                              | `12000`      |
+| `VERIFY_TIMEOUT_SECONDS` | Zeitlimit eines einzelnen Akzeptanzbefehls                          | `90`         |
+| `AGENT_TIMEOUT_SECONDS`  | Zeitlimit eines einzelnen Modellaufrufs                             | `900`        |
+| `AGENT_MAX_TURNS`        | Obergrenze agentischer Runden eines Modellaufrufs                   | `60`         |
+| `MAX_INFRA_RETRIES`      | Wiederholungen nur bei Provider-/Timeoutfehlern                     | `1`          |
+| `RETRY_BACKOFF_SECONDS`  | Pause vor einem Infrastruktur-Retry                                 | `1`          |
+| `AGENT_RUNNER`           | `claude` oder `codex`                                               | `claude`     |
+| `AGENT_MODEL`            | Modellname; `default` überlässt die Wahl dem CLI                    | `default`    |
+| `FINALIZER`              | `off` oder `llm` — der zusätzliche Modellaufruf bei einer Blockade  | `off`        |
+
+`.agent/verification-allowlist` ist die zweite Konfigurationsdatei: sie trägt die
+erlaubten Präfixe der `acceptance`-Befehle (siehe «Verification Gateway»).
+
 ## Ledger-Vertrag
 
 `scripts/agent/ledger.sh` liest eine Datei in genau einem awk-Durchlauf und gibt
@@ -89,6 +146,32 @@ Listen, keine Feldnamen — welche Felder ein Task tragen muss, entscheidet alle
 Konfiguration interpretiert. Jede Änderung wird zuerst in einer temporären Datei
 im selben Ordner validiert und erst danach atomar an ihren Zielpfad verschoben.
 
+`scripts/validate-ledger.sh` erzwingt das Task-Schema: acht Einzelfelder, vier
+Listen, vier Rumpfabschnitte. Andere Felder sind ungültig, ein Einzelfeld mit
+zwei Werten ebenfalls. Der Dateiname ist der Schlüssel — Task `017` liegt als
+`docs/tasks/017.md`.
+
+| Feld              | Art        | erlaubte Werte                                              |
+| ----------------- | ---------- | ----------------------------------------------------------- |
+| `id`              | Einzelwert | Ziffern; muss zum Dateinamen passen                          |
+| `title`           | Einzelwert | nicht leer                                                   |
+| `status`          | Einzelwert | `todo`, `in_progress`, `review`, `done`, `blocked`           |
+| `class`           | Einzelwert | `mechanical`, `patterned`, `open`                            |
+| `orchestration`   | Einzelwert | `auto`, `single`, `verified`, `managed`                      |
+| `attempts`        | Einzelwert | nichtnegative ganze Zahl                                     |
+| `human_review`    | Einzelwert | `true`, `false`                                              |
+| `blocked_reason`  | Einzelwert | frei; nur bei `status: blocked` gefüllt                      |
+| `depends_on`      | Liste      | Task-IDs, echte technische Abhängigkeiten                    |
+| `touches`         | Liste      | Pfade; leer heißt unbeschränkt                               |
+| `risk_flags`      | Liste      | `high-risk`, `cross-component`, `repeated-failure`           |
+| `acceptance`      | Liste      | Prüfbefehle als Argumentliste, ohne Shell-Metazeichen        |
+
+Pflichtabschnitte im Rumpf: `# Kontext`, `# Umfang`, `# Nicht Teil dieser
+Aufgabe`, `# Akzeptanzkriterien`. `# Offene Frage` kommt hinzu, sobald der
+Manager eine Rückfrage stellt. Der Validator lässt außerdem höchstens einen Task
+`in_progress` und prüft, dass jede `depends_on`-ID existiert und der Graph
+zyklenfrei bleibt.
+
 Ein Task darf nur mit einem passenden grünen Bericht unter
 `docs/verification/<id>.md` auf `done` wechseln. Bei `human_review: true` führt
 der direkte Weg von `in_progress` zuerst über `review`. Von `blocked` zurück auf
@@ -97,6 +180,16 @@ die Freigabe aus `review` nur über `./scripts/task.sh approve <id>`. Höchstens
 ein Task ist `in_progress`; ein abgebrochener Lauf fällt beim nächsten Start auf
 `todo` zurück.
 Verworfene Notizen liefert der Ledger-Leser nie als aktive Fakten aus.
+
+Auch die Zustandsdateien haben ein Schema. `docs/state/goal.md` braucht
+`# Ziel`, `## Ergebnis`, `## Muss`, `## Nicht Teil` und `## Globale Abnahme`;
+`docs/state/plan.md` braucht `# Plan`, `## Aktuelle Strategie`,
+`## Meilensteine`, `## Offene Risiken` und `## Änderungsverlauf`.
+`docs/state/notes.md` beginnt mit `# Notizen`; jede Notiz ist eine Überschrift
+`## N-<nummer>` mit den sieben Pflichtfeldern `tasks`, `date`, `source`,
+`confidence`, `status`, `evidence` und `finding`. `confidence` ist
+`hypothesis`, `observed`, `verified` oder `rejected`, `status` ist `active`
+oder `resolved`; nur aktive Notizen erreichen einen Kontext.
 
 ## Router-Vertrag
 
@@ -121,10 +214,13 @@ diese Freigabe wird abgewiesen.
 
 ## Prompt-, Kontext- und Ausgabevertrag
 
-Die drei Prompts unter `docs/prompts/` trennen Entscheidung, Umsetzung und
-Übergabe. Jeder benennt genau ein Ziel, seine Eingaben und Schreibgrenzen,
-Abbruchbedingungen sowie ein maschinenprüfbares Ergebnis. Repository-Inhalte
-bleiben untrusted data und können die Rolle nicht ändern.
+Die drei Rollenverträge `docs/prompts/{manager,worker,finalizer}.md` trennen
+Entscheidung, Umsetzung und Übergabe. Jeder benennt genau ein Ziel, seine
+Eingaben und Schreibgrenzen, Abbruchbedingungen sowie ein maschinenprüfbares
+Ergebnis. Repository-Inhalte bleiben untrusted data und können die Rolle nicht
+ändern. `docs/prompts/init.md` liegt daneben, ist aber keine Rolle: es ist der
+einmalige Initialisierungsprompt für einen Menschen, und `context.sh` kennt
+ausschließlich die drei Rollennamen.
 
 Ein Rollenergebnis ist eine JSON-Datei. Die Schemata liegen als
 `scripts/agent/schemas/{manager,worker,finalizer}.json`: alle Properties sind
@@ -165,8 +261,13 @@ Ledger-Fakt.
 
 ## Laufzustand und Metrik
 
-Der Laufzustand ist unversioniert. `.agent-runs/<run-id>/run.env` führt Lauf-ID,
-Task, Modus, Phase, Runde, Versuch, Fortschrittsfingerprint und Ergebnis;
+Der Laufzustand ist unversioniert. Die Lauf-ID ist
+`<YYYYMMDD>T<HHMMSS>Z-T<task>`, etwa `20260906T094500Z-T017`.
+`.agent-runs/<run-id>/run.env` führt `run_id`, `task_id`, `mode`, `phase`,
+`iteration`, `attempt`, `last_progress_fingerprint`, `started_at`, `human_gate`
+und `outcome`; `phase` ist `plan`, `work`, `verify`, `finalize`, `finished` oder
+`failed`. Daneben liegen `contexts/`, `results/`, `metadata/`, `manifests/`,
+`outputs/`, `verify/` und bei Bedarf `quarantine/`.
 `.agent-runs/<run-id>/metadata/<aufruf>.env` trägt pro Rollenaufruf die Zahlen
 des Runners (Token- und Kostenwerte nur, soweit der Runner sie liefert; nichts
 wird geschätzt). Am Laufende hängt der Orchestrator eine Zeile an
@@ -177,7 +278,10 @@ finished_at`. `outcome` ist einer aus `success`, `review`, `blocked`,
 
 Ein Lauf ist zwischen zwei Aufrufen zustandslos: es gibt kein Fortsetzen und
 keine Checkpoints. `scripts/orchestrate.sh --dry-run` zeigt nur die Route und
-schreibt keine einzige Datei.
+schreibt keine einzige Datei — auch keinen Laufordner. Seine Ausgabe ist
+maschinenlesbar: `DRY_RUN`, `TASK_ID`, `MODE`, `HUMAN_GATE`, `FINALIZER`,
+`MAX_GLOBAL_ITERATIONS`, `MAX_TASK_ATTEMPTS`, `MAX_NO_PROGRESS` und
+`PLANNED_CALLS`.
 
 ## Runner-Grenze
 
@@ -290,6 +394,20 @@ außerhalb von `touches` werden auf das Vorher-Manifest zurückgesetzt und
 stoppen den Lauf. Rohoutput und Runner-Metadaten bleiben
 unter `.agent-runs/<run-id>/`; kein Agentenergebnis wird ungeprüft ausgewertet.
 
+## Sperren
+
+Es gibt genau zwei Sperren, beide als Verzeichnis mit einer PID-Datei — `mkdir`
+ist die atomare Operation, die kein Dateisystem aufweicht:
+
+- `.agent-runs/.orchestrator-lock` — es läuft höchstens ein Orchestrator;
+- `docs/tasks/.status-lock` — es läuft höchstens ein Statuswechsel.
+
+Eine Sperre, deren PID nicht mehr lebt, stammt aus einem harten Abbruch und wird
+mit sichtbarer Meldung entfernt; ohne PID-Datei gilt sie als gehalten, weil ihr
+Inhaber sie gerade schreibt. Der EXIT-Trap gibt beide wieder frei. Weitere
+Sperren gibt es nicht: alle übrigen Schreibzugriffe sind atomare Ersetzungen
+(temporäre Datei im Zielordner, dann `mv`).
+
 ## Manifeste und Snapshot
 
 Ein Manifest ist die sortierte Liste `<feld>  <pfad>` eines Projektstands.
@@ -331,8 +449,8 @@ Fresh ist kein eigener Modus, sondern eine Versuchsvariante innerhalb von
 erlaubten Versuch. Der Orchestrator setzt dann alle seit dem Laufstart
 veränderten Pfade innerhalb von `touches` über `agent_snapshot_restore` auf den
 Snapshot des Laufstarts zurück; Pfade, die es beim Laufstart noch nicht gab,
-wandern nach `.agent-runs/<run-id>/quarantine/` statt gelöscht zu werden. Die
-Der Worker läuft dann in seiner Fresh-Variante: er erhält Goal, Task und die
+wandern nach `.agent-runs/<run-id>/quarantine/` statt gelöscht zu werden. Der
+Worker läuft dann in seiner Fresh-Variante: er erhält Goal, Task und die
 Dateiliste, aber weder Notizen noch den vorherigen Prüfbericht.
 
 Der Snapshot des Laufstarts liegt außerhalb des Arbeitsbaums, damit ein Agent
@@ -374,7 +492,29 @@ diese Werte als eingebauter Standard; existiert sie, ersetzt sie ihn vollständi
 und kann ihn damit verschärfen oder um den eigenen Stack erweitern.
 
 Jeder Task hat genau einen Bericht: `docs/verification/<id>.md`. `latest.md` ist
-die Kopie des zuletzt geschriebenen Berichts. Ein Bericht gilt nur für den
+die Kopie des zuletzt geschriebenen Berichts. Sein Frontmatter ist selbst ein
+Ledger-Schema:
+
+| Feld                    | Bedeutung                                                    |
+| ----------------------- | ------------------------------------------------------------ |
+| `run_id`                | Lauf, der die Prüfung angestoßen hat                         |
+| `task_id`               | geprüfter Task                                               |
+| `attempt`               | Versuchsnummer                                               |
+| `result`                | `green` oder `red`                                           |
+| `failure_kind`          | `none`, `product` oder `verifier`                            |
+| `started_at`            | Beginn in UTC                                                |
+| `finished_at`           | Ende in UTC                                                  |
+| `candidate_fingerprint` | Hash über Produkt, Tests und Task-Akzeptanz                  |
+| `verifier_version`      | Hash über die Prüflogik selbst                               |
+| `log_path`              | Pfad des vollständigen Logs unter `.agent-runs/`             |
+
+Der Auslieferungsstand von `latest.md` ist ein Platzhalter mit `result: never`
+und ohne Fingerprints; er sagt nur, dass noch nie geprüft wurde.
+
+`failure_kind: verifier` heißt: der Prüfweg selbst ist defekt (Timeout,
+fehlendes Programm, interner Fehler). Das ist keine Aussage über den Kandidaten
+und verbraucht deshalb keinen Versuch. Der Rumpf nennt die Befehle mit
+`OK`/`FAILED`/`REJECTED`, den ersten relevanten Fehler und den Logpfad. Ein Bericht gilt nur für den
 exakten Kandidaten- und Verifier-Fingerprint. Änderungen an Produkt, Tests,
 Task-Akzeptanz oder Prüflogik machen ihn für den Statusübergang ungültig. Der
 vollständige lokale Log liegt unter `.agent-runs/<run-id>/verify/`. Das
@@ -387,7 +527,7 @@ Task, nicht den damaligen Fingerprint.
 
 Die Orchestrierung ist stackneutral. Das Repository enthält keinen Produktcode;
 Stack und Skelett legt erst der Initializer nach der Projektbeschreibung in
-`docs/templates/initializer-prompt.md` an.
+`docs/prompts/init.md` an.
 
 ## Unveränderliche Sicherheitsregeln
 
