@@ -18,7 +18,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | gemergt   | 547   | 2026-09-06 |
 | F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | gemergt   | 666   | 2026-09-06 |
 | F8  | Prüftor verschlanken                     | `refactor/verify-gate`            | gemergt   | 677   | 2026-09-06 |
-| F9  | Dokumentation                            | `docs/architecture`               | geprüft   | 693   | –          |
+| F9  | Dokumentation                            | `docs/architecture`               | gemergt   | 693   | 2026-09-06 |
 
 Reihenfolge ist verbindlich (jedes Feature setzt auf dem vorigen auf). Vor jedem
 Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Besitzers.
@@ -1026,7 +1026,7 @@ Review:
 
 ### F9 · Dokumentation
 
-Branch `docs/architecture` · Status: **geprüft**
+Branch `docs/architecture` · Status: **gemergt**
 
 Ziel: Eine normative Beschreibung, ein kurzes README, ein CLAUDE.md für die
 interaktive Sitzung, ein generischer Init-Prompt. Vollständigkeit gegen den Code.
