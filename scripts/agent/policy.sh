@@ -28,10 +28,17 @@ context_path_allowed() {
   return 0
 }
 
+# Steuerflaeche des Workers. `docs/prompts` und `docs/templates` stehen hier,
+# weil sie die Rollenvertraege und das Task-Schema tragen: ein Worker, der sie
+# schreibt, veraendert die Regeln des naechsten Aufrufs — genau die Rechte-
+# erweiterung aus Repository-Inhalten, die der Vertrag ausschliesst.
+# `CLAUDE.md` fuehrt die Regeln der menschlichen Sitzung und gehoert ebenso
+# nicht dem Worker. `scripts/verify.sh` bleibt bewusst schreibbar: der
+# Initializer ersetzt sie, und ein Task soll die Produktpruefung fortschreiben.
 worker_path_allowed() {
   path=$1
   case "$path" in
-    .agent|.agent/*|.agent-runs|.agent-runs/*|.claude|.claude/*|docs/state|docs/state/*|docs/tasks|docs/tasks/*|docs/verification|docs/verification/*|scripts/agent|scripts/agent/*|scripts/bash-guard.sh|scripts/commit-gate.sh|.git|.git/*|.gitignore) return 1 ;;
+    .agent|.agent/*|.agent-runs|.agent-runs/*|.claude|.claude/*|docs/state|docs/state/*|docs/tasks|docs/tasks/*|docs/verification|docs/verification/*|docs/prompts|docs/prompts/*|docs/templates|docs/templates/*|CLAUDE.md|scripts/agent|scripts/agent/*|scripts/bash-guard.sh|scripts/commit-gate.sh|.git|.git/*|.gitignore) return 1 ;;
     *) context_path_allowed "$path" ;;
   esac
 }

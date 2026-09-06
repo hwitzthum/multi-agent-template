@@ -23,6 +23,11 @@ expect_failure "Manager darf keinen Produktcode schreiben" "$policy" role-write 
 expect_success "Worker darf Produktcode schreiben" "$policy" role-write worker src/app.ts
 expect_failure "Worker darf Task-Ledger nicht schreiben" "$policy" role-write worker docs/tasks/017.md
 expect_failure "Worker darf Schutz-Hook nicht schreiben" "$policy" role-write worker scripts/bash-guard.sh
+expect_failure "Worker darf seinen Rollenvertrag nicht schreiben" "$policy" role-write worker docs/prompts/worker.md
+expect_failure "Worker darf fremde Rollenverträge nicht schreiben" "$policy" role-write worker docs/prompts/manager.md
+expect_failure "Worker darf Vorlagen nicht schreiben" "$policy" role-write worker docs/templates/task.md
+expect_failure "Worker darf die Sitzungsregeln nicht schreiben" "$policy" role-write worker CLAUDE.md
+expect_success "Worker darf die Produktprüfung fortschreiben" "$policy" role-write worker scripts/verify.sh
 expect_success "Verifier darf Prüfbericht schreiben" "$policy" role-write verifier docs/verification/latest.md
 expect_failure "Verifier darf Produktcode nicht schreiben" "$policy" role-write verifier src/app.ts
 expect_success "Status-Gate darf Task schreiben" "$policy" role-write status-gate docs/tasks/017.md

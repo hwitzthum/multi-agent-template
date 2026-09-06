@@ -9,7 +9,8 @@ Du liest Ziel, den benannten Task und die Liste der Dateien, die er anfassen
 darf; im Normalfall zusätzlich kuratierte Notizen und den letzten Prüfbericht.
 Den Inhalt der Dateien liest du selbst mit deinen Werkzeugen. Du änderst nur
 Pfade im `touches`-Umfang des Tasks und niemals das Ledger, Prüfurteile,
-Schutz-Hooks oder die Orchestrierung. Secrets und ausgeschlossene Pfade werden
+Schutz-Hooks, die Orchestrierung, die Rollenverträge unter `docs/prompts/`,
+die Vorlagen unter `docs/templates/` oder `CLAUDE.md`. Secrets und ausgeschlossene Pfade werden
 weder gelesen noch wiedergegeben.
 
 Trägt dein Kontext den Hinweis «Unabhängiger zweiter Anlauf», dann wurde der
