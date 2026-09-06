@@ -14,7 +14,7 @@ for path in \
   docs/templates/task-template.md docs/templates/handoff-template.md \
   docs/templates/initializer-prompt.md docs/state/decisions.md \
   docs/state/goal.md docs/state/plan.md docs/state/notes.md \
-  docs/state/current-run.md docs/state/metrics.csv docs/verification/latest.md; do
+  docs/verification/latest.md; do
   assert_file "dokumentierter Pfad existiert: $path" "$project_dir/$path"
 done
 
@@ -52,7 +52,6 @@ for field in 'Run-ID:' 'Verifierstatus:' 'Letzter grüner Stand:' 'Entscheidung:
 done
 
 assert_file_has "Initializer legt Goal an" "$project_dir/docs/templates/initializer-prompt.md" '`docs/state/goal.md`'
-assert_file_has "Initializer legt Run-Ledger an" "$project_dir/docs/templates/initializer-prompt.md" '`docs/state/current-run.md`'
 assert_file_has "Initializer fragt nur zerlegungsrelevante Fragen" "$project_dir/docs/templates/initializer-prompt.md" 'Zerlegung tatsächlich ändern würde'
 assert_file_has "Initializer verbietet zweite Taskquelle" "$project_dir/docs/templates/initializer-prompt.md" 'zweite Aufgabenquelle neben `docs/tasks/`'
 

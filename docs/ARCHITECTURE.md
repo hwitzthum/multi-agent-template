@@ -16,15 +16,15 @@ Fake Runner; echte Aufrufe bleiben hinter dem Runner-Adapter gekapselt.
 | Task-Versuchszähler       | `docs/tasks/*.md`                | Router bei Eskalation, Orchestrator bei roter Prüfung    |
 | Erkenntnisse und Fehler   | `docs/state/notes.md`            | Rollen im Schreibbereich, Orchestrator bei roter Prüfung |
 | technische Entscheidungen | `docs/state/decisions.md`        | zuständiger Agent, in Alltagssprache                     |
-| aktueller Lauf            | `docs/state/current-run.md`      | Orchestrator                                             |
-| Laufmetrik                | `docs/state/metrics.csv`         | Orchestrator bei genau einem finalen Outcome             |
+| aktueller Lauf            | `.agent-runs/<run-id>/run.env`   | Orchestrator                                             |
+| Laufmetrik                | `.agent-runs/metrics.csv`        | Orchestrator, eine Zeile pro Lauf                        |
 | lokale Laufdetails        | `.agent-runs/<run-id>/metadata/` | Runner, Router und Orchestrator                          |
 | Prüfurteil                | `docs/verification/`             | Verifier                                                 |
 | Betriebsübergabe          | `docs/state/handoff.md`          | Finalizer/Sitzungsabschluss                              |
 
 `docs/tasks/*.md` ist die einzige Aufgabenquelle; eine zweite Aufgabenquelle
-daneben gibt es nicht. `scripts/validate-ledger.sh` prüft Task-Graph,
-Laufzustand und Prüfbelege. `scripts/agent/status.sh` ist der einzige
+daneben gibt es nicht. `scripts/validate-ledger.sh` prüft Task-Graph und
+Prüfbelege und lässt höchstens einen Task `in_progress` zu. `scripts/agent/status.sh` ist der einzige
 maschinelle Schreibweg für Statusübergänge und weist veraltete Schreibversuche
 ab.
 
@@ -45,7 +45,7 @@ Ledger-Validator und Status-Gate.
 | `verifier`     | unabhängige Prüfberichte schreiben      | `docs/verification/`, `docs/state/notes.md`        |
 | `status-gate`  | geprüfte Task-Statusübergänge           | `docs/tasks/*.md`                                  |
 | `finalizer`    | sicheren Stand übergeben                | `docs/state/handoff.md`, `docs/state/notes.md`     |
-| `orchestrator` | Laufzustand und lokale Artefakte führen | `docs/state/current-run.md`, `.agent-runs/`        |
+| `orchestrator` | Laufzustand und lokale Artefakte führen | `.agent-runs/`                                     |
 
 Die konkreten Prompt-Rollen verwenden die Namen `manager-plan`,
 `worker-brainstorm`, `manager-manage`, `worker-task`, `worker-fresh` und
@@ -91,7 +91,8 @@ erst danach atomar an ihren Zielpfad verschoben.
 Ein Task darf nur mit `last_verification: green` und einem passenden grünen
 Bericht unter `docs/verification/` auf `done` wechseln. Bei
 `human_review: true` führt der direkte Weg von `in_progress` zuerst über
-`review`. `docs/state/current-run.md` beschreibt höchstens einen aktiven Task.
+`review`. Höchstens ein Task ist `in_progress`; ein abgebrochener Lauf fällt
+beim nächsten Start auf `todo` zurück.
 Verworfene Notizen liefert der Ledger-Leser nie als aktive Fakten aus.
 
 ## Router-Vertrag
@@ -142,19 +143,21 @@ Werkzeug: Es kürzt und redigiert eine große Rohantwort lokal; der Orchestrator
 ruft es nicht auf. Der unveränderte Rohoutput bleibt im Laufordner und wird
 nicht automatisch zu einem Ledger-Fakt.
 
-## Metrik-Vertrag
+## Laufzustand und Metrik
 
-`docs/state/metrics.csv` enthält pro finalisiertem Lauf genau eine kompakte
-Zeile. `scripts/agent/metrics.sh` führt die vollständigen lokalen Metadaten unter
-`.agent-runs/<run-id>/metadata/`, sperrt den CSV-Schreibvorgang und finalisiert
-idempotent. Token- und Kostenwerte übernimmt der Runner aus der JSON-Antwort von
-Claude Code (clientseitige Schätzung laut Anthropic-Dokumentation); nicht
-gelieferte Token-, Kosten- oder Qualitätswerte bleiben leer und werden nie
-selbst geschätzt. Infrastrukturfehler, Verifierfehler, No-Progress,
-menschliches Review und fachlicher Erfolg sind getrennte Outcomes.
+Der Laufzustand ist unversioniert. `.agent-runs/<run-id>/run.env` führt Lauf-ID,
+Task, Modus, Phase, Runde, Versuch, Fortschrittsfingerprint und Ergebnis;
+`.agent-runs/<run-id>/metadata/<aufruf>.env` trägt pro Rollenaufruf die Zahlen
+des Runners (Token- und Kostenwerte nur, soweit der Runner sie liefert; nichts
+wird geschätzt). Am Laufende hängt der Orchestrator eine Zeile an
+`.agent-runs/metrics.csv` an: `run_id,task_id,mode,attempt,outcome,started_at,
+finished_at`. `outcome` ist einer aus `success`, `review`, `blocked`,
+`no_progress`, `verification_error`, `infrastructure_error`, `paused`,
+`cancelled` und `failed` (abgebrochen ohne eigene Begründung).
 
-`scripts/orchestrate.sh --dry-run` schreibt nur lokale, eindeutig als
-`dry_run=true` markierte Metadaten und niemals eine Erfolgszeile.
+Ein Lauf ist zwischen zwei Aufrufen zustandslos: es gibt kein Fortsetzen und
+keine Checkpoints. `scripts/orchestrate.sh --dry-run` zeigt nur die Route und
+schreibt keine einzige Datei.
 
 ## Runner-Grenze
 
@@ -203,13 +206,15 @@ Dateiliste und Hashes von Git.
 
 ## Orchestrator-Vertrag
 
-`scripts/orchestrate.sh` wählt genau einen bereiten Task, sperrt den Ledger-
-Zustand, protokolliert Route und Checkpoints und führt den vom Router gewählten Modus
-(`single`, `verified` oder `managed`) innerhalb der
-konfigurierten Grenzen aus. `--dry-run` zeigt Route,
-Budgets und geplante Rollen ohne Schreibzugriff; `--resume` akzeptiert nur
-`paused`/`failed` und weist fremde Änderungen seit dem letzten vollständigen
-Schritt ab. Ein absichtlich schmutziger Git-Stand benötigt `--allow-dirty`.
+`scripts/orchestrate.sh` sperrt den Lauf, setzt einen Task aus einem
+abgebrochenen Vorlauf sichtbar auf `todo` zurück, wählt genau einen bereiten
+Task und führt den vom Router gewählten Modus (`single`, `verified` oder
+`managed`) innerhalb der konfigurierten Grenzen aus. `--dry-run` zeigt Route,
+Budgets und geplante Rollen ohne jeden Schreibzugriff. Ein Lauf endet nie mit
+einem Task in `in_progress`: der EXIT-Trap gibt ihn frei. Ein absichtlich
+schmutziger Git-Stand benötigt `--allow-dirty`; der Schmutz-Check übergeht
+`docs/tasks`, `docs/state` und `docs/verification`, weil der Orchestrator diese
+Pfade selbst schreibt.
 
 Rollenänderungen werden aus tatsächlichen Dateihashes ermittelt. Verbotene
 Steuerungspfade, Änderungen an geschützten Task-Feldern oder Produktpfade

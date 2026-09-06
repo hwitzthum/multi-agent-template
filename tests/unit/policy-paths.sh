@@ -28,8 +28,9 @@ expect_failure "Verifier darf Produktcode nicht schreiben" "$policy" role-write 
 expect_success "Status-Gate darf Task schreiben" "$policy" role-write status-gate docs/tasks/017.md
 expect_failure "unbekannte Rolle" "$policy" role-write unknown src/app.ts
 
-expect_failure "nur Orchestrator schreibt current-run" "$policy" role-write finalizer docs/state/current-run.md
-expect_success "Orchestrator darf current-run schreiben" "$policy" role-write orchestrator docs/state/current-run.md
+expect_failure "nur Orchestrator schreibt Laufdaten" "$policy" role-write finalizer .agent-runs/run/run.env
+expect_success "Orchestrator darf Laufdaten schreiben" "$policy" role-write orchestrator .agent-runs/run/run.env
+expect_failure "Orchestrator schreibt keinen versionierten Laufzustand" "$policy" role-write orchestrator docs/state/current-run.md
 
 expect_success "Manager-Plan-Alias nutzt Manager-Schreibgrenze" "$policy" role-write manager-plan docs/state/plan.md
 expect_success "Manager-Manage-Alias nutzt Task-Schreibgrenze" "$policy" role-write manager-manage docs/tasks/017.md

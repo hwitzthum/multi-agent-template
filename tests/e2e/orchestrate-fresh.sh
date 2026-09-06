@@ -64,7 +64,7 @@ assert_eq "Pfad im Umfang wird auf den Stand vor dem Aufruf zurückgesetzt" init
 [ ! -e "$fixture/src/other.txt" ] && ok || bad "Pfad ausserhalb des Umfangs wird aus dem Arbeitsbaum entfernt"
 quarantined=$(find "$fixture/.agent-runs" -path '*/quarantine/src/other.txt' -print | head -n 1)
 assert_file "Entfernter Pfad bleibt in der Quarantäne des Laufs" "$quarantined"
-assert_eq "Pfadverletzung markiert Lauf failed" failed "$(ledger_scalar "$fixture/docs/state/current-run.md" phase)"
+assert_eq "Pfadverletzung markiert Lauf failed" failed "$(fixture_run_state phase)"
 expect_success "Ledger bleibt nach der Pfadverletzung gültig" "$validator" --project-dir "$fixture"
 
 finish_suite

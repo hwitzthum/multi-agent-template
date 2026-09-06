@@ -49,15 +49,12 @@ assert_file_has "Redaktion ist sichtbar" "$worker" '[REDACTED:'
 
 new_populated_fixture
 first=$("$builder" build --project-dir "$fixture" --role worker-task --run-id "$run_id" --task-id 017 --include src/app.txt)
-metrics_after_first=$(wc -l < "$fixture/docs/state/metrics.csv" | tr -d ' ')
 first_hash=$(shasum -a 256 "$first" | awk '{print $1}')
 second=$("$builder" build --project-dir "$fixture" --role worker-task --run-id "$run_id" --task-id 017 --include src/app.txt)
-metrics_after_second=$(wc -l < "$fixture/docs/state/metrics.csv" | tr -d ' ')
 [ "$first" = "$second" ] && [ "$first_hash" = "$(shasum -a 256 "$second" | awk '{print $1}')" ] \
   && ok || bad "gleiche Inputs und Prompt-Version sind deterministisch"
-assert_eq "identischer Kontext erzeugt keine doppelte Metrik" "$metrics_after_first" "$metrics_after_second"
 case "$first" in *"worker-task-017-$first_hash.md") ok ;; *) bad "Kontext-Hash und Rolle stehen im lokalen Artefakt" ;; esac
-assert_eq "Kontextbau erzeugt keine vorzeitige Laufzeile" 1 "$metrics_after_first"
+[ ! -e "$fixture/.agent-runs/metrics.csv" ] && ok || bad "Kontextbau erzeugt keine vorzeitige Laufzeile"
 [ ! -w "$first" ] && ok || bad "Kontextdatei ist unveraenderlich markiert"
 
 old_hash=$(shasum -a 256 "$first" | awk '{print $1}')

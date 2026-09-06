@@ -7,10 +7,9 @@ project_dir=$(CDPATH= cd -- "$script_dir/.." && pwd) || exit 1
 . "$script_dir/agent/ledger.sh"
 
 only_task=''
-current_run_override=''
 case "${1:-}" in
   -h|--help)
-    echo "Verwendung: $0 [--project-dir PFAD] [--task-file DATEI] [--current-run-file DATEI]"
+    echo "Verwendung: $0 [--project-dir PFAD] [--task-file DATEI]"
     echo "Validiert Task-Graph, Ledger-Schema und Status-/Prüfbeziehungen."
     exit 0 ;;
 esac
@@ -18,7 +17,6 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --project-dir) project_dir=$2; shift 2 ;;
     --task-file) only_task=$2; shift 2 ;;
-    --current-run-file) current_run_override=$2; shift 2 ;;
     *) echo "validate-ledger: unbekannte Option $1" >&2; exit 2 ;;
   esac
 done
@@ -31,8 +29,10 @@ work_dir=$(mktemp -d "${TMPDIR:-/tmp}/ledger-validation.XXXXXX") || exit 1
 trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 ids_file="$work_dir/ids"
 graph_file="$work_dir/graph"
+active_file="$work_dir/active"
 : > "$ids_file"
 : > "$graph_file"
+: > "$active_file"
 
 problem() {
   echo "Ledger ungueltig: $1" >&2
@@ -122,6 +122,7 @@ EOF
 
   if [ -n "$id" ]; then
     printf '%s\n' "$id" >> "$ids_file"
+    [ "$status" != in_progress ] || printf '%s\n' "$id" >> "$active_file"
     deps=$(ledger_list "$file" depends_on 2>/dev/null | tr '\n' ' ' || true)
     printf '%s|%s\n' "$id" "$deps" >> "$graph_file"
   fi
@@ -137,6 +138,11 @@ EOF
 
   duplicates=$(LC_ALL=C sort "$ids_file" | uniq -d)
   [ -z "$duplicates" ] || problem "Task-IDs sind nicht eindeutig: $(printf '%s' "$duplicates" | tr '\n' ' ')"
+
+  # Ein Orchestrator bearbeitet genau einen Task. Mehr als ein `in_progress`
+  # bedeutet einen abgebrochenen Lauf oder einen Schreibfehler von Hand.
+  active_count=$(awk 'END { print NR+0 }' "$work_dir/active")
+  [ "$active_count" -le 1 ] || problem "mehr als ein Task ist in_progress"
 
   while IFS='|' read -r id deps; do
     for dep in $deps; do
@@ -166,38 +172,12 @@ EOF
 }
 
 validate_ledger_files() {
-  for file in goal.md plan.md notes.md current-run.md; do
+  for file in goal.md plan.md notes.md; do
     [ -f "$state_dir/$file" ] || problem "Ledger-Datei docs/state/$file fehlt"
   done
   [ -f "$verification_dir/latest.md" ] || problem "docs/verification/latest.md fehlt"
   [ -d "$verification_dir/history" ] || problem "docs/verification/history fehlt"
   [ -d "$state_dir/notes-archive" ] || problem "docs/state/notes-archive fehlt"
-  metrics_file="$state_dir/metrics.csv"
-  metrics_header='run_id,task_id,class,mode,model,prompt_version,manager_calls,worker_calls,verifier_runs,rounds,attempts,tokens_in,tokens_out,cost_estimate,duration_seconds,verification,human_review,outcome,date'
-  if [ ! -f "$metrics_file" ]; then
-    problem "docs/state/metrics.csv fehlt"
-  elif [ "$(sed -n '1p' "$metrics_file")" != "$metrics_header" ]; then
-    problem "metrics.csv hat ein unbekanntes Schema"
-  elif ! awk -F, '
-    function fail() { bad=1 }
-    NR == 1 { next }
-    NF != 19 { fail(); next }
-    $1 !~ /^[0-9]{8}T[0-9]{6}Z-T[0-9]{3}$/ { fail() }
-    $2 !~ /^[0-9]+$/ { fail() }
-    $3 !~ /^(mechanical|patterned|open)$/ { fail() }
-    $4 !~ /^(single|verified|managed)$/ { fail() }
-    $7 !~ /^[0-9]+$/ || $8 !~ /^[0-9]+$/ || $9 !~ /^[0-9]+$/ || $10 !~ /^[0-9]+$/ || $11 !~ /^[0-9]+$/ { fail() }
-    $12 !~ /^([0-9]+)?$/ || $13 !~ /^([0-9]+)?$/ || $14 !~ /^([0-9]+([.][0-9]+)?)?$/ || $15 !~ /^([0-9]+)?$/ { fail() }
-    $16 !~ /^$/ && $16 !~ /^(green|red)$/ { fail() }
-    $17 !~ /^(not_required|required|pending|approved)$/ { fail() }
-    $18 !~ /^(success|review|blocked|no_progress|infrastructure_error|verification_error|cancelled)$/ { fail() }
-    $19 !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ { fail() }
-    seen_run[$1]++ { fail() }
-    END { exit bad ? 1 : 0 }
-  ' "$metrics_file"; then
-    problem "metrics.csv enthaelt ungueltige oder doppelte Laufzeilen"
-  fi
-
   [ -f "$state_dir/goal.md" ] && for heading in '# Ziel' '## Ergebnis' '## Muss' '## Nicht Teil' '## Globale Abnahme'; do
     ledger_markdown_has_section "$state_dir/goal.md" "$heading" || problem "goal.md: Pflichtabschnitt '$heading' fehlt"
   done
@@ -247,78 +227,6 @@ validate_ledger_files() {
     fi
   fi
 
-  run_file="${current_run_override:-$state_dir/current-run.md}"
-  if [ -f "$run_file" ]; then
-    ledger_validate_frontmatter_shape "$run_file" >/dev/null 2>&1 || problem "current-run.md: unzulaessiges Frontmatter"
-    while IFS= read -r key; do
-      case "$key" in
-        run_id|task_id|mode|phase|iteration|attempt|last_progress_fingerprint|started_at|route_rule_version|route_reason_code|route_human_gate|route_signals) ;;
-        *) problem "current-run.md: unbekanntes Feld '$key'" ;;
-      esac
-    done <<EOF
-$(ledger_frontmatter_keys "$run_file")
-EOF
-    if awk 'BEGIN { closed=0 } NR == 1 { next } !closed && $0 == "---" { closed=1; next } closed && /[^[:space:]]/ { exit 1 } END { if (!closed) exit 1 }' "$run_file"; then :; else
-      problem "current-run.md: ausserhalb des Frontmatters ist kein Inhalt erlaubt"
-    fi
-    run_id=$(ledger_scalar "$run_file" run_id 2>/dev/null) || { problem "current-run.md: Pflichtfeld run_id fehlt"; run_id=''; }
-    task_id=$(ledger_scalar "$run_file" task_id 2>/dev/null) || { problem "current-run.md: Pflichtfeld task_id fehlt"; task_id=''; }
-    mode=$(ledger_scalar "$run_file" mode 2>/dev/null) || { problem "current-run.md: Pflichtfeld mode fehlt"; mode=''; }
-    phase=$(ledger_scalar "$run_file" phase 2>/dev/null) || { problem "current-run.md: Pflichtfeld phase fehlt"; phase=''; }
-    iteration=$(ledger_scalar "$run_file" iteration 2>/dev/null) || { problem "current-run.md: Pflichtfeld iteration fehlt"; iteration=''; }
-    attempt=$(ledger_scalar "$run_file" attempt 2>/dev/null) || { problem "current-run.md: Pflichtfeld attempt fehlt"; attempt=''; }
-    fingerprint=$(ledger_scalar "$run_file" last_progress_fingerprint 2>/dev/null) || { problem "current-run.md: Pflichtfeld last_progress_fingerprint fehlt"; fingerprint=''; }
-    started_at=$(ledger_scalar "$run_file" started_at 2>/dev/null) || { problem "current-run.md: Pflichtfeld started_at fehlt"; started_at=''; }
-    route_version=$(ledger_scalar "$run_file" route_rule_version 2>/dev/null) || { problem "current-run.md: Pflichtfeld route_rule_version fehlt"; route_version=''; }
-    route_reason=$(ledger_scalar "$run_file" route_reason_code 2>/dev/null) || { problem "current-run.md: Pflichtfeld route_reason_code fehlt"; route_reason=''; }
-    route_gate=$(ledger_scalar "$run_file" route_human_gate 2>/dev/null) || { problem "current-run.md: Pflichtfeld route_human_gate fehlt"; route_gate=''; }
-    route_signals=$(ledger_list "$run_file" route_signals 2>/dev/null) || { problem "current-run.md: Pflichtliste route_signals fehlt"; route_signals=''; }
-    one_of "$mode" auto single verified managed blocked || problem "current-run.md: unbekannter mode '$mode'"
-    one_of "$phase" plan brainstorm work verify finalize paused failed finished || problem "current-run.md: unbekannte phase '$phase'"
-    case "$iteration:$attempt" in *[!0-9:]*) problem "current-run.md: iteration und attempt muessen nichtnegative ganze Zahlen sein" ;; esac
-    case "$run_id" in none|[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z-T[0-9][0-9][0-9]) ;; *) problem "current-run.md: run_id hat nicht das erwartete Format" ;; esac
-    case "$task_id" in none|*[!0-9]*|'') [ "$task_id" = none ] || problem "current-run.md: task_id muss numerisch oder none sein" ;; esac
-    if [ "$fingerprint" != none ]; then
-      case "$fingerprint" in *[!0-9a-f]*) problem "current-run.md: Fortschrittsfingerprint muss SHA-256 oder none sein" ;; esac
-      [ "${#fingerprint}" -eq 64 ] || problem "current-run.md: Fortschrittsfingerprint muss 64 Zeichen lang sein"
-    fi
-    case "$started_at" in never|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;; *) problem "current-run.md: started_at muss eine UTC-Zeit oder never sein" ;; esac
-    case "$route_version" in ''|*[!0-9]*) problem "current-run.md: route_rule_version muss numerisch sein" ;; esac
-    one_of "$route_reason" none EXPLICIT_OVERRIDE MECHANICAL_LOCAL PATTERNED_LOCAL OPEN_DECISION CROSS_COMPONENT HIGH_RISK FAILED_ATTEMPTS REPEATED_FAILURE ATTEMPT_LIMIT || problem "current-run.md: unbekannter route_reason_code '$route_reason'"
-    one_of "$route_gate" true false || problem "current-run.md: route_human_gate muss true oder false sein"
-    while IFS= read -r route_signal; do
-      [ -n "$route_signal" ] || continue
-      one_of "$route_signal" CLI_OVERRIDE TASK_OVERRIDE OPEN_CLASS MULTIPLE_FAILURES CROSS_COMPONENT HIGH_RISK REPEATED_FAILURE FAILURE_RECORDED ATTEMPT_LIMIT || problem "current-run.md: unbekanntes route_signal '$route_signal'"
-    done <<EOF
-$route_signals
-EOF
-    if [ "$route_reason" = none ]; then
-      [ -z "$route_signals" ] || problem "current-run.md: ohne Routing duerfen route_signals nicht gesetzt sein"
-    else
-      [ "$mode" != auto ] || problem "current-run.md: protokolliertes Routing benoetigt einen konkreten mode"
-    fi
-
-    active_ids=''
-    while IFS= read -r file; do
-      [ "$(ledger_scalar "$file" status 2>/dev/null || true)" = in_progress ] || continue
-      current_id=$(ledger_scalar "$file" id 2>/dev/null || true)
-      active_ids="$active_ids $current_id"
-    done <<EOF
-$(ledger_task_files "$tasks_dir")
-EOF
-    active_count=$(printf '%s\n' "$active_ids" | awk '{ print NF }')
-    [ "$active_count" -le 1 ] || problem "mehr als ein Task ist in_progress"
-    if [ "$phase" = finished ]; then
-      [ "$active_count" -eq 0 ] || problem "current-run.md ist finished, aber ein Task ist in_progress"
-    else
-      [ "$run_id" != none ] || problem "aktiver Lauf benoetigt eine run_id"
-      [ "$task_id" != none ] || problem "aktiver Lauf benoetigt eine task_id"
-      [ "$iteration" -gt 0 ] 2>/dev/null || problem "aktiver Lauf benoetigt iteration groesser null"
-      [ "$attempt" -gt 0 ] 2>/dev/null || problem "aktiver Lauf benoetigt attempt groesser null"
-      [ "$active_count" -eq 1 ] || problem "aktiver Lauf benoetigt genau einen in_progress-Task"
-      [ "${active_ids# }" = "$task_id" ] || problem "current-run.md task_id passt nicht zum aktiven Task"
-    fi
-  fi
 }
 
 if [ -n "$only_task" ]; then

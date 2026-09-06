@@ -30,6 +30,9 @@ case "$action" in
   write-alpha) printf '%s\n' alpha > "$workdir/src/app.txt" ;;
   write-beta) printf '%s\n' beta > "$workdir/src/app.txt" ;;
   write-worse) printf '%s\n' worse > "$workdir/src/app.txt" ;;
+  # Haelt den Aufruf lange genug offen, damit ein Test den Orchestrator
+  # mitten im Lauf abbrechen kann.
+  hang) sleep 2; printf '%s\n' good > "$workdir/src/app.txt" ;;
   require-initial-write-good)
     [ "$(sed -n '1p' "$workdir/src/app.txt")" = initial ] \
       || { echo "fake-runner: Fresh-Versuch startet nicht vom Laufstart" >&2; exit 1; }

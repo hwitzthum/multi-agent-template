@@ -53,7 +53,7 @@ role_may_write() {
     finalizer)
       case "$path" in docs/state/handoff.md|docs/state/notes.md) return 0;; *) return 1;; esac ;;
     orchestrator)
-      case "$path" in docs/state/current-run.md|.agent-runs/*) return 0;; *) return 1;; esac ;;
+      case "$path" in .agent-runs/*) return 0;; *) return 1;; esac ;;
     *) return 1 ;;
   esac
 }

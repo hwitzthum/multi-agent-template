@@ -66,7 +66,7 @@ new_project_fixture() {
 
   fixture_copy .agent/config.env
   fixture_copy docs/templates/agents
-  for file in goal.md plan.md decisions.md handoff.md current-run.md metrics.csv; do
+  for file in goal.md plan.md decisions.md handoff.md; do
     fixture_copy "docs/state/$file"
   done
   fixture_copy docs/verification/latest.md
@@ -339,32 +339,17 @@ make_report() {
   } > "$fixture/docs/verification/latest.md"
 }
 
-make_active_run() {
-  local id=001 mode=managed phase=work run_id=''
-  while [ "$#" -gt 0 ]; do
-    case $1 in
-      --id) id=$2; shift 2 ;;
-      --mode) mode=$2; shift 2 ;;
-      --phase) phase=$2; shift 2 ;;
-      --run-id) run_id=$2; shift 2 ;;
-      *) fixture_abort "make_active_run: unbekannte Option $1" ;;
-    esac
-  done
-  [ -n "$run_id" ] || run_id="20260904T091500Z-T$id"
-  {
-    echo '---'
-    echo "run_id: $run_id"
-    echo "task_id: $id"
-    echo "mode: $mode"
-    echo "phase: $phase"
-    echo 'iteration: 1'
-    echo 'attempt: 1'
-    echo 'last_progress_fingerprint: none'
-    echo 'started_at: 2026-09-04T09:15:00Z'
-    echo 'route_rule_version: "1"'
-    echo 'route_reason_code: none'
-    echo 'route_human_gate: false'
-    echo 'route_signals: []'
-    echo '---'
-  } > "$fixture/docs/state/current-run.md"
+# Der juengste Laufordner unter .agent-runs/ eines Fixtures.
+fixture_latest_run_dir() {
+  find "$fixture/.agent-runs" -maxdepth 1 -type d -name '*Z-T*' -print 2>/dev/null \
+    | LC_ALL=C sort | tail -n 1
+}
+
+# Ein Feld aus dem Laufzustand des juengsten Laufs.
+fixture_run_state() {
+  local run_dir
+  run_dir=$(fixture_latest_run_dir)
+  [ -n "$run_dir" ] || return 1
+  awk -F= -v wanted="$1" '$1 == wanted { print substr($0, length(wanted) + 2); found=1; exit } END { if (!found) exit 1 }' \
+    "$run_dir/run.env"
 }

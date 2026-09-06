@@ -26,7 +26,7 @@ fake_response worker-task 1 'RESULT=implemented' 'CHANGED_PATHS=src/app.txt' 'TE
 fake_action worker-task 1 write-good
 expect_success "Single-Modus schließt grünen Task ab" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
 assert_eq "Single setzt Status done" done "$(ledger_scalar "$fixture/docs/tasks/017.md" status)"
-assert_eq "Single setzt Lauf finished" finished "$(ledger_scalar "$fixture/docs/state/current-run.md" phase)"
+assert_eq "Single setzt Lauf finished" finished "$(fixture_run_state phase)"
 assert_eq "Single startet genau einen Worker" 1 "$(sed -n '1p' "$fixture/.agent-runs/fake/worker-task.count")"
 assert_file_has "Single erzeugt grünen Prüfbericht" "$fixture/docs/verification/latest.md" 'result: green'
 

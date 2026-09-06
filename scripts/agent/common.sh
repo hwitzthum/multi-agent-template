@@ -184,7 +184,7 @@ agent_run_with_timeout() {
 
 agent_manifest_include_repo() {
   case "$1" in
-    .agent-runs|.agent-runs/*|docs/state/current-run.md|docs/state/metrics.csv) return 1 ;;
+    .agent-runs|.agent-runs/*) return 1 ;;
   esac
   return 0
 }
