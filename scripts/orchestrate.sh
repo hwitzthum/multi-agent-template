@@ -332,6 +332,10 @@ case "$task_id" in ''|*[!0-9]*) echo "orchestrate: ungültige Task-ID" >&2; exit
 # Ein --dry-run zeigt nur, was ein echter Lauf taete; er schreibt nichts.
 if [ "$dry_run" = true ]; then
   task_file=$(ledger_task_path_by_id "$tasks_dir" "$task_id") || exit 1
+  # Das harte Versuchslimit gilt hier wie im echten Lauf, sonst kuendigte die
+  # Vorschau einen Task an, den der Start danach ablehnt.
+  attempts_at_start=$(ledger_scalar "$task_file" attempts) || exit 1
+  [ "$attempts_at_start" -lt "$max_task_attempts" ] || { echo "orchestrate: hartes Versuchslimit für Task $task_id ist erreicht" >&2; exit 1; }
   mode=$(agent_route_mode "$task_file" "$manual_mode" "$max_task_attempts") || exit 1
   human_gate=$(ledger_scalar "$task_file" human_review) || exit 1
   [ "$(ledger_scalar "$task_file" class)" != open ] || human_gate=true
