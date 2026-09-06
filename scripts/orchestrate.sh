@@ -65,10 +65,11 @@ finalizer_mode=$(config_value FINALIZER) || exit 1
 
 validate_task_candidate() { "$validator" --project-dir "$project_dir" --task-file "$1" >/dev/null; }
 
-task_is_ready() {
+# Eigene Funktion, weil der Dry-Run genau diesen Teil braucht: den Status darf
+# er nicht pruefen, denn ein nach einem Abbruch stehengebliebenes in_progress
+# raeumt erst der echte Lauf weg, und der Dry-Run schreibt nichts.
+task_dependencies_met() {
   candidate_file=$(ledger_task_path_by_id "$tasks_dir" "$1") || return 1
-  [ "$(ledger_scalar "$candidate_file" status)" = todo ] || return 1
-  [ "$(ledger_scalar "$candidate_file" attempts)" -lt "$max_task_attempts" ] || return 1
   while IFS= read -r dependency; do
     [ -n "$dependency" ] || continue
     dependency_file=$(ledger_task_path_by_id "$tasks_dir" "$dependency") || return 1
@@ -76,6 +77,13 @@ task_is_ready() {
   done <<EOF
 $(ledger_list "$candidate_file" depends_on)
 EOF
+}
+
+task_is_ready() {
+  candidate_file=$(ledger_task_path_by_id "$tasks_dir" "$1") || return 1
+  [ "$(ledger_scalar "$candidate_file" status)" = todo ] || return 1
+  [ "$(ledger_scalar "$candidate_file" attempts)" -lt "$max_task_attempts" ] || return 1
+  task_dependencies_met "$1"
 }
 
 # --- Laufzustand ------------------------------------------------------------
@@ -336,6 +344,7 @@ if [ "$dry_run" = true ]; then
   # Vorschau einen Task an, den der Start danach ablehnt.
   attempts_at_start=$(ledger_scalar "$task_file" attempts) || exit 1
   [ "$attempts_at_start" -lt "$max_task_attempts" ] || { echo "orchestrate: hartes Versuchslimit für Task $task_id ist erreicht" >&2; exit 1; }
+  task_dependencies_met "$task_id" || { echo "orchestrate: Task $task_id ist nicht bereit (offene Abhängigkeit)" >&2; exit 1; }
   mode=$(agent_route_mode "$task_file" "$manual_mode" "$max_task_attempts") || exit 1
   human_gate=$(ledger_scalar "$task_file" human_review) || exit 1
   [ "$(ledger_scalar "$task_file" class)" != open ] || human_gate=true
