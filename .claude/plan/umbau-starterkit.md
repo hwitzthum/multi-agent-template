@@ -9,7 +9,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 
 | Nr  | Feature                                  | Branch                            | Status | Tests | Gemergt am |
 | --- | ---------------------------------------- | --------------------------------- | ------ | ----- | ---------- |
-| F0  | Verhaltensbenannte Testsuite mit Runner  | `test/behaviour-suite`            | geprüft | 417   | –          |
+| F0  | Verhaltensbenannte Testsuite mit Runner  | `test/behaviour-suite`            | gemergt | 417   | 2026-09-06 |
 | F1  | Ballast entfernen                        | `chore/remove-ballast`            | offen  | –     | –          |
 | F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | offen  | –     | –          |
 | F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | offen  | –     | –          |
@@ -27,6 +27,8 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F0 · Nach `main` gemergt (`e5cbd52`), Suite auf `main` grün ·
+  `./scripts/verify.sh` → `tests: GREEN (417 Zusicherungen in 27 Dateien)`
 - 2026-09-06 · F0 · Suite nach Verhalten in vier Stufen zerlegt, gemeinsame
   Helfer und Fixtures gebaut, `tests/run.sh` und `scripts/verify.sh` verdrahtet ·
   `./scripts/verify.sh` → `tests: GREEN (417 Zusicherungen in 27 Dateien)`
@@ -248,7 +250,7 @@ Review-Abschnitt, der beim Abschluss ausgefüllt wird.
 
 ### F0 · Verhaltensbenannte Testsuite mit Runner
 
-Branch `test/behaviour-suite` · Status: **geprüft**
+Branch `test/behaviour-suite` · Status: **gemergt**
 
 Ziel: eine Suite, die sich mit einem Befehl vollständig ausführen lässt, ohne
 Logikänderung am Kit. Grundlage für alle folgenden Features.
