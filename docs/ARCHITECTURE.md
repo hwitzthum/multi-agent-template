@@ -315,13 +315,29 @@ kennt. `acceptEdits` heißt: der Agent bestätigt seine Schreibzugriffe nicht
 einzeln, sondern arbeitet sie ab — ein Headless-Lauf hätte sonst niemanden,
 der bestätigt. Was ihn begrenzt, sind deshalb Deny-Liste, `bash-guard` und der
 Manifestvergleich, nicht eine Rückfrage. Die Grenze ist hier eine
-Rechtegrenze im Prozess, keine Sandbox des Betriebssystems: Der
-Worker bekommt `--allowedTools` mit den Lesewerkzeugen plus `Edit`, `Write`
-und `Bash`; Manager und Finalizer laufen mit `--restricted --tools
-Read,Glob,Grep,Edit,Write` und haben damit gar kein Werkzeug, das Befehle
+Rechtegrenze im Prozess, keine Sandbox des Betriebssystems.
+
+Jede Rolle läuft mit `--restricted --strict-mcp-config`. Dieses Flagpaar wählt
+keine Werkzeuge aus, es bestimmt die **Herkunft der Regeln**: `--restricted`
+ignoriert Benutzer-, Projekt- und lokale Einstellungsdateien und beschränkt die
+Dateiwerkzeuge auf das Arbeitsverzeichnis, `--strict-mcp-config` hält fremde
+MCP-Server heraus. Allein die `--settings` des Laufs gilt weiter. Ohne
+`--restricted` läse ein Rollenaufruf die `.claude/settings.json` und die
+`CLAUDE.md` des Arbeitsbaums mit — beides Repository-Inhalt und damit untrusted
+data; eine dort eingetragene Hook-Zeile liefe im Lauf mit. Beim Codex-Runner
+ist `project_doc_max_bytes=0` das Gegenstück für die Projektdatei.
+
+Die Werkzeuge wählt `--tools`: der Worker bekommt
+`Read,Glob,Grep,Edit,Write,Bash`, Manager und Finalizer
+`Read,Glob,Grep,Edit,Write` und haben damit gar kein Werkzeug, das Befehle
 ausführt. Der Lauf bekommt eine eigene Einstellungsdatei mit Deny-Liste,
 `scripts/bash-guard.sh` als `PreToolUse`-Hook und `claudeMdExcludes`; die
 Einstellungen der interaktiven Sitzung gelten dort ausdrücklich nicht.
+
+`claudeMdExcludes` führt vier Einträge: die persönliche `CLAUDE.md` des
+Bedieners samt `~/.claude/rules/**` und die `CLAUDE.md` des Projekts, diese
+auch in Unterordnern. Neben `--restricted` ist das ein zweiter Riegel und kein
+Ersatz: er greift auch dann, wenn eine Rolle künftig ohne `--restricted` liefe.
 Auto-Memory bleibt aus. Modell, Tokens und Kosten stammen aus der Antwort.
 
 **Codex** bringt seine Hülle selbst mit: `codex exec --json --output-schema
