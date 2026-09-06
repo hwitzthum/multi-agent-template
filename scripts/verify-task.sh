@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Taskbezogenes Verification Gateway. Fuehrt Befehle ausschliesslich als
-# validierte Argument-Arrays aus und bindet Gruen an Kandidat + Verifierstand.
+# Taskbezogenes Pruef-Gateway. Ein Ablauf: acceptance-Befehle pruefen, als
+# validierte Argument-Arrays ausfuehren, Bericht schreiben. Gruen ist an
+# Kandidat und Verifierstand gebunden.
 set -uo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
@@ -8,103 +9,78 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 . "$script_dir/agent/ledger.sh"
 
 project_dir=$(agent_project_root "$script_dir") || exit 1
-task_id=''
-run_id=''
-attempt=''
-timeout_seconds=''
+task_id=''; run_id=''; attempt=''; timeout_seconds=''
 
 usage() {
-  echo "Verwendung: $0 [--project-dir PFAD] [--run-id ID] [--attempt N] [--timeout SEKUNDEN] TASK-ID" >&2
-  exit 2
+  echo "Verwendung: $0 [--project-dir PFAD] [--run-id ID] [--attempt N] [--timeout SEKUNDEN] TASK-ID"
+  echo "Führt die acceptance-Befehle eines Tasks aus und bindet das Ergebnis an Kandidat und Verifierstand."
 }
+bad_usage() { usage >&2; exit 2; }
 
-case "${1:-}" in
-  -h|--help)
-    echo "Verwendung: $0 [--project-dir PFAD] [--run-id ID] [--attempt N] [--timeout SEKUNDEN] TASK-ID"
-    echo "Prüft einen Task stufenweise und bindet das Ergebnis an Kandidat und Verifierstand."
-    exit 0 ;;
-esac
+case "${1:-}" in -h|--help) usage; exit 0 ;; esac
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --project-dir) [ "$#" -ge 2 ] || usage; project_dir=$2; shift 2 ;;
-    --run-id) [ "$#" -ge 2 ] || usage; run_id=$2; shift 2 ;;
-    --attempt) [ "$#" -ge 2 ] || usage; attempt=$2; shift 2 ;;
-    --timeout) [ "$#" -ge 2 ] || usage; timeout_seconds=$2; shift 2 ;;
-    --*) usage ;;
-    *) [ -z "$task_id" ] || usage; task_id=$1; shift ;;
+    --project-dir) [ "$#" -ge 2 ] || bad_usage; project_dir=$2; shift 2 ;;
+    --run-id) [ "$#" -ge 2 ] || bad_usage; run_id=$2; shift 2 ;;
+    --attempt) [ "$#" -ge 2 ] || bad_usage; attempt=$2; shift 2 ;;
+    --timeout) [ "$#" -ge 2 ] || bad_usage; timeout_seconds=$2; shift 2 ;;
+    --*) bad_usage ;;
+    *) [ -z "$task_id" ] || bad_usage; task_id=$1; shift ;;
   esac
 done
 
-case "$task_id" in ''|*[!0-9]*) usage ;; esac
+case "$task_id" in ''|*[!0-9]*) bad_usage ;; esac
 project_dir=$(CDPATH= cd -- "$project_dir" 2>/dev/null && pwd -P) || { echo "verify-task: Projektpfad fehlt" >&2; exit 1; }
 task_file=$(ledger_task_path_by_id "$project_dir/docs/tasks" "$task_id") || exit 1
 
 if [ -z "$timeout_seconds" ]; then
-  if [ -x "$project_dir/scripts/agent/config.sh" ]; then
-    timeout_seconds=$("$project_dir/scripts/agent/config.sh" --get VERIFY_TIMEOUT_SECONDS "$project_dir/.agent/config.env" 2>/dev/null || true)
-  else
-    timeout_seconds=$("$script_dir/agent/config.sh" --get VERIFY_TIMEOUT_SECONDS "$project_dir/.agent/config.env" 2>/dev/null || true)
-  fi
+  config_reader="$script_dir/agent/config.sh"
+  [ -x "$project_dir/scripts/agent/config.sh" ] && config_reader="$project_dir/scripts/agent/config.sh"
+  timeout_seconds=$("$config_reader" --get VERIFY_TIMEOUT_SECONDS "$project_dir/.agent/config.env" 2>/dev/null || true)
 fi
 timeout_seconds=${timeout_seconds:-90}
 case "$timeout_seconds" in ''|*[!0-9]*|0) echo "verify-task: ungueltiges Timeout" >&2; exit 2 ;; esac
 
-if [ -z "$attempt" ]; then
-  recorded_attempts=$(ledger_scalar "$task_file" attempts) || exit 1
-  attempt=$((recorded_attempts + 1))
-fi
+if [ -z "$attempt" ]; then attempt=$(ledger_scalar "$task_file" attempts) || exit 1; attempt=$((attempt + 1)); fi
 case "$attempt" in ''|*[!0-9]*|0) echo "verify-task: ungueltiger Versuch" >&2; exit 2 ;; esac
 
 if [ -z "$run_id" ]; then run_id="$(date -u +%Y%m%dT%H%M%SZ)-T$(printf '%03d' "$((10#$task_id))")"; fi
-case "$run_id" in
-  [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z-T[0-9][0-9][0-9]) ;;
-  *) echo "verify-task: ungueltige Run-ID" >&2; exit 2 ;;
-esac
+case "$run_id" in [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z-T[0-9][0-9][0-9]) ;; *) echo "verify-task: ungueltige Run-ID" >&2; exit 2 ;; esac
 
 started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-run_dir="$project_dir/.agent-runs/$run_id/verify"
-log_file="$run_dir/attempt-$attempt.log"
+log_relative=".agent-runs/$run_id/verify/attempt-$attempt.log"
+log_file="$project_dir/$log_relative"
 verification_dir="$project_dir/docs/verification"
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/verify-task.XXXXXX") || exit 1
 trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
-mkdir -p "$run_dir" "$verification_dir" || exit 1
-: > "$log_file"
-status_file="$work_dir/stages"
-: > "$status_file"
+mkdir -p "$(dirname -- "$log_file")" "$verification_dir" || exit 1
+results_file="$work_dir/results"
 failures_file="$work_dir/failures"
-: > "$failures_file"
-commands_dir="$work_dir/commands"
-mkdir -p "$commands_dir"
+: > "$log_file"; : > "$results_file"; : > "$failures_file"
 
-overall=green
-failure_kind=none
-first_failure='Kein Fehler.'
+overall=green; failure_kind=none; first_failure='Kein Fehler.'
+
+# Ohne eigene `.agent/verification-allowlist` gelten diese generischen Praefixe.
+default_allowlist='./scripts/verify.sh
+npm
+pytest
+go
+cargo
+make'
 
 record_failure() {
-  kind=$1
-  message=$2
   overall=red
-  if [ "$first_failure" = 'Kein Fehler.' ]; then first_failure=$message; fi
-  printf '%s\n' "- $message" >> "$failures_file"
-  if [ "$kind" = verifier ] || [ "$failure_kind" = none ]; then failure_kind=$kind; fi
+  [ "$first_failure" != 'Kein Fehler.' ] || first_failure=$2
+  printf '%s\n' "- $2" >> "$failures_file"
+  if [ "$1" = verifier ] || [ "$failure_kind" = none ]; then failure_kind=$1; fi
 }
 
-record_stage() {
-  printf '%s|%s\n' "$1" "$2" >> "$status_file"
-}
-
+# Fuehrt genau ein Argument-Array aus und trennt Produkt- von Verifierfehlern.
 step() {
-  stage=$1
-  label=$2
-  shift 2
-  {
-    echo
-    echo "=== $stage: $label ==="
-    printf 'command:'
-    printf ' %q' "$@"
-    echo
-  } >> "$log_file"
+  label=$1
+  shift
+  { echo; echo "=== $label ==="; printf 'command:'; printf ' %q' "$@"; echo; } >> "$log_file"
   executable=$1
   if case "$executable" in /*) [ -x "$executable" ] ;; */*) [ -x "$project_dir/$executable" ] ;; *) command -v "$executable" >/dev/null 2>&1 ;; esac; then
     (cd "$project_dir" && agent_run_with_timeout "$timeout_seconds" "$@") >> "$log_file" 2>&1
@@ -115,19 +91,20 @@ step() {
   fi
   case "$step_rc" in
     0) STEP_RESULT=GREEN ;;
-    124) STEP_RESULT=TIMEOUT; record_failure verifier "$stage: Zeitlimit in $label ueberschritten" ;;
-    126|127) STEP_RESULT=MISSING; record_failure verifier "$stage: Befehl fuer $label fehlt oder ist nicht ausfuehrbar" ;;
-    *) STEP_RESULT=RED; record_failure product "$stage: $label ist fehlgeschlagen (Exit $step_rc)" ;;
+    124) STEP_RESULT=TIMEOUT; record_failure verifier "$label: Zeitlimit ueberschritten" ;;
+    126|127) STEP_RESULT=MISSING; record_failure verifier "$label: Befehl fehlt oder ist nicht ausfuehrbar" ;;
+    *) STEP_RESULT=RED; record_failure product "$label ist fehlgeschlagen (Exit $step_rc)" ;;
   esac
 }
 
+# Zerlegt einen Befehl in COMMAND_WORDS; nie als Shelltext ausgewertet.
+# Shell-Metazeichen, absolute Pfade und Pfadtraversierung werden abgewiesen.
 split_command() {
-  raw=$1
-  case "$raw" in
+  case "$1" in
     *$'\n'*|*$'\r'*|*';'*|*'|'*|*'&'*|*'>'*|*'<'*|*'$'*|*'`'*|*'('*|*')'*|*'{'*|*'}'*|*'['*|*']'*|*'*'*|*'?'*|*'\\'*|*'"'*|*"'"*) return 1 ;;
   esac
   COMMAND_WORDS=()
-  read -r -a COMMAND_WORDS <<< "$raw"
+  read -r -a COMMAND_WORDS <<< "$1"
   [ "${#COMMAND_WORDS[@]}" -gt 0 ] || return 1
   for token in "${COMMAND_WORDS[@]}"; do
     [[ "$token" =~ ^[A-Za-z0-9_./:=,@%+-]+$ ]] || return 1
@@ -136,199 +113,59 @@ split_command() {
 }
 
 normalize_command() {
-  local raw=$1
-  local words=()
-  local token
-  read -r -a words <<< "$raw"
+  local words=() token
+  read -r -a words <<< "$1"
   for token in "${words[@]}"; do printf '%s ' "$token"; done
 }
 
+# Praefixvergleich auf Wortgrenze: `go` erlaubt `go test`, aber nicht `gofmt`.
 command_allowed() {
-  raw=$1
   allowlist="$project_dir/.agent/verification-allowlist"
-  if [ -f "$allowlist" ]; then
-    normalized=$(normalize_command "$raw")
-    while IFS= read -r prefix || [ -n "$prefix" ]; do
-      case "$prefix" in ''|'#'*) continue ;; esac
-      split_command "$prefix" || return 1
-      normalized_prefix=$(normalize_command "$prefix")
-      case "$normalized" in "$normalized_prefix"*) return 0 ;; esac
-    done < "$allowlist"
-    return 1
-  fi
-  case "${COMMAND_WORDS[0]}" in
-    ./scripts/verify.sh) [ "${COMMAND_WORDS[0]}" = "$raw" ] || case "$raw" in './scripts/verify.sh '*) return 0 ;; *) return 1 ;; esac ;;
-    npm) [ "${#COMMAND_WORDS[@]}" -ge 2 ] && case "${COMMAND_WORDS[1]}" in test|run) return 0 ;; esac ;;
-    pytest|ruff|mypy) return 0 ;;
-    python|python3) [ "${#COMMAND_WORDS[@]}" -ge 3 ] && [ "${COMMAND_WORDS[1]}" = -m ] && case "${COMMAND_WORDS[2]}" in pytest|ruff|mypy) return 0 ;; esac ;;
-  esac
-  [ "${COMMAND_WORDS[0]}" = ./scripts/verify.sh ]
-}
-
-resolve_named_runner() {
-  runner_name=$1
-  runners_file="$project_dir/.agent/verification-runners"
-  [ -f "$runners_file" ] || return 1
-  found=0
-  while IFS='|' read -r name stage command extra || [ -n "$name$stage$command$extra" ]; do
-    case "$name" in ''|'#'*) continue ;; esac
-    [ -z "$extra" ] || return 1
-    [ "$name" = "$runner_name" ] || continue
-    [ "$found" -eq 0 ] || return 1
-    case "$name" in *[!A-Za-z0-9_.-]*) return 1 ;; esac
-    case "$stage" in syntax|unit|integration|lint|build|acceptance) ;; *) return 1 ;; esac
-    split_command "$command" || return 1
-    RUNNER_STAGE=$stage
-    RUNNER_COMMAND=$command
-    found=1
-  done < "$runners_file"
-  [ "$found" -eq 1 ]
-}
-
-classify_command() {
-  raw=$1
-  case "$raw" in
-    *integration*) COMMAND_STAGE=integration ;;
-    'npm run build'|'npm run build '*) COMMAND_STAGE=build ;;
-    pytest|'pytest '*|'python -m pytest'|'python -m pytest '*|'python3 -m pytest'|'python3 -m pytest '*|'npm test'|'npm test '*) COMMAND_STAGE=unit ;;
-    ruff|'ruff '*|mypy|'mypy '*|'python -m ruff'|'python -m ruff '*|'python3 -m ruff'|'python3 -m ruff '*|'python -m mypy'|'python -m mypy '*|'python3 -m mypy'|'python3 -m mypy '*) COMMAND_STAGE=lint ;;
-    *) COMMAND_STAGE=acceptance ;;
-  esac
+  if [ -f "$allowlist" ]; then entries=$(cat "$allowlist"); else entries=$default_allowlist; fi
+  normalized=$(normalize_command "$1")
+  while IFS= read -r prefix || [ -n "$prefix" ]; do
+    case "$prefix" in ''|'#'*) continue ;; esac
+    split_command "$prefix" || return 1
+    normalized_prefix=$(normalize_command "$prefix")
+    case "$normalized" in "$normalized_prefix"*) return 0 ;; esac
+  done <<EOF
+$entries
+EOF
+  return 1
 }
 
 command_count=0
-add_command() {
+run_command() {
   requested=$1
   command_count=$((command_count + 1))
+  label="acceptance-$command_count"
   error=''
-  case "$requested" in
-    runner:*)
-      if resolve_named_runner "${requested#runner:}"; then
-        command=$RUNNER_COMMAND
-        stage=$RUNNER_STAGE
-      else
-        command=$requested
-        stage=acceptance
-        error='unbekannter oder ungueltiger benannter Runner'
-      fi ;;
-    *)
-      command=$requested
-      classify_command "$command"
-      stage=$COMMAND_STAGE
-      if ! split_command "$command"; then
-        error='Shell-Metazeichen oder ungueltige Argumente'
-      elif ! command_allowed "$command"; then
-        error='Befehlspraefix ist nicht erlaubt'
-      fi ;;
-  esac
-  printf '%s\n' "$stage" > "$commands_dir/$command_count.stage"
-  printf '%s\n' "$command" > "$commands_dir/$command_count.command"
-  printf '%s\n' "$error" > "$commands_dir/$command_count.error"
+  if ! split_command "$requested"; then
+    error='Shell-Metazeichen oder ungueltige Argumente'
+  elif ! command_allowed "$requested"; then
+    error='Befehlspraefix ist nicht erlaubt'
+  fi
+  if [ -n "$error" ]; then
+    { echo; echo "=== $label ==="; echo "ABGEWIESEN: $error"; } >> "$log_file"
+    record_failure product "$label wurde sicher abgewiesen ($error)"
+    printf '%s|%s\n' "$label" REJECTED >> "$results_file"
+    return 0
+  fi
+  split_command "$requested"
+  step "$label" "${COMMAND_WORDS[@]}"
+  printf '%s|%s\n' "$label" "$STEP_RESULT" >> "$results_file"
 }
 
+# Alle acceptance-Befehle laufen, auch nach einem Fehler; `verify.sh` ist Pflicht.
 has_global_verify=false
 while IFS= read -r acceptance; do
   [ -n "$acceptance" ] || continue
-  [ "$acceptance" = ./scripts/verify.sh ] && has_global_verify=true
-  add_command "$acceptance"
+  if [ "$acceptance" = ./scripts/verify.sh ]; then has_global_verify=true; fi
+  run_command "$acceptance"
 done <<EOF
 $(ledger_list "$task_file" acceptance 2>/dev/null || true)
 EOF
-if [ "$has_global_verify" != true ]; then add_command ./scripts/verify.sh; fi
-
-run_planned_stage() {
-  wanted_stage=$1
-  any=${2:-false}
-  stage_result=${3:-GREEN}
-  index=1
-  while [ "$index" -le "$command_count" ]; do
-    stage=$(sed -n '1p' "$commands_dir/$index.stage")
-    if [ "$stage" = "$wanted_stage" ]; then
-      any=true
-      command=$(sed -n '1p' "$commands_dir/$index.command")
-      error=$(sed -n '1p' "$commands_dir/$index.error")
-      if [ -n "$error" ]; then
-        echo "=== $wanted_stage: acceptance-$index ===" >> "$log_file"
-        echo "ABGEWIESEN: $error" >> "$log_file"
-        record_failure product "$wanted_stage: acceptance-$index wurde sicher abgewiesen ($error)"
-        STEP_RESULT=REJECTED
-      else
-        split_command "$command" || { record_failure verifier "$wanted_stage: interner Parserfehler"; STEP_RESULT=RED; }
-        if [ "$STEP_RESULT" != RED ] 2>/dev/null; then step "$wanted_stage" "acceptance-$index" "${COMMAND_WORDS[@]}"; fi
-      fi
-      case "$STEP_RESULT" in GREEN) ;; TIMEOUT) [ "$stage_result" = GREEN ] && stage_result=TIMEOUT ;; MISSING) [ "$stage_result" = GREEN ] && stage_result=MISSING ;; REJECTED) [ "$stage_result" = GREEN ] && stage_result=REJECTED ;; *) stage_result=RED ;; esac
-      STEP_RESULT=''
-    fi
-    index=$((index + 1))
-  done
-  if [ "$any" = true ]; then record_stage "$wanted_stage" "$stage_result"; else record_stage "$wanted_stage" SKIPPED; fi
-}
-
-# 1. Ledger: gesamtes Schema/Graph plus Task-Scope bei einem Git-Checkout.
-step ledger schema "$script_dir/validate-ledger.sh" --project-dir "$project_dir"
-ledger_result=$STEP_RESULT
-touches=$(ledger_list "$task_file" touches 2>/dev/null || true)
-# Der Abgleich laeuft gegen HEAD; ohne Commit gibt es keinen Vergleichsstand.
-if [ "$ledger_result" = GREEN ] && [ -n "$touches" ] && git -C "$project_dir" rev-parse --verify -q HEAD >/dev/null 2>&1; then
-  while IFS= read -r status_line; do
-    [ -n "$status_line" ] || continue
-    changed=${status_line#???}
-    case "$changed" in *' -> '*) changed=${changed##* -> } ;; esac
-    case "$changed" in .agent-runs/*|docs/verification/*|docs/state/*|docs/tasks/*) continue ;; esac
-    allowed=false
-    while IFS= read -r permitted; do
-      permitted=${permitted%/}
-      case "$changed" in "$permitted"|"$permitted"/*) allowed=true ;; esac
-    done <<EOF
-$touches
-EOF
-    if [ "$allowed" != true ]; then
-      echo "Nicht erlaubte Aenderung ausserhalb touches: $changed" >> "$log_file"
-      record_failure product "ledger: geaenderter Pfad $changed liegt ausserhalb des Task-Umfangs"
-      ledger_result=RED
-    fi
-  done <<EOF
-$(git -C "$project_dir" status --porcelain 2>/dev/null)
-EOF
-fi
-record_stage ledger "$ledger_result"
-STEP_RESULT=''
-
-# 2. Syntax/Compile: schnelle, stackabhaengige Checks ohne generierten Code.
-syntax_any=false
-syntax_result=GREEN
-shell_files=()
-while IFS= read -r file; do [ -n "$file" ] && shell_files+=("$file"); done <<EOF
-$(find "$project_dir/scripts" "$project_dir/tests" -type f -name '*.sh' -print 2>/dev/null | LC_ALL=C sort)
-EOF
-if [ "${#shell_files[@]}" -gt 0 ]; then
-  syntax_any=true
-  step syntax shell-parse bash -n "${shell_files[@]}"
-  [ "$STEP_RESULT" = GREEN ] || syntax_result=$STEP_RESULT
-fi
-python_files=()
-while IFS= read -r file; do [ -n "$file" ] && python_files+=("$file"); done <<EOF
-$(find "$project_dir" -type f -name '*.py' ! -path '*/.venv/*' ! -path '*/node_modules/*' ! -path '*/.agent-runs/*' -print 2>/dev/null | LC_ALL=C sort)
-EOF
-if [ "${#python_files[@]}" -gt 0 ]; then
-  syntax_any=true
-  step syntax python-compile python3 -m py_compile "${python_files[@]}"
-  [ "$STEP_RESULT" = GREEN ] || syntax_result=$STEP_RESULT
-fi
-STEP_RESULT=''
-run_planned_stage syntax "$syntax_any" "$syntax_result"
-STEP_RESULT=''
-
-# 3-7. Taskbefehle werden ihrer Stufe zugeordnet und trotz Einzelfehlern alle ausgefuehrt.
-run_planned_stage unit
-run_planned_stage integration
-run_planned_stage lint
-run_planned_stage build
-run_planned_stage acceptance
-
-# 8. Das Human Gate trifft kein automatisches Urteil.
-human_review=$(ledger_scalar "$task_file" human_review 2>/dev/null || echo false)
-if [ "$human_review" = true ]; then record_stage human REVIEW_REQUIRED; else record_stage human NOT_REQUIRED; fi
+if [ "$has_global_verify" != true ]; then run_command ./scripts/verify.sh; fi
 
 candidate_fingerprint=$(ledger_candidate_fingerprint "$project_dir" "$task_file" 2>/dev/null || true)
 verifier_version=$(ledger_verifier_fingerprint "$project_dir" 2>/dev/null || true)
@@ -339,40 +176,17 @@ report_temp="$work_dir/report"
 
 write_report() {
   {
-    echo '---'
-    echo "run_id: $run_id"
-    echo "task_id: $task_id"
-    echo "attempt: $attempt"
-    echo "result: $overall"
-    echo "failure_kind: $failure_kind"
-    echo "started_at: $started_at"
-    echo "finished_at: $finished_at"
-    echo "candidate_fingerprint: $candidate_fingerprint"
-    echo "verifier_version: $verifier_version"
-    echo "log_path: .agent-runs/$run_id/verify/attempt-$attempt.log"
-    echo '---'
-    echo
-    echo '# Verification'
-    echo
-    echo '## Stufen'
-    while IFS='|' read -r stage status; do printf '%s\n' "- $stage: $status"; done < "$status_file"
-    echo
-    echo '## Erster relevanter Fehler'
-    echo
-    echo "$first_failure"
-    if [ -s "$failures_file" ]; then
-      echo
-      echo '## Fehlerübersicht'
-      echo
-      cat "$failures_file"
-    fi
-    echo
-    echo '## Vollständiger Log'
-    echo
-    echo "\`.agent-runs/$run_id/verify/attempt-$attempt.log\`"
+    printf '%s\n' '---' "run_id: $run_id" "task_id: $task_id" "attempt: $attempt" \
+      "result: $overall" "failure_kind: $failure_kind" "started_at: $started_at" \
+      "finished_at: $finished_at" "candidate_fingerprint: $candidate_fingerprint" \
+      "verifier_version: $verifier_version" "log_path: $log_relative" '---'
+    printf '\n# Verification\n\n## Befehle\n'
+    while IFS='|' read -r label status; do printf '%s\n' "- $label: $status"; done < "$results_file"
+    printf '\n## Erster relevanter Fehler\n\n%s\n' "$first_failure"
+    if [ -s "$failures_file" ]; then printf '\n## Fehlerübersicht\n\n'; cat "$failures_file"; fi
+    printf '\n## Vollständiger Log\n\n`%s`\n' "$log_relative"
   } > "$report_temp"
-  # Der Beleg eines Tasks liegt unter seiner ID; `latest.md` ist die Kopie des
-  # zuletzt geschriebenen Berichts fuer den schnellen Blick.
+  # Der Beleg eines Tasks liegt unter seiner ID; `latest.md` ist seine Kopie.
   agent_atomic_write "$verification_dir/$task_id.md" "$report_temp" \
     && agent_atomic_write "$verification_dir/latest.md" "$report_temp"
 }

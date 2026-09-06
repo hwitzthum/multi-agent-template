@@ -357,19 +357,21 @@ braucht kein Modell.
 
 ## Verification Gateway
 
-`scripts/verify-task.sh <task-id>` führt Ledger, Syntax/Compile, Unit,
-Integration, Lint/Typecheck, Build, taskbezogene Akzeptanz und das Human Gate in
-fester Reihenfolge aus. Das globale `scripts/verify.sh` bleibt immer Pflicht.
-Alle vorgesehenen Checks laufen auch nach einem Produktfehler weiter; Timeout,
-fehlende Programme und interne Verifierfehler werden getrennt ausgewiesen.
+`scripts/verify-task.sh <task-id>` kennt keine Stufen-Taxonomie: es führt die
+`acceptance`-Befehle des Tasks in der Reihenfolge des Ledgers aus, eine Zeile
+Ergebnis pro Befehl. Das globale `scripts/verify.sh` ist immer Pflicht und wird
+angehängt, wenn der Task es nicht selbst nennt. Alle Befehle laufen auch nach
+einem Fehler weiter; Timeout, fehlende Programme und interne Verifierfehler
+gelten als `failure_kind: verifier` und verbrauchen deshalb keinen Versuch.
 
-Akzeptanzbefehle werden nie als Shelltext ausgewertet. Ohne eigene Allowlist sind
-nur `./scripts/verify.sh`, `npm test`, `npm run`, `pytest`, `ruff`, `mypy` und
-die entsprechenden `python[3] -m`-Formen erlaubt. Eine optionale
-`.agent/verification-allowlist` ersetzt diese Präfixliste vollständig und kann
-sie damit verschärfen. `.agent/verification-runners` ergänzt benannte Runner im
-Format `name|stufe|befehl`; Tasks referenzieren sie als `runner:name`. Auch
-diese Befehle dürfen keine Shell-Metazeichen oder Pfadtraversierung enthalten.
+Akzeptanzbefehle werden nie als Shelltext ausgewertet, sondern als Argument-Array
+mit gesperrten Metazeichen, absoluten Pfaden und Pfadtraversierung. Erlaubt sind
+nur Befehle mit einem gelisteten Präfix, verglichen auf Wortgrenze: `go` erlaubt
+`go test`, aber nicht `gofmt`. `.agent/verification-allowlist` trägt diese
+Präfixe; das Kit liefert sie mit den generischen Werten `./scripts/verify.sh`,
+`npm`, `pytest`, `go`, `cargo` und `make` aus. Fehlt die Datei, gelten genau
+diese Werte als eingebauter Standard; existiert sie, ersetzt sie ihn vollständig
+und kann ihn damit verschärfen oder um den eigenen Stack erweitern.
 
 Jeder Task hat genau einen Bericht: `docs/verification/<id>.md`. `latest.md` ist
 die Kopie des zuletzt geschriebenen Berichts. Ein Bericht gilt nur für den
