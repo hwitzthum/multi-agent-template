@@ -15,7 +15,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | gemergt | 402   | 2026-09-06 |
 | F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | gemergt | 395   | 2026-09-06 |
 | F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | gemergt | 449   | 2026-09-06 |
-| F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | geprüft | 547   | –          |
+| F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | gemergt | 547   | 2026-09-06 |
 | F7  | Zwei Runner: Claude und Codex            | `feat/codex-runner`               | offen  | –     | –          |
 | F8  | Prüftor verschlanken                     | `refactor/verify-gate`            | offen  | –     | –          |
 | F9  | Dokumentation                            | `docs/architecture`               | offen  | –     | –          |
@@ -27,6 +27,8 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F6 · Nach `main` gemergt (`58bddd8`), Suite auf `main` grün ·
+  `./scripts/verify.sh` → `tests: GREEN (547 Zusicherungen in 26 Dateien)`
 - 2026-09-06 · F6 · Rollenergebnis ist JSON gegen ein Schema, sechs Prompt-Rollen
   auf `manager`/`worker`/`finalizer` zusammengelegt, ein Modus-Pfad mit
   Eskalation statt drei, `ask_human` als Frage im Task, deterministischer
@@ -744,7 +746,7 @@ Review:
 
 ### F6 · JSON-Ergebnisse, drei Rollen, Eskalation
 
-Branch `refactor/json-results-and-roles` · Status: **geprüft**
+Branch `refactor/json-results-and-roles` · Status: **gemergt**
 
 Ziel: Der Orchestrator wird auf ≤400 Zeilen mit einem klaren Ablauf; drei Prompts;
 ein Format.
