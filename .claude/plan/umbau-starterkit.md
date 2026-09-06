@@ -12,7 +12,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | F0  | Verhaltensbenannte Testsuite mit Runner  | `test/behaviour-suite`            | gemergt | 417   | 2026-09-06 |
 | F1  | Ballast entfernen                        | `chore/remove-ballast`            | gemergt | 400   | 2026-09-06 |
 | F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | gemergt | 424   | 2026-09-06 |
-| F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | umgesetzt | 402   | –          |
+| F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | gemergt | 402   | 2026-09-06 |
 | F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | offen  | –     | –          |
 | F5  | Ledger-Schema und Task-Kommandos         | `refactor/ledger-schema`          | offen  | –     | –          |
 | F6  | JSON-Ergebnisse, drei Rollen, Eskalation | `refactor/json-results-and-roles` | offen  | –     | –          |
@@ -27,6 +27,8 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F3 · Nach `main` gemergt (`b13c527`), Suite auf `main` grün ·
+  `./scripts/verify.sh` → `tests: GREEN (402 Zusicherungen in 25 Dateien)`
 - 2026-09-06 · F3 · Turnier, Reviewer und `managed-fresh` entfernt, Router als
   Funktion `agent_route_mode`, Fresh als Versuchsvariante mit
   Snapshot-Rücksetzung, Out-of-Scope-Änderungen werden zurückgesetzt ·
@@ -522,7 +524,7 @@ Abweichungen vom Plan:
 
 ### F3 · Turnier streichen, Fresh-Versuch, Router
 
-Branch `refactor/drop-tournament` · Status: **umgesetzt**
+Branch `refactor/drop-tournament` · Status: **gemergt**
 
 Ziel: Ein Eskalationspfad `single → verified → managed → blocked`, Fresh als
 Kontextvariante mit Snapshot-Rücksetzung, Router ohne Magie.
