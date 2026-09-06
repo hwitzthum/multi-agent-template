@@ -94,6 +94,12 @@ new_project_fixture() {
 
   fixture_verify_stub
 
+  # Manifeste und Fingerprints beziehen Dateiliste und Hashes von Git; jedes
+  # Fixture ist deshalb ein Repository. Der Basiscommit kommt erst mit
+  # fixture_git_init, wenn Tasks und Notizen stehen.
+  printf '%s\n' '.agent-runs/' '.env' > "$fixture/.gitignore"
+  git -C "$fixture" init -q || fixture_abort "git init fehlgeschlagen"
+
   ORCHESTRATOR_FAKE_STATE_DIR="$fixture/.agent-runs/fake"
   export ORCHESTRATOR_FAKE_STATE_DIR
 }
@@ -102,8 +108,6 @@ new_project_fixture() {
 # Tasks und Notizen stehen — ein Modus wie managed-fresh verlangt einen
 # sauberen Arbeitsbaum.
 fixture_git_init() {
-  printf '%s\n' '.agent-runs/' > "$fixture/.gitignore"
-  git -C "$fixture" init -q || fixture_abort "git init fehlgeschlagen"
   git -C "$fixture" add . || fixture_abort "git add fehlgeschlagen"
   git -C "$fixture" -c user.name=Test -c user.email=test@example.invalid commit -qm base \
     || fixture_abort "git commit fehlgeschlagen"

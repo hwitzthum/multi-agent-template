@@ -268,7 +268,8 @@ run_planned_stage() {
 step ledger schema "$script_dir/validate-ledger.sh" --project-dir "$project_dir"
 ledger_result=$STEP_RESULT
 touches=$(ledger_list "$task_file" touches 2>/dev/null || true)
-if [ "$ledger_result" = GREEN ] && [ -n "$touches" ] && git -C "$project_dir" rev-parse --git-dir >/dev/null 2>&1; then
+# Der Abgleich laeuft gegen HEAD; ohne Commit gibt es keinen Vergleichsstand.
+if [ "$ledger_result" = GREEN ] && [ -n "$touches" ] && git -C "$project_dir" rev-parse --verify -q HEAD >/dev/null 2>&1; then
   while IFS= read -r status_line; do
     [ -n "$status_line" ] || continue
     changed=${status_line#???}

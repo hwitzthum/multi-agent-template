@@ -54,6 +54,9 @@ required_list() {
 
 validate_task() {
   file=$1
+  # Zweites Argument: der Name, unter dem der Task im Ledger liegt. Leer bei
+  # einer Kandidatendatei, die noch unter einem Temporaernamen geprueft wird.
+  expected_name=${2:-}
   label=$(basename "$file")
   ledger_validate_frontmatter_shape "$file" >/dev/null 2>&1 || problem "$label: Frontmatter verwendet eine unzulaessige oder doppelte Form"
 
@@ -88,6 +91,8 @@ EOF
   fi
 
   case "$id" in ''|*[!0-9]*) problem "$label: id muss nur aus Ziffern bestehen" ;; esac
+  # Der Dateiname ist der Schluessel: nur so bleibt der Lookup ein Dateitest.
+  [ -z "$id" ] || [ -z "$expected_name" ] || [ "$expected_name" = "$id.md" ] || problem "$expected_name: Dateiname muss $id.md heissen"
   [ -n "$title" ] || problem "$label: title darf nicht leer sein"
   one_of "$status" todo in_progress review done blocked || problem "$label: unbekannter status '$status'"
   one_of "$class" mechanical patterned open || problem "$label: unbekannte class '$class'"
@@ -127,7 +132,7 @@ EOF
 validate_task_set() {
   files=$(ledger_task_files "$tasks_dir")
   while IFS= read -r file; do
-    [ -n "$file" ] && validate_task "$file"
+    [ -n "$file" ] && validate_task "$file" "$(basename "$file")"
   done <<EOF
 $files
 EOF

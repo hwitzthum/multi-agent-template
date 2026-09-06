@@ -201,7 +201,8 @@ Fünf Umgebungsvariablen steuern den Adapter; keine davon steht in
 
 Die Skripte brauchen außer Bash nur `git`, `awk`, `sed`, `shasum` und `perl`
 (für Zeitlimits und Laufdauern). Unter macOS, Linux und Git Bash sind sie
-vorhanden.
+vorhanden. `git` ist Pflicht, nicht Kür: Manifeste und Snapshot beziehen
+Dateiliste und Hashes von Git.
 
 ## Orchestrator-Vertrag
 
@@ -217,6 +218,40 @@ Rollenänderungen werden aus tatsächlichen Dateihashes ermittelt. Verbotene
 Steuerungspfade, Änderungen an geschützten Task-Feldern oder Produktpfade
 außerhalb von `touches` stoppen den Lauf. Rohoutput und Runner-Metadaten bleiben
 unter `.agent-runs/<run-id>/`; kein Agentenergebnis wird ungeprüft ausgewertet.
+
+## Manifeste und Snapshot
+
+Ein Manifest ist die sortierte Liste `<feld>  <pfad>` eines Projektstands.
+Dateiliste und Hashes kommen von Git (`git ls-files`, `git hash-object -w`), nicht
+von `find` und `shasum`: das ist eine Prozessgruppe statt eines Prozesses pro
+Datei, und `.gitignore` gilt ohne eigene Ausschlussliste. Das Kit setzt deshalb
+ein Git-Repository voraus.
+
+| Feld             | Bedeutung                                                                 |
+| ---------------- | ------------------------------------------------------------------------- |
+| `<hash>`         | Blob-Hash des Inhalts; der Inhalt liegt damit im Git-Objektspeicher        |
+| `exec:<hash>`    | dasselbe mit gesetztem Ausführungsbit                                     |
+| `symlink:<hash>` | Hash des Linkziels, nie des Inhalts dahinter                              |
+| `missing`        | im Index, aber nicht im Arbeitsbaum (gelöscht)                            |
+| `ignored`        | von `.gitignore` erfasst: nur der Name, der Inhalt wird nie gelesen        |
+
+Ein vollständig ignorierter Ordner wie `node_modules/` zählt als ein Eintrag.
+Änderungen darin bleiben unsichtbar, ein **neu** angelegter ignorierter Pfad wie
+`.env` wird über seinen Namen sichtbar. `.git/config`, `.git/info/exclude` und
+`.git/hooks/*` stehen im Repo-Manifest, weil sie das Verhalten des Projekts
+ändern; kein Agent darf sie schreiben.
+
+Weil `git hash-object -w` die Inhalte in den Objektspeicher schreibt, ist jedes
+Manifest zugleich ein Snapshot. `agent_snapshot_restore` setzt daraus einzelne
+Pfade zurück: bekannte Inhalte kommen aus dem Objektspeicher, Pfade, die das
+Manifest nicht kennt, wandern in die Quarantäne unter `.agent-runs/<run-id>/`
+statt gelöscht zu werden. Der Snapshot hält den Arbeitsbaum **zum Laufstart**
+fest, nicht `HEAD`: unversionierte Arbeit des Besitzers in derselben Datei
+überlebt ein Zurücksetzen.
+
+Das Vorher-Manifest eines Rollenaufrufs liegt bis zum Nachher-Manifest außerhalb
+des Arbeitsbaums. Unter `.agent-runs/` könnte der laufende Agent es passend zu
+seinen eigenen Änderungen umschreiben.
 
 ## Fresh-, Review- und Finalizer-Vertrag
 

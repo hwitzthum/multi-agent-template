@@ -14,6 +14,7 @@ resume=false
 dry_run=false
 allow_dirty=false
 lock_held=false
+scratch_dir=''
 run_active=false
 call_sequence=0
 metrics_started=false
@@ -159,7 +160,7 @@ checkpoint_product() {
   mv -f "$checkpoint_temp" "$checkpoint_manifest"
   shasum -a 256 "$checkpoint_manifest" | awk '{print $1}' > "$run_dir/checkpoint.sha256"
   if git -C "$project_dir" rev-parse --git-dir >/dev/null 2>&1; then
-    git -C "$project_dir" rev-parse HEAD > "$run_dir/checkpoint.git-head" 2>/dev/null || echo unborn > "$run_dir/checkpoint.git-head"
+    git -C "$project_dir" rev-parse --verify -q HEAD > "$run_dir/checkpoint.git-head" 2>/dev/null || echo unborn > "$run_dir/checkpoint.git-head"
   else
     echo none > "$run_dir/checkpoint.git-head"
   fi
@@ -177,7 +178,7 @@ checkpoint_matches() {
   rm -f "$now"
   expected_git=$(sed -n '1p' "$run_dir/checkpoint.git-head" 2>/dev/null || true)
   if git -C "$project_dir" rev-parse --git-dir >/dev/null 2>&1; then
-    actual_git=$(git -C "$project_dir" rev-parse HEAD 2>/dev/null || echo unborn)
+    actual_git=$(git -C "$project_dir" rev-parse --verify -q HEAD 2>/dev/null || echo unborn)
   else
     actual_git=none
   fi
@@ -236,10 +237,13 @@ run_role() {
   label=$(printf '%02d-%s' "$call_sequence" "$role")
   raw="$run_dir/outputs/$label.raw"
   metadata="$run_dir/metadata/$label.env"
-  before="$run_dir/manifests/$label.before"
+  # Das Vorher-Manifest liegt ausserhalb des Arbeitsbaums, solange der Agent
+  # laeuft: unter .agent-runs/ koennte er es passend zu seinen Aenderungen
+  # umschreiben und so den Abgleich entwerten.
+  before="$scratch_dir/$label.before"
   after="$run_dir/manifests/$label.after"
   changes="$run_dir/manifests/$label.changed"
-  controls_before="$run_dir/manifests/$label.controls-before"
+  controls_before="$scratch_dir/$label.controls-before"
   controls_after="$run_dir/manifests/$label.controls-after"
   mkdir -p "$run_dir/outputs" "$run_dir/metadata" "$run_dir/manifests" || return 1
 
@@ -268,6 +272,10 @@ EOF
   "$output_tool" validate "$role" "$raw" >/dev/null || return 1
   agent_repo_manifest "$project_dir" "$after" || return 1
   agent_manifest_changes "$before" "$after" > "$changes"
+  mv -f "$before" "$run_dir/manifests/$label.before" || return 1
+  mv -f "$controls_before" "$run_dir/manifests/$label.controls-before" || return 1
+  before="$run_dir/manifests/$label.before"
+  controls_before="$run_dir/manifests/$label.controls-before"
   check_role_changes "$role" "$changes" || return 1
   task_control_snapshot "$controls_after" || return 1
   case "$role" in manager-plan|manager-manage|worker-brainstorm|worker-task|worker-fresh|finalizer)
@@ -425,9 +433,13 @@ run_finalizer_role() {
   cp "$project_dir/.agent/config.env" "$finalizer_workspace/.agent/config.env" || { rm -rf "$finalizer_workspace"; return 1; }
   finalizer_context_copy="$finalizer_workspace/.agent-runs/$run_id/finalizer.context.md"
   cp "$finalizer_context" "$finalizer_context_copy" || { rm -rf "$finalizer_workspace"; return 1; }
+  # Die Arbeitskopie braucht ein eigenes Git, weil Manifeste Dateiliste und
+  # Hashes von Git beziehen. Der Laufordner bleibt dabei aussen vor.
+  printf '%s\n' '.agent-runs/' > "$finalizer_workspace/.gitignore" || { rm -rf "$finalizer_workspace"; return 1; }
+  git -C "$finalizer_workspace" init -q || { rm -rf "$finalizer_workspace"; return 1; }
   finalizer_raw="$finalizer_workspace/.agent-runs/$run_id/outputs/finalizer.raw"
   finalizer_metadata="$finalizer_workspace/.agent-runs/$run_id/metadata/finalizer.env"
-  before="$finalizer_workspace/.agent-runs/$run_id/before.manifest"
+  before="$scratch_dir/finalizer.before"
   after="$finalizer_workspace/.agent-runs/$run_id/after.manifest"
   changes="$finalizer_workspace/.agent-runs/$run_id/changed-paths.txt"
   agent_repo_manifest "$finalizer_workspace" "$before" || { rm -rf "$finalizer_workspace"; return 1; }
@@ -438,6 +450,7 @@ run_finalizer_role() {
   "$output_tool" validate finalizer "$finalizer_raw" >/dev/null || { rm -rf "$finalizer_workspace"; return 1; }
   agent_repo_manifest "$finalizer_workspace" "$after" || { rm -rf "$finalizer_workspace"; return 1; }
   agent_manifest_changes "$before" "$after" > "$changes"
+  mv -f "$before" "$finalizer_workspace/.agent-runs/$run_id/before.manifest" || { rm -rf "$finalizer_workspace"; return 1; }
   check_role_changes finalizer "$changes" || { rm -rf "$finalizer_workspace"; return 1; }
   "$validator" --project-dir "$finalizer_workspace" >/dev/null || { rm -rf "$finalizer_workspace"; return 1; }
   cp "$project_dir/docs/state/handoff.md" "$run_dir/finalizer-handoff.before" || { rm -rf "$finalizer_workspace"; return 1; }
@@ -487,7 +500,9 @@ run_candidate_worker() {
 $(ledger_list "$task_file" touches 2>/dev/null || true)
 EOF
   candidate_context=$("$context_builder" "${context_args[@]}") || return 1
-  candidate_before="$candidate_run_dir/manifests/$candidate_role.before"
+  # Auch hier ausserhalb des Arbeitsbaums: der Kandidaten-Worker darf unter
+  # .agent-runs/ schreiben und koennte sein eigenes Vorher-Manifest faelschen.
+  candidate_before="$scratch_dir/$candidate_name-$candidate_role.before"
   candidate_after="$candidate_run_dir/manifests/$candidate_role.after"
   candidate_changes="$candidate_run_dir/manifests/$candidate_role.changed"
   agent_repo_manifest "$candidate_root" "$candidate_before" || return 1
@@ -529,6 +544,7 @@ EOF
   "$output_tool" validate "$candidate_role" "$candidate_raw" >/dev/null || return 1
   agent_repo_manifest "$candidate_root" "$candidate_after" || return 1
   agent_manifest_changes "$candidate_before" "$candidate_after" > "$candidate_changes"
+  mv -f "$candidate_before" "$candidate_run_dir/manifests/$candidate_role.before" || return 1
   check_role_changes "$candidate_role" "$candidate_changes" || return 1
   "$validator" --project-dir "$candidate_root" >/dev/null || return 1
   "$candidate_tool" capture --project-dir "$project_dir" --run-dir "$run_dir" --candidate "$candidate_name" --task-id "$task_id" || return 1
@@ -742,6 +758,7 @@ cleanup() {
       "$metrics_tool" finalize "$project_dir" "$run_dir" "$run_outcome" >/dev/null || exit_status=1
     fi
   fi
+  [ -z "$scratch_dir" ] || rm -rf "$scratch_dir"
   [ "$lock_held" = false ] || agent_release_lock "$lock_dir"
   exit "$exit_status"
 }
@@ -757,6 +774,7 @@ if [ "$resume" = true ]; then
   run_id=$(ledger_scalar "$current_run" run_id) || exit 1
   mode=$(ledger_scalar "$current_run" mode) || exit 1
   run_dir="$project_dir/.agent-runs/$run_id"
+  scratch_dir=$(mktemp -d "${TMPDIR:-/tmp}/agent-scratch.XXXXXX") || exit 1
   checkpoint_matches || exit 1
   "$metrics_tool" reopen "$project_dir" "$run_dir" || exit 1
   metrics_started=true
@@ -797,7 +815,11 @@ else
 
   [ "$mode" != blocked ] || { echo "orchestrate: Router blockiert Task $task_id vor dem Start" >&2; exit 1; }
 
-  if git -C "$project_dir" rev-parse --git-dir >/dev/null 2>&1 && [ -n "$(git -C "$project_dir" status --porcelain 2>/dev/null)" ]; then
+  # Ohne Commit gibt es keinen Stand, gegen den «schmutzig» etwas bedeuten
+  # koennte. Das Ledger zaehlt nicht mit: der Orchestrator schreibt es selbst.
+  if git -C "$project_dir" rev-parse --verify -q HEAD >/dev/null 2>&1 &&
+     [ -n "$(git -C "$project_dir" status --porcelain -- \
+       ':(exclude)docs/tasks' ':(exclude)docs/state' ':(exclude)docs/verification' 2>/dev/null)" ]; then
     if [ "$mode" = managed-fresh ]; then
       echo "orchestrate: managed-fresh benoetigt einen sauberen, eindeutig versionierten Basisstand" >&2
       exit 1
@@ -813,6 +835,7 @@ else
   run_id="$(date -u +%Y%m%dT%H%M%SZ)-T$(printf '%03d' "$((10#$task_id))")"
   run_dir="$project_dir/.agent-runs/$run_id"
   mkdir "$run_dir" || exit 1
+  scratch_dir=$(mktemp -d "${TMPDIR:-/tmp}/agent-scratch.XXXXXX") || exit 1
   started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   base_file="$run_dir/base-fingerprint"
   product_fingerprint "$base_file" || exit 1
