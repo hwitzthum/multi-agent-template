@@ -111,8 +111,9 @@ Erzeuge genau:
 
    Braucht dein Stack andere Prüfwerkzeuge, trägst du deren Befehlspräfixe
    in .agent/verification-allowlist ein — sonst weist das Prüftor die
-   acceptance-Befehle ab. Die Datei ersetzt die eingebaute Liste
-   vollständig; die Standardwerte stehen kommentiert darin.
+   acceptance-Befehle ab. Die Datei ersetzt die eingebaute Liste vollständig
+   und führt die generischen Standardwerte bereits als aktive Einträge; ergänze
+   oder streiche dort, statt eine zweite Liste anzulegen.
 
 4. Skelett: Verzeichnisstruktur, Toolchain, Toolchain-Manifest (z.B.
    package.json) mit den Standard-Befehlen der Projektbeschreibung — trage

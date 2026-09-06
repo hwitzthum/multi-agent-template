@@ -187,7 +187,10 @@ EOF
 }
 
 validate_ledger_files() {
-  for file in goal.md plan.md notes.md; do
+  # `decisions.md` und `handoff.md` sind verbindliche Quellen wie die anderen
+  # drei: ohne sie verliert der Manager seine Entscheidungshistorie und der
+  # Orchestrator seinen Laufbeleg — beides bisher stillschweigend.
+  for file in goal.md plan.md notes.md decisions.md handoff.md; do
     [ -f "$state_dir/$file" ] || problem "Ledger-Datei docs/state/$file fehlt"
   done
   [ -f "$verification_dir/latest.md" ] || problem "docs/verification/latest.md fehlt"

@@ -50,6 +50,17 @@ expect_contains "der Validator meldet --project-dir ohne Pfad" 'braucht einen Pf
 expect_contains "der Validator meldet --task-file ohne Datei" 'braucht eine Datei' \
   sh -c "'$validator' --task-file 2>&1 || true"
 
+# Jede Datei, die der Vertrag eine verbindliche Quelle nennt, muss der
+# Validator auch verlangen. Ohne decisions.md verliert der Manager seine
+# Entscheidungshistorie, ohne handoff.md geht der Laufbeleg verloren — beides
+# blieb bisher gruen.
+for ledger_file in goal.md plan.md notes.md decisions.md handoff.md; do
+  new_project_fixture
+  make_task --id 001 --status todo
+  rm -f "$fixture/docs/state/$ledger_file"
+  expect_failure "fehlendes docs/state/$ledger_file wird gemeldet" "$validator" --project-dir "$fixture"
+done
+
 new_project_fixture
 make_task --id 002 --status todo --depends 999
 expect_failure "fehlende Abhaengigkeit" "$validator" --project-dir "$fixture"

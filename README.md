@@ -24,7 +24,7 @@ Das System:
 1. **Zerlegt dein Projekt** in kleine, nachvollziehbare Aufgaben (jede in einer Datei)
 2. **Überwacht jeden KI-Agenten** — Was darf der Agent anfassen? Wann muss es doppelt geprüft werden?
 3. **Prüft das Ergebnis** — War die Arbeit fehlerfrei? Passt sie zu deinen Anforderungen?
-4. **Entscheidet automatisch** — Einfache Aufgaben erledigt ein Agent allein. Komplexe Aufgaben bekommen einen Manager, der Plant, einen Worker, der umgesetzt, und einen Verifier, der prüft.
+4. **Entscheidet automatisch** — Einfache Aufgaben erledigt ein Agent allein, komplexe bekommen zusätzlich einen Manager, der plant. Geprüft wird in jedem Fall: das Prüftor läuft nach jedem Task, unabhängig davon, wie viele Agenten daran gearbeitet haben.
 
 Das macht es sicher: Der Agent kann nicht einfach Dateien löschen, ins Internet hochladen oder Code verstümmeln. Der Menschen behält die Kontrolle.
 
@@ -190,8 +190,8 @@ Das System wird:
 
 **Der Lauf belegt dein Terminal, bis er fertig ist** — je nach Task Minuten bis
 Stunden. Lass das Fenster offen. Am Ende steht der Laufbeleg in
-`docs/state/handoff.md`, egal ob der Lauf grün war, pausiert hat oder blockiert
-ist.
+`docs/state/handoff.md`, egal ob der Lauf grün war, blockiert ist oder
+abgebrochen wurde.
 
 **Prompt, wenn du den Lauf lieber aus einer Sitzung startest:**
 
