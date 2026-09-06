@@ -318,7 +318,7 @@ fixture_config() {
 
 make_task() {
   local id=001 title='' status=todo class=patterned orchestration=auto \
-    depends='' touches='' flags='' attempts=0 \
+    depends='' touches='' flags='' attempts=0 blocked_reason='' \
     human=false acceptance='"./scripts/verify.sh"' \
     acceptance_style=inline context='Testkontext.' scope='Testen.' \
     not_scope='Anderes.' criteria='Verhalten ist geprüft.' file
@@ -334,6 +334,7 @@ make_task() {
       --risk-flags) flags=$2; shift 2 ;;
       --attempts) attempts=$2; shift 2 ;;
       --human-review) human=$2; shift 2 ;;
+      --blocked-reason) blocked_reason=$2; shift 2 ;;
       --acceptance) acceptance=$2; shift 2 ;;
       --acceptance-style) acceptance_style=$2; shift 2 ;;
       --context) context=$2; shift 2 ;;
@@ -363,7 +364,7 @@ make_task() {
     else
       echo "acceptance: [$acceptance]"
     fi
-    echo 'blocked_reason: ""'
+    echo "blocked_reason: \"$blocked_reason\""
     echo '---'
     echo '# Kontext'
     echo "$context"
@@ -380,11 +381,12 @@ make_task() {
 # Task-Datei wird ein fester Nullfingerprint gesetzt, damit auch der Fehlerfall
 # prüfbar bleibt.
 make_report() {
-  local id=001 result=green candidate verifier
+  local id=001 result=green failure_kind='' candidate verifier
   while [ "$#" -gt 0 ]; do
     case $1 in
       --id) id=$2; shift 2 ;;
       --result) result=$2; shift 2 ;;
+      --failure-kind) failure_kind=$2; shift 2 ;;
       *) fixture_abort "make_report: unbekannte Option $1" ;;
     esac
   done
@@ -400,6 +402,7 @@ make_report() {
     echo 'run_id: test-run'
     echo "task_id: $id"
     echo "result: $result"
+    [ -z "$failure_kind" ] || echo "failure_kind: $failure_kind"
     echo 'attempt: 1'
     echo 'finished_at: 2026-09-04T09:15:00Z'
     echo "candidate_fingerprint: $candidate"
