@@ -124,9 +124,32 @@ expect_contains "geaenderte Ledger-Pfade sind kein schmutziger Arbeitsbaum" 'Arb
 new_project_fixture
 fixture_agent_cli_stubs
 fixture_git_init
+alte_hilfe='  --json-schema <schema>
+  --settings <file-or-json>'
 expect_failure "claude ohne Sicherheitsoptionen ist ein Befund" \
-  env PATH="$stub_bin:$PATH" STUB_HELP='  --json-schema <schema>' "$doctor" --project-dir "$fixture"
+  env PATH="$stub_bin:$PATH" STUB_HELP="$alte_hilfe" "$doctor" --project-dir "$fixture"
 expect_contains "doctor sagt, welche Option fehlt" '--restricted' \
+  sh -c "PATH='$stub_bin:$PATH' STUB_HELP='$alte_hilfe' '$doctor' --project-dir '$fixture' 2>&1 || true"
+
+# --- Eine unterstuetzte Option, die nicht in der Hilfe steht -----------------
+# Genau der Fall von `--max-turns`: das CLI kennt die Option, fuehrt sie aber
+# nicht in `--help`. Ein Befund waere hier ein Fehlalarm auf einer gesunden
+# Installation, deshalb fragt der doctor nach, statt der Hilfe zu glauben.
+expect_success "eine versteckte, aber unterstützte Option ist kein Befund" \
+  env PATH="$stub_bin:$PATH" STUB_HELP="$alte_hilfe" \
+      STUB_HIDDEN='--restricted --strict-mcp-config --tools' \
+      "$doctor" --project-dir "$fixture"
+expect_contains "der doctor meldet das CLI dann als einsatzbereit" 'claude einsatzbereit' \
+  env PATH="$stub_bin:$PATH" STUB_HELP="$alte_hilfe" \
+      STUB_HIDDEN='--restricted --strict-mcp-config --tools' \
+      "$doctor" --project-dir "$fixture"
+
+# --- Ein CLI, das die Nachfrage nicht beantwortet ----------------------------
+# Weder «unknown option» noch die Prompt-Meldung: dann ist die Lage unklar, und
+# unklar ist ein Befund — nicht stillschweigend in Ordnung.
+expect_failure "eine unbeantwortete Nachfrage ist ein Befund" \
+  env PATH="$stub_bin:$PATH" STUB_HELP='  --json-schema <schema>' "$doctor" --project-dir "$fixture"
+expect_contains "doctor benennt die unbestätigten Optionen" 'bestätigt diese Optionen nicht' \
   sh -c "PATH='$stub_bin:$PATH' STUB_HELP='  --json-schema <schema>' '$doctor' --project-dir '$fixture' 2>&1 || true"
 
 finish_suite

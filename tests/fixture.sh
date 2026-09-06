@@ -121,6 +121,8 @@ new_project_fixture() {
 #   STUB_MESSAGE  nur codex: Datei, die als --output-last-message abgelegt wird
 #   STUB_EXIT     Exitcode des Stubs (Standard 0)
 #   STUB_HELP     nur claude: ersetzt die Hilfeseite (Fähigkeitsprüfung)
+#   STUB_HIDDEN   nur claude: Optionen, die der Stub kennt, aber nicht in seiner
+#                 Hilfe führt — den Fall gibt es beim echten CLI (--max-turns)
 fixture_agent_cli_stubs() {
   [ -n "$fixture" ] || fixture_abort "fixture_agent_cli_stubs ohne Fixture"
   stub_bin="$fixture/.agent-runs/stub-bin"
@@ -128,17 +130,31 @@ fixture_agent_cli_stubs() {
 
   cat > "$stub_bin/claude" <<'STUB'
 #!/usr/bin/env bash
+stub_help() {
+  # STUB_HELP ersetzt die Hilfeseite, damit auch ein CLI ohne die gesuchten
+  # Optionen pruefbar ist.
+  if [ -n "${STUB_HELP:-}" ]; then printf '%s\n' "$STUB_HELP"; return; fi
+  printf '%s\n' '  --json-schema <schema>' \
+    '  --max-budget-usd <amount>' '  --permission-prompts <target>' '  --restricted' \
+    '  --settings <file-or-json>' '  --strict-mcp-config' '  --tools <tools...>'
+}
 case "${1:-}" in
-  --help)
-    # STUB_HELP ersetzt die Hilfeseite, damit auch ein CLI ohne die gesuchten
-    # Optionen pruefbar ist.
-    if [ -n "${STUB_HELP:-}" ]; then printf '%s\n' "$STUB_HELP"; exit 0; fi
-    printf '%s\n' '  --json-schema <schema>' \
-      '  --max-budget-usd <amount>' '  --permission-prompts <target>' '  --restricted' \
-      '  --settings <file-or-json>' '  --strict-mcp-config' '  --tools <tools...>'
-    exit 0 ;;
+  --help) stub_help; exit 0 ;;
   --version) echo '9.9.9 (Claude Code Stub)'; exit 0 ;;
 esac
+# Eine Optionsnachfrage endet auf `-p` ohne Prompt. Nur dann verhaelt sich der
+# Stub wie das echte CLI: unbekannte Option melden, sonst am leeren Prompt
+# abbrechen. Ein normaler Rollenaufruf laeuft daran vorbei.
+if [ "$#" -gt 0 ] && [ "${!#}" = -p ]; then
+  known="$(stub_help | grep -oE '\-\-[a-z-]+') ${STUB_HIDDEN:-}"
+  for arg in "$@"; do
+    case "$arg" in --*) ;; *) continue ;; esac
+    printf '%s\n' $known | grep -qx -- "$arg" \
+      || { echo "error: unknown option '$arg'" >&2; exit 1; }
+  done
+  echo 'Error: Input must be provided either through stdin or as a prompt argument when using --print' >&2
+  exit 1
+fi
 [ -z "${STUB_ARGS:-}" ] || printf '%s\n' "$@" > "$STUB_ARGS"
 [ -z "${STUB_STDOUT:-}" ] || cat "$STUB_STDOUT"
 exit "${STUB_EXIT:-0}"

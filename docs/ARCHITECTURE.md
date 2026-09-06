@@ -429,7 +429,11 @@ gewählten Runner und den Repository-Zustand. Ein kaputt installiertes CLI ist
 dort ein Befund mit Text, kein Absturz. Beim Claude-Runner prüft er die
 Optionen, die der Adapter bei jedem Rollenaufruf durchreicht — `--json-schema`
 und die Sicherheitshülle —, weil ein CLI ohne sie jeden Lauf mit einem
-CLI-Fehler beendet. Ein Basiscommit ist keine Bedingung: Manifest und Snapshot
+CLI-Fehler beendet. Die Hilfe des CLI entscheidet das nicht allein: sie führt
+nicht jede unterstützte Option (`--max-turns` etwa fehlt dort). Was in der Hilfe
+fehlt, fragt der doctor deshalb einzeln nach; der Aufruf bricht am leeren Prompt
+ab, bevor ein Modell gefragt wird, und eine unbekannte Option meldet das CLI
+schon davor. Bleibt die Antwort unklar, ist auch das ein Befund. Ein Basiscommit ist keine Bedingung: Manifest und Snapshot
 beziehen ihre Inhalte über `git hash-object -w` aus dem Arbeitsbaum, nicht aus
 `HEAD`. Ohne Commit fehlt nur dem Menschen eine Rückfallebene, und der doctor
 sagt das als Hinweis.
