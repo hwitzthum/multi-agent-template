@@ -17,7 +17,7 @@ route_case() {
   local expected=$1 class=$2 orchestration=$3 cli=$4 attempts=$5 flags=$6 actual
   new_project_fixture
   make_task --id 001 --class "$class" --orchestration "$orchestration" \
-    --attempts "$attempts" --max-attempts "$max_attempts" --risk-flags "$flags"
+    --attempts "$attempts" --risk-flags "$flags"
   actual=$(agent_route_mode "$fixture/docs/tasks/001.md" "$cli" "$max_attempts") || actual='(Fehler)'
   assert_eq "$class/$orchestration/${cli:-–}/$attempts/${flags:-–} wird $expected" "$expected" "$actual"
 }
@@ -64,7 +64,7 @@ route_case blocked   patterned  auto    single 3 ''
 
 # Ein niedrigeres max_attempts des Aufrufers gilt ebenfalls.
 new_project_fixture
-make_task --id 001 --class mechanical --attempts 1 --max-attempts 3
+make_task --id 001 --class mechanical --attempts 1
 assert_eq "kleineres Aufruferlimit blockiert frueher" blocked \
   "$(agent_route_mode "$fixture/docs/tasks/001.md" '' 1)"
 

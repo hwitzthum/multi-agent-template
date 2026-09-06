@@ -14,7 +14,7 @@ begin_suite commit-gate
 fixture_workspace
 
 new_project_fixture --with-scripts
-make_task --id 017 --title 'Kandidat verifizieren' --features F-017 --status in_progress \
+make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --class patterned --orchestration verified --touches src/app.txt \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'
@@ -30,7 +30,7 @@ mv "$fixture/docs/tasks/.task.tmp" "$fixture/docs/tasks/017.md"
 expect_failure "Commit-Gate blockiert inkonsistentes Ledger" sh -c "printf '%s\n' '{\"tool_input\":{\"command\":\"git commit -m test\"}}' | CLAUDE_PROJECT_DIR='$fixture' '$gate'"
 
 new_project_fixture --with-scripts
-make_task --id 017 --title 'Kandidat verifizieren' --features F-017 --status in_progress \
+make_task --id 017 --title 'Kandidat verifizieren' --status in_progress \
   --class patterned --orchestration verified --touches src/app.txt \
   --context 'Ein deterministischer Testkandidat.' --scope '`src/app.txt` prüfen.' \
   --not-scope 'Andere Produktdateien ändern.' --criteria 'Die Datei enthält exakt `good`.'

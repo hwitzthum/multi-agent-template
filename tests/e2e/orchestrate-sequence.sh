@@ -17,7 +17,7 @@ begin_suite orchestrate-sequence
 fixture_workspace
 
 new_app_fixture
-make_task --id 018 --title 'Zweite App-Datei' --features F-018 --class mechanical \
+make_task --id 018 --title 'Zweite App-Datei' --class mechanical \
   --depends 017 --touches src/app.txt --context 'Folgeaufgabe.' \
   --scope '`src/app.txt` erneut bearbeiten.' --not-scope 'Steuerungsdateien ändern.' \
   --criteria 'Die Datei enthält `good`.'

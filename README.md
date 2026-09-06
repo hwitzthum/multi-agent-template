@@ -84,9 +84,10 @@ ausgeführt** — Sie sehen sie mit `--dry-run` vorher, ohne etwas zu verändern
 
 ### `scripts/agent/ledger.sh` — Der Dateiverwalter
 
-Liest und schreibt Task-Dateien, Goal, Plan, Notes — liest nur bekannte Felder aus
-definiertem Frontmatter. Unbekannte Felder bleiben bestehen, werden aber nie als
-Befehle interpretiert.
+Liest und schreibt Task-Dateien, Goal, Plan, Notes. Eine Datei wird in genau
+einem Durchlauf gelesen; das Ergebnis ist eine Zeile `schlüssel<TAB>wert` je
+Wert. Welche Felder ein Task tragen muss, entscheidet `validate-ledger.sh` —
+der Leser selbst kennt keine Feldnamen und interpretiert nichts als Befehl.
 
 Jede Änderung wird zuerst in einer temporären Datei validiert und dann atomar
 verschoben. Verhindert halbfertige Dateien bei Unterbrechung.
@@ -98,8 +99,10 @@ dass der Inhalt nicht mehrdeutig ist. Nur gültige Output-Schemata landen im Led
 
 ### `scripts/agent/status.sh` — Das Status-Gate
 
-Einziger Schreibweg für Task-Status. Prüft: Alter Status erlaubt? Prüfbericht vorhanden
-und grün? `human_review` benötigt explizite Freigabe?
+Einziger Schreibweg für Task-Status. Prüft: Alter Status erlaubt? Prüfbericht
+unter `docs/verification/<id>.md` vorhanden und grün, mit passendem Fingerprint?
+`human_review` benötigt explizite Freigabe? `blocked -> todo` gibt es nur
+menschlich über `./scripts/task.sh reopen`.
 
 Verhindert, dass ein Agent nur durch seine eigene Behauptung einen Task auf `done`
 setzt. Status wechseln nur mit einem grünen Beleg.
@@ -140,14 +143,24 @@ Kontrolle: Ein `git push` führst du selbst aus.
 ```bash
 ./scripts/orchestrate.sh --next --dry-run   # Route, Limits und geplante Rollen ohne Änderung
 ./scripts/validate-ledger.sh                # Task-Graph und Prüfbelege prüfen
+./scripts/task.sh reopen 017                # blockierte Aufgabe wieder öffnen (nur menschlich)
+./scripts/task.sh approve 017               # Aufgabe im Review freigeben (nur menschlich)
 ```
+
+`reopen` und `approve` sind die beiden Statuswechsel, die kein Agent auslösen
+kann. Eine Aufgabe steht auf `blocked`, wenn der Lauf eine Entscheidung braucht;
+die Frage steht dann unter `# Offene Frage` in der Task-Datei. Antwort dort
+hineinschreiben, dann `reopen`, dann wieder `./scripts/orchestrate.sh --task
+017`. `approve` schliesst eine Aufgabe ab, die nach grünen Tests auf `review`
+wartet, weil sie `human_review: true` oder `class: open` trägt.
 
 ## Wo der Stand liegt
 
 - `docs/tasks/*.md` ist die einzige Aufgabenquelle.
 - `docs/state/` enthält Ziel, Plan, Entscheidungen, Notizen und aktuelle
   Übergabe.
-- `docs/verification/` enthält den letzten maschinellen Prüfbeleg.
+- `docs/verification/<id>.md` ist der Prüfbeleg je Aufgabe; `latest.md` ist die
+  Kopie des zuletzt geschriebenen Berichts.
 - `.agent-runs/` enthält Laufzustand, Rohdaten und `metrics.csv` (eine Zeile
   pro Lauf) und wird nicht versioniert. Ein Lauf ist zwischen zwei Aufrufen
   zustandslos; es gibt kein Fortsetzen.

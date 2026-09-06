@@ -82,17 +82,21 @@ geladen.
 
 ## Ledger-Vertrag
 
-`scripts/agent/ledger.sh` liest ausschließlich bekannte Einzelwerte und einfache
-Listen aus begrenztem Frontmatter. Unbekannte Felder bleiben bei einer Migration
-erhalten, werden aber nicht als Befehle oder Konfiguration interpretiert. Jede
-Änderung wird zuerst in einer temporären Datei im selben Ordner validiert und
-erst danach atomar an ihren Zielpfad verschoben.
+`scripts/agent/ledger.sh` liest eine Datei in genau einem awk-Durchlauf und gibt
+je Wert eine Zeile `schlüssel<TAB>wert` aus; Rumpfüberschriften der Ebene 1
+erscheinen unter dem Schlüssel `#`. Der Leser kennt nur Einzelwerte und einfache
+Listen, keine Feldnamen — welche Felder ein Task tragen muss, entscheidet allein
+`scripts/validate-ledger.sh`. Unbekannte Felder werden nie als Befehle oder
+Konfiguration interpretiert. Jede Änderung wird zuerst in einer temporären Datei
+im selben Ordner validiert und erst danach atomar an ihren Zielpfad verschoben.
 
-Ein Task darf nur mit `last_verification: green` und einem passenden grünen
-Bericht unter `docs/verification/` auf `done` wechseln. Bei
-`human_review: true` führt der direkte Weg von `in_progress` zuerst über
-`review`. Höchstens ein Task ist `in_progress`; ein abgebrochener Lauf fällt
-beim nächsten Start auf `todo` zurück.
+Ein Task darf nur mit einem passenden grünen Bericht unter
+`docs/verification/<id>.md` auf `done` wechseln. Bei `human_review: true` führt
+der direkte Weg von `in_progress` zuerst über `review`. Von `blocked` zurück auf
+`todo` kommt eine Aufgabe nur menschlich über `./scripts/task.sh reopen <id>`,
+die Freigabe aus `review` nur über `./scripts/task.sh approve <id>`. Höchstens
+ein Task ist `in_progress`; ein abgebrochener Lauf fällt beim nächsten Start auf
+`todo` zurück.
 Verworfene Notizen liefert der Ledger-Leser nie als aktive Fakten aus.
 
 ## Router-Vertrag
@@ -230,13 +234,13 @@ von `find` und `shasum`: das ist eine Prozessgruppe statt eines Prozesses pro
 Datei, und `.gitignore` gilt ohne eigene Ausschlussliste. Das Kit setzt deshalb
 ein Git-Repository voraus.
 
-| Feld             | Bedeutung                                                                 |
-| ---------------- | ------------------------------------------------------------------------- |
-| `<hash>`         | Blob-Hash des Inhalts; der Inhalt liegt damit im Git-Objektspeicher        |
-| `exec:<hash>`    | dasselbe mit gesetztem Ausführungsbit                                     |
-| `symlink:<hash>` | Hash des Linkziels, nie des Inhalts dahinter                              |
-| `missing`        | im Index, aber nicht im Arbeitsbaum (gelöscht)                            |
-| `ignored`        | von `.gitignore` erfasst: nur der Name, der Inhalt wird nie gelesen        |
+| Feld             | Bedeutung                                                           |
+| ---------------- | ------------------------------------------------------------------- |
+| `<hash>`         | Blob-Hash des Inhalts; der Inhalt liegt damit im Git-Objektspeicher |
+| `exec:<hash>`    | dasselbe mit gesetztem Ausführungsbit                               |
+| `symlink:<hash>` | Hash des Linkziels, nie des Inhalts dahinter                        |
+| `missing`        | im Index, aber nicht im Arbeitsbaum (gelöscht)                      |
+| `ignored`        | von `.gitignore` erfasst: nur der Name, der Inhalt wird nie gelesen |
 
 Ein vollständig ignorierter Ordner wie `node_modules/` zählt als ein Eintrag.
 Änderungen darin bleiben unsichtbar, ein **neu** angelegter ignorierter Pfad wie
@@ -294,7 +298,8 @@ sie damit verschärfen. `.agent/verification-runners` ergänzt benannte Runner i
 Format `name|stufe|befehl`; Tasks referenzieren sie als `runner:name`. Auch
 diese Befehle dürfen keine Shell-Metazeichen oder Pfadtraversierung enthalten.
 
-Der Bericht unter `docs/verification/latest.md` und `history/` gilt nur für den
+Jeder Task hat genau einen Bericht: `docs/verification/<id>.md`. `latest.md` ist
+die Kopie des zuletzt geschriebenen Berichts. Ein Bericht gilt nur für den
 exakten Kandidaten- und Verifier-Fingerprint. Änderungen an Produkt, Tests,
 Task-Akzeptanz oder Prüflogik machen ihn für den Statusübergang ungültig. Der
 vollständige lokale Log liegt unter `.agent-runs/<run-id>/verify/`. Das

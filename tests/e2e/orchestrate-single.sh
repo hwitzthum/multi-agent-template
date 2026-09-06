@@ -35,6 +35,6 @@ fake_response worker-task 1 'RESULT=implemented' 'CHANGED_PATHS=src/app.txt' 'TE
 fake_action worker-task 1 write-bad
 expect_failure "Worker-Behauptung überstimmt rote Prüfung nicht" env ORCHESTRATOR_RUNNER="$runner" "$orchestrator" --project-dir "$fixture" --task 017
 assert_eq "Roter Single-Task bleibt todo" todo "$(ledger_scalar "$fixture/docs/tasks/017.md" status)"
-assert_eq "Rote Prüfung wird im Task protokolliert" red "$(ledger_scalar "$fixture/docs/tasks/017.md" last_verification)"
+assert_eq "Rote Prüfung steht im Task-Beleg" red "$(ledger_scalar "$fixture/docs/verification/017.md" result)"
 
 finish_suite
