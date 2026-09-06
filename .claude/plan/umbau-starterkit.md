@@ -10,7 +10,7 @@ Statuswerte: `offen` → `in Arbeit` → `umgesetzt` (Code fertig, Tests grün) 
 | Nr  | Feature                                  | Branch                            | Status | Tests | Gemergt am |
 | --- | ---------------------------------------- | --------------------------------- | ------ | ----- | ---------- |
 | F0  | Verhaltensbenannte Testsuite mit Runner  | `test/behaviour-suite`            | gemergt | 417   | 2026-09-06 |
-| F1  | Ballast entfernen                        | `chore/remove-ballast`            | geprüft | 400   | –          |
+| F1  | Ballast entfernen                        | `chore/remove-ballast`            | gemergt | 400   | 2026-09-06 |
 | F2  | Git-basierte Manifeste und Snapshot      | `perf/git-manifests`              | offen  | –     | –          |
 | F3  | Turnier streichen, Fresh-Versuch, Router | `refactor/drop-tournament`        | offen  | –     | –          |
 | F4  | Laufzustand unversioniert                | `refactor/run-state-unversioned`  | offen  | –     | –          |
@@ -27,6 +27,8 @@ Merge: Testsuite grün, Abnahmekriterien belegt, ausdrückliche Freigabe des Bes
 
 Neueste Einträge oben. Format: `Datum · Feature · was passiert ist · Beleg`.
 
+- 2026-09-06 · F1 · Nach `main` gemergt (`4c8f189`), Suite auf `main` grün ·
+  `./scripts/verify.sh` → `tests: GREEN (400 Zusicherungen in 25 Dateien)`
 - 2026-09-06 · F1 · Kurs-, Landingpage- und Ursprungsprojekt-Ballast entfernt,
   `.agent/README.md` → `docs/ARCHITECTURE.md`, Doku-Lint nachgezogen ·
   `./scripts/verify.sh` → `tests: GREEN (400 Zusicherungen in 25 Dateien)`
@@ -318,7 +320,7 @@ Abweichungen vom Plan:
 
 ### F1 · Ballast entfernen
 
-Branch `chore/remove-ballast` · Status: **geprüft**
+Branch `chore/remove-ballast` · Status: **gemergt**
 
 Ziel: alles weg, was nur für Kurs, Landingpage-Profil oder das Ursprungsprojekt da
 war, ohne Verhaltensänderung des Orchestrators.
